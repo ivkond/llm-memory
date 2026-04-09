@@ -99,6 +99,10 @@ llm-memory/
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0",
+    "vitest": "^3.1.0"
   }
 }
 ```
@@ -834,7 +838,6 @@ git commit -m ":sparkles: [core] Domain entities: WikiPage, VerbatimEntry, Proje
 
 ```typescript
 // packages/core/src/ports/file-store.ts
-import type { WikiPage } from '../domain/wiki-page.js';
 import type { VerbatimEntry } from '../domain/verbatim-entry.js';
 
 export interface FileInfo {
@@ -863,6 +866,9 @@ export interface IFileStore {
 
   /** Count unconsolidated entries across all agents. */
   countUnconsolidated(): Promise<number>;
+
+  /** Write a VerbatimEntry to disk as markdown (serialization owned by infra). */
+  writeVerbatimEntry(entry: VerbatimEntry): Promise<void>;
 }
 ```
 
@@ -1233,7 +1239,7 @@ Expected: FAIL.
 import { readFile, writeFile, readdir, stat, mkdir, unlink, access } from 'node:fs/promises';
 import path from 'node:path';
 import matter from 'gray-matter';
-import type { IFileStore, FileInfo } from '@llm-wiki/core';
+import type { IFileStore, FileInfo, VerbatimEntry } from '@llm-wiki/core';
 
 export class FsFileStore implements IFileStore {
   constructor(private readonly rootDir: string) {}
@@ -1335,6 +1341,21 @@ export class FsFileStore implements IFileStore {
     }
 
     return count;
+  }
+
+  async writeVerbatimEntry(entry: VerbatimEntry): Promise<void> {
+    const data = entry.toData();
+    const fm: Record<string, unknown> = {
+      session: data.session,
+      agent: data.agent,
+      consolidated: data.consolidated,
+      created: data.created,
+    };
+    if (data.project) fm.project = data.project;
+    if (data.tags && data.tags.length > 0) fm.tags = data.tags;
+
+    const content = matter.stringify('\n' + data.content + '\n', fm);
+    await this.writeFile(entry.filePath, content);
   }
 }
 ```
@@ -1583,7 +1604,22 @@ describe('GitProjectResolver', () => {
   });
 
   it('test_resolve_notGitRepo_returnsNull', async () => {
-    const nonGitDir = await mkdtemp(path.join(tmpdir(), 'non-git-'));
+    const nonGitDir = await mkdtemp(path.join(tmpdir(), 'non-git-fallback'));
+    const store = new FsFileStore(wikiDir);
+    // Create a project config matching the directory name
+    await store.writeFile(
+      'projects/non-git-fallback/_config.md',
+      '---\nname: non-git-fallback\ngit_remote: ""\n---\n',
+    );
+    const resolver = new GitProjectResolver(store);
+    const name = await resolver.resolve(nonGitDir);
+    // Fallback: uses directory basename when not a git repo
+    expect(name).toBe('non-git-fallback');
+    await rm(nonGitDir, { recursive: true, force: true });
+  });
+
+  it('test_resolve_notGitRepo_noMatchingProject_returnsNull', async () => {
+    const nonGitDir = await mkdtemp(path.join(tmpdir(), 'unknown-'));
     const store = new FsFileStore(wikiDir);
     const resolver = new GitProjectResolver(store);
     const name = await resolver.resolve(nonGitDir);
@@ -1618,17 +1654,27 @@ export class GitProjectResolver implements IProjectResolver {
 
   async resolve(cwd: string): Promise<string | null> {
     const remoteUrl = await this.getRemoteUrl(cwd);
-    if (!remoteUrl) return null;
 
-    // Scan all project configs to find matching remote
+    // Scan all project configs to find matching remote or directory name
     const projects = await this.fileStore.listFiles('projects');
     for (const file of projects) {
       if (!file.path.endsWith('/_config.md')) continue;
       const content = await this.fileStore.readFile(file.path);
       if (!content) continue;
       const { data } = matter(content);
-      if (data.git_remote === remoteUrl) {
+
+      // Match by git remote (primary)
+      if (remoteUrl && data.git_remote === remoteUrl) {
         return data.name as string;
+      }
+    }
+
+    // Fallback: match by directory basename when not a git repo
+    if (!remoteUrl) {
+      const dirName = cwd.split(/[/\\]/).filter(Boolean).pop();
+      if (dirName) {
+        const configExists = await this.fileStore.exists(`projects/${dirName}/_config.md`);
+        if (configExists) return dirName;
       }
     }
 
@@ -1694,6 +1740,10 @@ function createMockFileStore(): IFileStore {
   return {
     readFile: vi.fn(async (p: string) => files.get(p) ?? null),
     writeFile: vi.fn(async (p: string, c: string) => { files.set(p, c); }),
+    writeVerbatimEntry: vi.fn(async (entry: any) => {
+      // Simulate serialization: store content at entry.filePath
+      files.set(entry.filePath, `---\nsession: ${entry.sessionId}\nagent: ${entry.agent}\nconsolidated: false\n---\n${entry.content}`);
+    }),
     listFiles: vi.fn(async () => []),
     exists: vi.fn(async (p: string) => files.has(p)),
     deleteFile: vi.fn(async (p: string) => { files.delete(p); }),
@@ -1722,7 +1772,7 @@ describe('RememberService', () => {
 
     expect(result.ok).toBe(true);
     expect(result.file).toMatch(/^log\/claude-code\/raw\//);
-    expect(fileStore.writeFile).toHaveBeenCalledOnce();
+    expect(fileStore.writeVerbatimEntry).toHaveBeenCalledOnce();
   });
 
   it('test_rememberFact_emptyContent_throwsContentEmpty', async () => {
@@ -1739,9 +1789,10 @@ describe('RememberService', () => {
     });
 
     expect(result.ok).toBe(true);
-    const written = (fileStore.writeFile as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
-    expect(written).toContain('[REDACTED:api_key]');
-    expect(written).not.toContain('sk-abc123');
+    // writeVerbatimEntry receives the VerbatimEntry domain object with sanitized content
+    const entry = (fileStore.writeVerbatimEntry as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(entry.content).toContain('[REDACTED:api_key]');
+    expect(entry.content).not.toContain('sk-abc123');
   });
 
   it('test_rememberFact_neverCallsLlm (INV-1)', async () => {
@@ -1765,7 +1816,7 @@ describe('RememberService', () => {
 
     expect(result.ok).toBe(true);
     expect(result.facts_count).toBe(2);
-    expect(fileStore.writeFile).toHaveBeenCalledOnce();
+    expect(fileStore.writeVerbatimEntry).toHaveBeenCalledOnce();
   });
 
   it('test_rememberSession_duplicateSessionId_returnsExisting (INV-8)', async () => {
@@ -1796,7 +1847,7 @@ describe('RememberService', () => {
     // facts_count should reflect STORED entry (1 fact), not new summary (3 facts)
     expect(second.facts_count).toBe(first.facts_count);
     // writeFile should have been called only once (for the first call)
-    expect(fileStore.writeFile).toHaveBeenCalledOnce();
+    expect(fileStore.writeVerbatimEntry).toHaveBeenCalledOnce();
   });
 });
 ```
@@ -1810,11 +1861,12 @@ Expected: FAIL.
 
 ```typescript
 // packages/core/src/services/remember-service.ts
+// No external dependencies — uses only domain entities and ports.
+// Serialization to markdown is delegated to IFileStore.writeVerbatimEntry().
 import { VerbatimEntry } from '../domain/verbatim-entry.js';
 import { ContentEmptyError, SanitizationBlockedError } from '../domain/errors.js';
 import type { IFileStore } from '../ports/file-store.js';
 import type { SanitizationService } from './sanitization-service.js';
-import matter from 'gray-matter';
 
 export interface RememberFactRequest {
   content: string;
@@ -1863,7 +1915,7 @@ export class RememberService {
       tags: req.tags,
     });
 
-    await this.fileStore.writeFile(entry.filePath, entry.toMarkdown());
+    await this.fileStore.writeVerbatimEntry(entry);
 
     return { ok: true, file: entry.filePath, entry_id: entry.filename };
   }
@@ -1891,7 +1943,7 @@ export class RememberService {
       project: req.project,
     });
 
-    await this.fileStore.writeFile(entry.filePath, entry.toMarkdown());
+    await this.fileStore.writeVerbatimEntry(entry);
 
     return {
       ok: true,
@@ -1906,8 +1958,9 @@ export class RememberService {
       if (!file.path.includes(sessionId)) continue;
       const content = await this.fileStore.readFile(file.path);
       if (!content) continue;
-      const { data } = matter(content);
-      if (data.session === sessionId) return file.path;
+      // Parse session from frontmatter without gray-matter — simple string match
+      const sessionMatch = content.match(/^session:\s*(.+)$/m);
+      if (sessionMatch && sessionMatch[1].trim() === sessionId) return file.path;
     }
     return null;
   }
@@ -1980,6 +2033,7 @@ function createMockFileStore(fileMap: Record<string, string> = {}): IFileStore {
     deleteFile: vi.fn(async () => {}),
     listUnconsolidatedEntries: vi.fn(async () => []),
     countUnconsolidated: vi.fn(async () => 3),
+    writeVerbatimEntry: vi.fn(async () => {}),
   };
 }
 
@@ -2043,13 +2097,17 @@ describe('RecallService', () => {
   });
 
   it('test_recall_neverCallsLlm (INV-12)', async () => {
-    // RecallService has no LLM dependency — structural guarantee
-    const fileStore = createMockFileStore({});
+    // RecallService has no LLM dependency — structural guarantee.
+    // Use non-empty wiki to avoid WIKI_EMPTY error.
+    const fileStore = createMockFileStore({
+      'wiki/patterns/test.md': '---\ntitle: Test\nupdated: 2026-04-01\n---\n## Summary\nTest page.',
+    });
     const resolver = createMockResolver(null);
     const service = new RecallService(fileStore, resolver);
 
-    // This should not throw even with empty wiki
-    await expect(service.recall({ cwd: '/any' })).resolves.toBeDefined();
+    // Resolves successfully — no LLM involved (structural: no ILlmClient in constructor)
+    const result = await service.recall({ cwd: '/any' });
+    expect(result.pages.length).toBeGreaterThan(0);
   });
 
   it('test_recall_emptyWiki_throwsWikiEmpty', async () => {
@@ -2061,7 +2119,10 @@ describe('RecallService', () => {
   });
 
   it('test_recall_includesUnconsolidatedCount', async () => {
-    const fileStore = createMockFileStore({});
+    // Non-empty wiki to avoid WIKI_EMPTY
+    const fileStore = createMockFileStore({
+      'wiki/concepts/one.md': '---\ntitle: One\nupdated: 2026-04-01\n---\n## Summary\nPage.',
+    });
     const resolver = createMockResolver(null);
     const service = new RecallService(fileStore, resolver);
 
