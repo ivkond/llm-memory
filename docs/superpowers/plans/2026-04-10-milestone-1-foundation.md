@@ -101,6 +101,7 @@ llm-memory/
     "lint": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "typescript": "^5.8.0",
     "vitest": "^3.1.0"
   }
@@ -232,7 +233,24 @@ export default defineConfig({
 });
 ```
 
-Create identical `packages/infra/vitest.config.ts`.
+Create `packages/infra/vitest.config.ts` with source aliases so tests resolve workspace packages to TypeScript source (not compiled dist):
+
+```typescript
+import { defineConfig } from 'vitest/config';
+import path from 'node:path';
+
+export default defineConfig({
+  test: {
+    globals: true,
+    include: ['tests/**/*.test.ts'],
+  },
+  resolve: {
+    alias: {
+      '@llm-wiki/core': path.resolve(__dirname, '../core/src/index.ts'),
+    },
+  },
+});
+```
 
 - [ ] **Step 9: Update .gitignore**
 
@@ -830,15 +848,15 @@ git commit -m ":sparkles: [core] Domain entities: WikiPage, VerbatimEntry, Proje
 
 **Files:**
 - Create: `packages/core/src/ports/file-store.ts`
+- Create: `packages/core/src/ports/verbatim-store.ts`
 - Create: `packages/core/src/ports/project-resolver.ts`
 - Create: `packages/core/src/ports/version-control.ts`
 - Create: `packages/core/src/ports/index.ts`
 
-- [ ] **Step 1: Define IFileStore port**
+- [ ] **Step 1: Define IFileStore port (generic file I/O, 5 methods — ISP compliant)**
 
 ```typescript
 // packages/core/src/ports/file-store.ts
-import type { VerbatimEntry } from '../domain/verbatim-entry.js';
 
 export interface FileInfo {
   path: string;
@@ -846,29 +864,40 @@ export interface FileInfo {
 }
 
 export interface IFileStore {
-  /** Read markdown file content. Returns null if not found. */
+  /** Read raw file content. Returns null if not found. */
   readFile(relativePath: string): Promise<string | null>;
 
-  /** Write markdown content to a file. Creates parent dirs if needed. */
+  /** Write content to a file. Creates parent dirs if needed. */
   writeFile(relativePath: string, content: string): Promise<void>;
 
-  /** List all markdown files under a directory, sorted by mtime desc. */
+  /** List all markdown files under a directory. */
   listFiles(directory: string): Promise<FileInfo[]>;
 
   /** Check if a file exists. */
   exists(relativePath: string): Promise<boolean>;
 
-  /** Delete a file. */
-  deleteFile(relativePath: string): Promise<void>;
+  /** Read and parse a markdown file into WikiPageData. Returns null if not found.
+   *  Parsing (gray-matter) is owned by infra — single parser path. */
+  readWikiPage(relativePath: string): Promise<import('../domain/wiki-page.js').WikiPageData | null>;
+}
+```
+
+- [ ] **Step 1b: Define IVerbatimStore port (verbatim-specific operations, 3 methods)**
+
+```typescript
+// packages/core/src/ports/verbatim-store.ts
+import type { VerbatimEntry } from '../domain/verbatim-entry.js';
+import type { FileInfo } from './file-store.js';
+
+export interface IVerbatimStore {
+  /** Write a VerbatimEntry to disk as markdown (serialization owned by infra). */
+  writeEntry(entry: VerbatimEntry): Promise<void>;
 
   /** Find verbatim entries with consolidated: false for a given agent. */
-  listUnconsolidatedEntries(agent: string): Promise<FileInfo[]>;
+  listUnconsolidated(agent: string): Promise<FileInfo[]>;
 
   /** Count unconsolidated entries across all agents. */
   countUnconsolidated(): Promise<number>;
-
-  /** Write a VerbatimEntry to disk as markdown (serialization owned by infra). */
-  writeVerbatimEntry(entry: VerbatimEntry): Promise<void>;
 }
 ```
 
@@ -913,6 +942,7 @@ Note: worktree, squash, and conflict resolution methods will be added in Milesto
 ```typescript
 // packages/core/src/ports/index.ts
 export type { IFileStore, FileInfo } from './file-store.js';
+export type { IVerbatimStore } from './verbatim-store.js';
 export type { IProjectResolver } from './project-resolver.js';
 export type { IVersionControl } from './version-control.js';
 ```
@@ -1343,6 +1373,24 @@ export class FsFileStore implements IFileStore {
     return count;
   }
 
+  async readWikiPage(relativePath: string): Promise<import('@llm-wiki/core').WikiPageData | null> {
+    const raw = await this.readFile(relativePath);
+    if (!raw) return null;
+    const { data, content } = matter(raw);
+    return {
+      frontmatter: {
+        title: data.title as string,
+        created: data.created as string,
+        updated: data.updated as string,
+        confidence: (data.confidence as number) ?? 0.5,
+        sources: (data.sources as string[]) ?? [],
+        supersedes: (data.supersedes as string | null) ?? null,
+        tags: (data.tags as string[]) ?? [],
+      },
+      content: content.trim(),
+    };
+  }
+
   async writeVerbatimEntry(entry: VerbatimEntry): Promise<void> {
     const data = entry.toData();
     const fm: Record<string, unknown> = {
@@ -1733,33 +1781,42 @@ git commit -m ":sparkles: [infra] ConfigLoader and GitProjectResolver adapters"
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RememberService } from '../../src/services/remember-service.js';
 import { SanitizationService } from '../../src/services/sanitization-service.js';
-import type { IFileStore, FileInfo } from '../../src/ports/file-store.js';
+import type { IFileStore } from '../../src/ports/file-store.js';
+import type { IVerbatimStore } from '../../src/ports/verbatim-store.js';
 
-function createMockFileStore(): IFileStore {
+function createMocks() {
   const files = new Map<string, string>();
-  return {
+
+  const fileStore: IFileStore = {
     readFile: vi.fn(async (p: string) => files.get(p) ?? null),
     writeFile: vi.fn(async (p: string, c: string) => { files.set(p, c); }),
-    writeVerbatimEntry: vi.fn(async (entry: any) => {
-      // Simulate serialization: store content at entry.filePath
-      files.set(entry.filePath, `---\nsession: ${entry.sessionId}\nagent: ${entry.agent}\nconsolidated: false\n---\n${entry.content}`);
-    }),
     listFiles: vi.fn(async () => []),
     exists: vi.fn(async (p: string) => files.has(p)),
-    deleteFile: vi.fn(async (p: string) => { files.delete(p); }),
-    listUnconsolidatedEntries: vi.fn(async () => []),
+    readWikiPage: vi.fn(async () => null),
+  };
+
+  const verbatimStore: IVerbatimStore = {
+    writeEntry: vi.fn(async (entry: any) => {
+      files.set(entry.filePath, `---\nsession: ${entry.sessionId}\nagent: ${entry.agent}\nconsolidated: false\n---\n${entry.content}`);
+    }),
+    listUnconsolidated: vi.fn(async () => []),
     countUnconsolidated: vi.fn(async () => 0),
   };
+
+  return { fileStore, verbatimStore, files };
 }
 
 describe('RememberService', () => {
   let fileStore: IFileStore;
+  let verbatimStore: IVerbatimStore;
   let service: RememberService;
 
   beforeEach(() => {
-    fileStore = createMockFileStore();
+    const mocks = createMocks();
+    fileStore = mocks.fileStore;
+    verbatimStore = mocks.verbatimStore;
     const sanitizer = new SanitizationService({ enabled: true, mode: 'redact' });
-    service = new RememberService(fileStore, sanitizer);
+    service = new RememberService(fileStore, verbatimStore, sanitizer);
   });
 
   it('test_rememberFact_validContent_writesFile', async () => {
@@ -1862,10 +1919,11 @@ Expected: FAIL.
 ```typescript
 // packages/core/src/services/remember-service.ts
 // No external dependencies — uses only domain entities and ports.
-// Serialization to markdown is delegated to IFileStore.writeVerbatimEntry().
+// Serialization to markdown is delegated to IVerbatimStore.writeEntry().
 import { VerbatimEntry } from '../domain/verbatim-entry.js';
 import { ContentEmptyError, SanitizationBlockedError } from '../domain/errors.js';
 import type { IFileStore } from '../ports/file-store.js';
+import type { IVerbatimStore } from '../ports/verbatim-store.js';
 import type { SanitizationService } from './sanitization-service.js';
 
 export interface RememberFactRequest {
@@ -1898,6 +1956,7 @@ export interface RememberSessionResponse {
 export class RememberService {
   constructor(
     private readonly fileStore: IFileStore,
+    private readonly verbatimStore: IVerbatimStore,
     private readonly sanitizer: SanitizationService,
   ) {}
 
@@ -1915,7 +1974,7 @@ export class RememberService {
       tags: req.tags,
     });
 
-    await this.fileStore.writeVerbatimEntry(entry);
+    await this.verbatimStore.writeEntry(entry);
 
     return { ok: true, file: entry.filePath, entry_id: entry.filename };
   }
@@ -1943,7 +2002,7 @@ export class RememberService {
       project: req.project,
     });
 
-    await this.fileStore.writeVerbatimEntry(entry);
+    await this.verbatimStore.writeEntry(entry);
 
     return {
       ok: true,
@@ -2030,10 +2089,32 @@ function createMockFileStore(fileMap: Record<string, string> = {}): IFileStore {
         .sort((a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime());
     }),
     exists: vi.fn(async (p: string) => p in fileMap),
-    deleteFile: vi.fn(async () => {}),
-    listUnconsolidatedEntries: vi.fn(async () => []),
-    countUnconsolidated: vi.fn(async () => 3),
-    writeVerbatimEntry: vi.fn(async () => {}),
+    readWikiPage: vi.fn(async (p: string) => {
+      const raw = fileMap[p];
+      if (!raw) return null;
+      // Simple mock parser matching infra behavior
+      const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+      if (!fmMatch) return null;
+      const fm: Record<string, unknown> = {};
+      for (const line of fmMatch[1].split('\n')) {
+        const idx = line.indexOf(':');
+        if (idx === -1) continue;
+        const key = line.slice(0, idx).trim();
+        let val: unknown = line.slice(idx + 1).trim();
+        if (/^\d+(\.\d+)?$/.test(val as string)) val = Number(val);
+        if (val === 'null') val = null;
+        if ((val as string).startsWith?.('[')) val = (val as string).slice(1, -1).split(',').map(s => s.trim()).filter(Boolean);
+        fm[key] = val;
+      }
+      return {
+        frontmatter: {
+          title: fm.title as string, created: fm.created as string,
+          updated: fm.updated as string, confidence: (fm.confidence as number) ?? 0.5,
+          sources: (fm.sources as string[]) ?? [], supersedes: null, tags: (fm.tags as string[]) ?? [],
+        },
+        content: fmMatch[2].trim(),
+      };
+    }),
   };
 }
 
@@ -2053,7 +2134,8 @@ describe('RecallService', () => {
     };
     const fileStore = createMockFileStore(files);
     const resolver = createMockResolver('cli-relay');
-    const service = new RecallService(fileStore, resolver);
+    const verbatimStore = { writeEntry: vi.fn(), listUnconsolidated: vi.fn(async () => []), countUnconsolidated: vi.fn(async () => 3) };
+    const service = new RecallService(fileStore, verbatimStore, resolver);
 
     const result = await service.recall({ cwd: '/projects/cli-relay', max_tokens: 2048 });
 
@@ -2072,7 +2154,8 @@ describe('RecallService', () => {
     };
     const fileStore = createMockFileStore(files);
     const resolver = createMockResolver(null);
-    const service = new RecallService(fileStore, resolver);
+    const verbatimStore = { writeEntry: vi.fn(), listUnconsolidated: vi.fn(async () => []), countUnconsolidated: vi.fn(async () => 3) };
+    const service = new RecallService(fileStore, verbatimStore, resolver);
 
     const result = await service.recall({ cwd: '/unknown/project' });
 
@@ -2088,7 +2171,8 @@ describe('RecallService', () => {
     };
     const fileStore = createMockFileStore(files);
     const resolver = createMockResolver(null);
-    const service = new RecallService(fileStore, resolver);
+    const verbatimStore = { writeEntry: vi.fn(), listUnconsolidated: vi.fn(async () => []), countUnconsolidated: vi.fn(async () => 3) };
+    const service = new RecallService(fileStore, verbatimStore, resolver);
 
     const first = await service.recall({ cwd: '/any' });
     const second = await service.recall({ cwd: '/any' });
@@ -2103,7 +2187,8 @@ describe('RecallService', () => {
       'wiki/patterns/test.md': '---\ntitle: Test\nupdated: 2026-04-01\n---\n## Summary\nTest page.',
     });
     const resolver = createMockResolver(null);
-    const service = new RecallService(fileStore, resolver);
+    const verbatimStore = { writeEntry: vi.fn(), listUnconsolidated: vi.fn(async () => []), countUnconsolidated: vi.fn(async () => 3) };
+    const service = new RecallService(fileStore, verbatimStore, resolver);
 
     // Resolves successfully — no LLM involved (structural: no ILlmClient in constructor)
     const result = await service.recall({ cwd: '/any' });
@@ -2113,7 +2198,8 @@ describe('RecallService', () => {
   it('test_recall_emptyWiki_throwsWikiEmpty', async () => {
     const fileStore = createMockFileStore({});
     const resolver = createMockResolver(null);
-    const service = new RecallService(fileStore, resolver);
+    const verbatimStore = { writeEntry: vi.fn(), listUnconsolidated: vi.fn(async () => []), countUnconsolidated: vi.fn(async () => 3) };
+    const service = new RecallService(fileStore, verbatimStore, resolver);
 
     await expect(service.recall({ cwd: '/any' })).rejects.toThrow('WIKI_EMPTY');
   });
@@ -2124,7 +2210,8 @@ describe('RecallService', () => {
       'wiki/concepts/one.md': '---\ntitle: One\nupdated: 2026-04-01\n---\n## Summary\nPage.',
     });
     const resolver = createMockResolver(null);
-    const service = new RecallService(fileStore, resolver);
+    const verbatimStore = { writeEntry: vi.fn(), listUnconsolidated: vi.fn(async () => []), countUnconsolidated: vi.fn(async () => 3) };
+    const service = new RecallService(fileStore, verbatimStore, resolver);
 
     const result = await service.recall({ cwd: '/any' });
     expect(result.unconsolidated_count).toBe(3);
@@ -2140,7 +2227,8 @@ describe('RecallService', () => {
 
     const fileStore = createMockFileStore(files);
     const resolver = createMockResolver('big');
-    const service = new RecallService(fileStore, resolver);
+    const verbatimStore = { writeEntry: vi.fn(), listUnconsolidated: vi.fn(async () => []), countUnconsolidated: vi.fn(async () => 3) };
+    const service = new RecallService(fileStore, verbatimStore, resolver);
 
     const result = await service.recall({ cwd: '/projects/big', max_tokens: 500 });
 
@@ -2162,6 +2250,7 @@ Expected: FAIL.
 import { WikiPage } from '../domain/wiki-page.js';
 import { WikiEmptyError } from '../domain/errors.js';
 import type { IFileStore } from '../ports/file-store.js';
+import type { IVerbatimStore } from '../ports/verbatim-store.js';
 import type { IProjectResolver } from '../ports/project-resolver.js';
 
 export interface RecallRequest {
@@ -2191,6 +2280,7 @@ const APPROX_TOKENS_PER_PAGE = 50; // path + title + summary estimate
 export class RecallService {
   constructor(
     private readonly fileStore: IFileStore,
+    private readonly verbatimStore: IVerbatimStore,
     private readonly projectResolver: IProjectResolver,
   ) {}
 
@@ -2232,7 +2322,7 @@ export class RecallService {
     const selectedWiki = wikiPages.slice(0, wikiBudget);
     const pages = [...selectedProject, ...selectedWiki];
 
-    const unconsolidatedCount = await this.fileStore.countUnconsolidated();
+    const unconsolidatedCount = await this.verbatimStore.countUnconsolidated();
 
     return {
       project,
@@ -2247,11 +2337,12 @@ export class RecallService {
     const infos: RecallPageInfo[] = [];
 
     for (const file of files) {
-      const content = await this.fileStore.readFile(file.path);
-      if (!content) continue;
-
       try {
-        const page = WikiPage.fromParsedData(file.path, this.parseMarkdown(content));
+        // Single parser path: IFileStore.readWikiPage uses gray-matter in infra
+        const data = await this.fileStore.readWikiPage(file.path);
+        if (!data) continue;
+
+        const page = WikiPage.fromParsedData(file.path, data);
         infos.push({
           path: page.path,
           title: page.title,
@@ -2267,45 +2358,6 @@ export class RecallService {
     infos.sort((a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime());
 
     return infos;
-  }
-
-  /**
-   * Minimal frontmatter parser for recall — avoids gray-matter dependency in core.
-   * Extracts YAML frontmatter between --- delimiters.
-   */
-  private parseMarkdown(raw: string): import('../domain/wiki-page.js').WikiPageData {
-    const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-    if (!fmMatch) {
-      return { frontmatter: {} as any, content: raw };
-    }
-    const fmLines = fmMatch[1].split('\n');
-    const fm: Record<string, unknown> = {};
-    for (const line of fmLines) {
-      const colonIdx = line.indexOf(':');
-      if (colonIdx === -1) continue;
-      const key = line.slice(0, colonIdx).trim();
-      let value: unknown = line.slice(colonIdx + 1).trim();
-      if (value === 'null') value = null;
-      else if (value === 'true') value = true;
-      else if (value === 'false') value = false;
-      else if (/^\d+(\.\d+)?$/.test(value as string)) value = Number(value);
-      else if ((value as string).startsWith('[') && (value as string).endsWith(']')) {
-        value = (value as string).slice(1, -1).split(',').map(s => s.trim()).filter(Boolean);
-      }
-      fm[key] = value;
-    }
-    return {
-      frontmatter: {
-        title: fm.title as string,
-        created: fm.created as string,
-        updated: fm.updated as string,
-        confidence: (fm.confidence as number) ?? 0.5,
-        sources: (fm.sources as string[]) ?? [],
-        supersedes: (fm.supersedes as string | null) ?? null,
-        tags: (fm.tags as string[]) ?? [],
-      },
-      content: fmMatch[2],
-    };
   }
 }
 ```
