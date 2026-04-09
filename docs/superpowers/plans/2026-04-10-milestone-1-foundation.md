@@ -247,6 +247,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@llm-wiki/core': path.resolve(__dirname, '../core/src/index.ts'),
+      '@llm-wiki/infra': path.resolve(__dirname, './src/index.ts'),
     },
   },
 });
@@ -1220,38 +1221,89 @@ describe('FsFileStore', () => {
     expect(await store.exists('missing.md')).toBe(false);
   });
 
-  it('test_deleteFile_removesFile', async () => {
-    await store.writeFile('test.md', 'content');
-    await store.deleteFile('test.md');
-    expect(await store.exists('test.md')).toBe(false);
+  it('test_readWikiPage_parsesMarkdownFrontmatter', async () => {
+    await store.writeFile('wiki/test.md', '---\ntitle: Test\nupdated: 2026-04-09\nconfidence: 0.9\nsources: []\nsupersedes: null\ntags: []\n---\n\n## Summary\n\nContent here.');
+    const data = await store.readWikiPage('wiki/test.md');
+    expect(data).not.toBeNull();
+    expect(data!.frontmatter.title).toBe('Test');
+    expect(data!.frontmatter.confidence).toBe(0.9);
+    expect(data!.content).toContain('Content here.');
   });
 
-  it('test_listUnconsolidatedEntries_findsOnlyFalse', async () => {
-    await store.writeFile(
+  it('test_readWikiPage_nonExistent_returnsNull', async () => {
+    const data = await store.readWikiPage('missing.md');
+    expect(data).toBeNull();
+  });
+});
+```
+
+Create separate test file for `FsVerbatimStore`:
+
+```typescript
+// packages/infra/tests/fs-verbatim-store.test.ts
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { VerbatimEntry } from '@llm-wiki/core';
+import { FsFileStore } from '../src/fs-file-store.js';
+import { FsVerbatimStore } from '../src/fs-verbatim-store.js';
+
+describe('FsVerbatimStore', () => {
+  let tempDir: string;
+  let fileStore: FsFileStore;
+  let verbatimStore: FsVerbatimStore;
+
+  beforeEach(async () => {
+    tempDir = await mkdtemp(path.join(tmpdir(), 'llm-wiki-vbs-'));
+    fileStore = new FsFileStore(tempDir);
+    verbatimStore = new FsVerbatimStore(fileStore);
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it('test_writeEntry_createsFile', async () => {
+    const entry = VerbatimEntry.create({
+      content: '- test fact',
+      agent: 'claude-code',
+      sessionId: 'abc',
+    });
+    await verbatimStore.writeEntry(entry);
+
+    const content = await fileStore.readFile(entry.filePath);
+    expect(content).not.toBeNull();
+    expect(content).toContain('test fact');
+    expect(content).toContain('session: abc');
+  });
+
+  it('test_listUnconsolidated_findsOnlyFalse', async () => {
+    await fileStore.writeFile(
       'log/claude-code/raw/2026-04-09-abc-1111.md',
       '---\nconsolidated: false\n---\nfact1',
     );
-    await store.writeFile(
+    await fileStore.writeFile(
       'log/claude-code/raw/2026-04-09-abc-2222.md',
       '---\nconsolidated: true\n---\nfact2',
     );
 
-    const entries = await store.listUnconsolidatedEntries('claude-code');
+    const entries = await verbatimStore.listUnconsolidated('claude-code');
     expect(entries).toHaveLength(1);
     expect(entries[0].path).toContain('1111');
   });
 
   it('test_countUnconsolidated_countsAcrossAgents', async () => {
-    await store.writeFile(
+    await fileStore.writeFile(
       'log/claude-code/raw/2026-04-09-a-1111.md',
       '---\nconsolidated: false\n---\nfact',
     );
-    await store.writeFile(
+    await fileStore.writeFile(
       'log/cursor/raw/2026-04-09-b-2222.md',
       '---\nconsolidated: false\n---\nfact',
     );
 
-    const count = await store.countUnconsolidated();
+    const count = await verbatimStore.countUnconsolidated();
     expect(count).toBe(2);
   });
 });
@@ -1262,14 +1314,14 @@ describe('FsFileStore', () => {
 Run: `pnpm vitest run packages/infra/tests/fs-file-store.test.ts`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement FsFileStore**
+- [ ] **Step 3: Implement FsFileStore (implements IFileStore)**
 
 ```typescript
 // packages/infra/src/fs-file-store.ts
-import { readFile, writeFile, readdir, stat, mkdir, unlink, access } from 'node:fs/promises';
+import { readFile, writeFile, readdir, stat, mkdir, access } from 'node:fs/promises';
 import path from 'node:path';
 import matter from 'gray-matter';
-import type { IFileStore, FileInfo, VerbatimEntry } from '@llm-wiki/core';
+import type { IFileStore, FileInfo, WikiPageData } from '@llm-wiki/core';
 
 export class FsFileStore implements IFileStore {
   constructor(private readonly rootDir: string) {}
@@ -1332,48 +1384,7 @@ export class FsFileStore implements IFileStore {
     }
   }
 
-  async deleteFile(relativePath: string): Promise<void> {
-    await unlink(path.join(this.rootDir, relativePath));
-  }
-
-  async listUnconsolidatedEntries(agent: string): Promise<FileInfo[]> {
-    const dir = `log/${agent}/raw`;
-    const files = await this.listFiles(dir);
-    const unconsolidated: FileInfo[] = [];
-
-    for (const file of files) {
-      const content = await this.readFile(file.path);
-      if (content) {
-        const { data } = matter(content);
-        if (data.consolidated === false) {
-          unconsolidated.push(file);
-        }
-      }
-    }
-
-    return unconsolidated;
-  }
-
-  async countUnconsolidated(): Promise<number> {
-    const logDir = path.join(this.rootDir, 'log');
-    let count = 0;
-
-    try {
-      const agents = await readdir(logDir, { withFileTypes: true });
-      for (const agent of agents) {
-        if (agent.isDirectory()) {
-          const entries = await this.listUnconsolidatedEntries(agent.name);
-          count += entries.length;
-        }
-      }
-    } catch {
-      // log/ doesn't exist yet
-    }
-
-    return count;
-  }
-
-  async readWikiPage(relativePath: string): Promise<import('@llm-wiki/core').WikiPageData | null> {
+  async readWikiPage(relativePath: string): Promise<WikiPageData | null> {
     const raw = await this.readFile(relativePath);
     if (!raw) return null;
     const { data, content } = matter(raw);
@@ -1390,8 +1401,23 @@ export class FsFileStore implements IFileStore {
       content: content.trim(),
     };
   }
+}
+```
 
-  async writeVerbatimEntry(entry: VerbatimEntry): Promise<void> {
+- [ ] **Step 3b: Implement FsVerbatimStore (implements IVerbatimStore)**
+
+```typescript
+// packages/infra/src/fs-verbatim-store.ts
+import { readdir } from 'node:fs/promises';
+import path from 'node:path';
+import matter from 'gray-matter';
+import type { IVerbatimStore, FileInfo, VerbatimEntry } from '@llm-wiki/core';
+import { FsFileStore } from './fs-file-store.js';
+
+export class FsVerbatimStore implements IVerbatimStore {
+  constructor(private readonly fileStore: FsFileStore) {}
+
+  async writeEntry(entry: VerbatimEntry): Promise<void> {
     const data = entry.toData();
     const fm: Record<string, unknown> = {
       session: data.session,
@@ -1403,7 +1429,45 @@ export class FsFileStore implements IFileStore {
     if (data.tags && data.tags.length > 0) fm.tags = data.tags;
 
     const content = matter.stringify('\n' + data.content + '\n', fm);
-    await this.writeFile(entry.filePath, content);
+    await this.fileStore.writeFile(entry.filePath, content);
+  }
+
+  async listUnconsolidated(agent: string): Promise<FileInfo[]> {
+    const dir = `log/${agent}/raw`;
+    const files = await this.fileStore.listFiles(dir);
+    const unconsolidated: FileInfo[] = [];
+
+    for (const file of files) {
+      const content = await this.fileStore.readFile(file.path);
+      if (content) {
+        const { data } = matter(content);
+        if (data.consolidated === false) {
+          unconsolidated.push(file);
+        }
+      }
+    }
+
+    return unconsolidated;
+  }
+
+  async countUnconsolidated(): Promise<number> {
+    const rootDir = (this.fileStore as any).rootDir as string;
+    const logDir = path.join(rootDir, 'log');
+    let count = 0;
+
+    try {
+      const agents = await readdir(logDir, { withFileTypes: true });
+      for (const agent of agents) {
+        if (agent.isDirectory()) {
+          const entries = await this.listUnconsolidated(agent.name);
+          count += entries.length;
+        }
+      }
+    } catch {
+      // log/ doesn't exist yet
+    }
+
+    return count;
   }
 }
 ```
@@ -1754,6 +1818,7 @@ Expected: ALL PASS.
 ```typescript
 // packages/infra/src/index.ts
 export { FsFileStore } from './fs-file-store.js';
+export { FsVerbatimStore } from './fs-verbatim-store.js';
 export { GitProjectResolver } from './git-project-resolver.js';
 export { ConfigLoader } from './config-loader.js';
 export type { WikiConfig } from './config-loader.js';
@@ -1829,7 +1894,7 @@ describe('RememberService', () => {
 
     expect(result.ok).toBe(true);
     expect(result.file).toMatch(/^log\/claude-code\/raw\//);
-    expect(fileStore.writeVerbatimEntry).toHaveBeenCalledOnce();
+    expect(verbatimStore.writeEntry).toHaveBeenCalledOnce();
   });
 
   it('test_rememberFact_emptyContent_throwsContentEmpty', async () => {
@@ -1846,8 +1911,8 @@ describe('RememberService', () => {
     });
 
     expect(result.ok).toBe(true);
-    // writeVerbatimEntry receives the VerbatimEntry domain object with sanitized content
-    const entry = (fileStore.writeVerbatimEntry as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    // writeEntry receives the VerbatimEntry domain object with sanitized content
+    const entry = (verbatimStore.writeEntry as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(entry.content).toContain('[REDACTED:api_key]');
     expect(entry.content).not.toContain('sk-abc123');
   });
@@ -1873,7 +1938,7 @@ describe('RememberService', () => {
 
     expect(result.ok).toBe(true);
     expect(result.facts_count).toBe(2);
-    expect(fileStore.writeVerbatimEntry).toHaveBeenCalledOnce();
+    expect(verbatimStore.writeEntry).toHaveBeenCalledOnce();
   });
 
   it('test_rememberSession_duplicateSessionId_returnsExisting (INV-8)', async () => {
@@ -1904,7 +1969,7 @@ describe('RememberService', () => {
     // facts_count should reflect STORED entry (1 fact), not new summary (3 facts)
     expect(second.facts_count).toBe(first.facts_count);
     // writeFile should have been called only once (for the first call)
-    expect(fileStore.writeVerbatimEntry).toHaveBeenCalledOnce();
+    expect(verbatimStore.writeEntry).toHaveBeenCalledOnce();
   });
 });
 ```
@@ -2413,12 +2478,13 @@ import { execSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { RememberService, RecallService, SanitizationService } from '@llm-wiki/core';
-import { FsFileStore, GitProjectResolver } from '@llm-wiki/infra';
+import { FsFileStore, FsVerbatimStore, GitProjectResolver } from '@llm-wiki/infra';
 
 describe('Remember + Recall integration', () => {
   let wikiDir: string;
   let projectDir: string;
   let fileStore: FsFileStore;
+  let verbatimStore: FsVerbatimStore;
   let rememberService: RememberService;
   let recallService: RecallService;
 
@@ -2428,6 +2494,7 @@ describe('Remember + Recall integration', () => {
 
     // Init wiki structure
     fileStore = new FsFileStore(wikiDir);
+    verbatimStore = new FsVerbatimStore(fileStore);
     await fileStore.writeFile('schema.md', '# Schema\nRules here.');
     await fileStore.writeFile(
       'projects/test-project/_config.md',
@@ -2449,8 +2516,8 @@ describe('Remember + Recall integration', () => {
     const sanitizer = new SanitizationService({ enabled: true, mode: 'redact' });
     const resolver = new GitProjectResolver(fileStore);
 
-    rememberService = new RememberService(fileStore, sanitizer);
-    recallService = new RecallService(fileStore, resolver);
+    rememberService = new RememberService(fileStore, verbatimStore, sanitizer);
+    recallService = new RecallService(fileStore, verbatimStore, resolver);
   });
 
   afterEach(async () => {
