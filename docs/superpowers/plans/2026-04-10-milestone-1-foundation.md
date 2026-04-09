@@ -146,13 +146,9 @@ packages:
   "scripts": {
     "build": "tsc"
   },
-  "dependencies": {
-    "gray-matter": "^4.0.3",
-    "uuid": "^11.1.0"
-  },
+  "dependencies": {},
   "devDependencies": {
-    "typescript": "^5.8.0",
-    "@types/uuid": "^10.0.0"
+    "typescript": "^5.8.0"
   }
 }
 ```
@@ -326,27 +322,22 @@ import { describe, it, expect } from 'vitest';
 import { WikiPage } from '../../src/domain/wiki-page.js';
 
 describe('WikiPage', () => {
-  it('test_fromMarkdown_validPage_parsesAllFields', () => {
-    const md = `---
-title: Test Page
-created: 2026-04-09
-updated: 2026-04-09
-confidence: 0.9
-sources:
-  - projects/cli-relay/practices.md
-supersedes: null
-tags: [testing, postgresql]
----
+  // Domain entity tests use fromParsedData — no gray-matter dependency in domain.
+  // Parsing (markdown → WikiPageData) is tested in infra/FsFileStore.
 
-## Summary
-
-Some content here.
-
-## See also
-
-- [Other page](../tools/pg.md)
-`;
-    const page = WikiPage.fromMarkdown('wiki/concepts/test.md', md);
+  it('test_fromParsedData_validData_constructsAllFields', () => {
+    const page = WikiPage.fromParsedData('wiki/concepts/test.md', {
+      frontmatter: {
+        title: 'Test Page',
+        created: '2026-04-09',
+        updated: '2026-04-09',
+        confidence: 0.9,
+        sources: ['projects/cli-relay/practices.md'],
+        supersedes: null,
+        tags: ['testing', 'postgresql'],
+      },
+      content: '## Summary\n\nSome content here.\n\n## See also\n\n- [Other page](../tools/pg.md)',
+    });
 
     expect(page.path).toBe('wiki/concepts/test.md');
     expect(page.title).toBe('Test Page');
@@ -358,58 +349,57 @@ Some content here.
     expect(page.crossrefs).toEqual(['../tools/pg.md']);
   });
 
-  it('test_fromMarkdown_missingTitle_usesFilename', () => {
-    const md = `---
-created: 2026-04-09
-updated: 2026-04-09
----
-
-Content.
-`;
-    const page = WikiPage.fromMarkdown('wiki/concepts/my-topic.md', md);
+  it('test_fromParsedData_missingTitle_usesFilename', () => {
+    const page = WikiPage.fromParsedData('wiki/concepts/my-topic.md', {
+      frontmatter: {
+        title: undefined as unknown as string,
+        created: '2026-04-09',
+        updated: '2026-04-09',
+        confidence: 0.5,
+        sources: [],
+        supersedes: null,
+        tags: [],
+      },
+      content: 'Content.',
+    });
     expect(page.title).toBe('my-topic');
   });
 
-  it('test_toMarkdown_roundtrip_preservesContent', () => {
-    const md = `---
-title: Test Page
-created: 2026-04-09
-updated: 2026-04-09
-confidence: 0.9
-sources: []
-supersedes: null
-tags: []
----
+  it('test_toData_roundtrip_preservesContent', () => {
+    const original = WikiPage.fromParsedData('wiki/test.md', {
+      frontmatter: {
+        title: 'Test Page',
+        created: '2026-04-09',
+        updated: '2026-04-09',
+        confidence: 0.9,
+        sources: [],
+        supersedes: null,
+        tags: [],
+      },
+      content: '## Summary\n\nContent here.',
+    });
 
-## Summary
+    const data = original.toData();
+    const reparsed = WikiPage.fromParsedData('wiki/test.md', data);
 
-Content here.
-`;
-    const page = WikiPage.fromMarkdown('wiki/test.md', md);
-    const output = page.toMarkdown();
-    const reparsed = WikiPage.fromMarkdown('wiki/test.md', output);
-
-    expect(reparsed.title).toBe(page.title);
-    expect(reparsed.confidence).toBe(page.confidence);
+    expect(reparsed.title).toBe(original.title);
+    expect(reparsed.confidence).toBe(original.confidence);
     expect(reparsed.content).toContain('Content here.');
   });
 
   it('test_summary_extractsFirstParagraph', () => {
-    const md = `---
-title: Test
-created: 2026-04-09
-updated: 2026-04-09
----
-
-## Summary
-
-First paragraph is the summary.
-
-## Details
-
-More details here.
-`;
-    const page = WikiPage.fromMarkdown('wiki/test.md', md);
+    const page = WikiPage.fromParsedData('wiki/test.md', {
+      frontmatter: {
+        title: 'Test',
+        created: '2026-04-09',
+        updated: '2026-04-09',
+        confidence: 0.5,
+        sources: [],
+        supersedes: null,
+        tags: [],
+      },
+      content: '## Summary\n\nFirst paragraph is the summary.\n\n## Details\n\nMore details here.',
+    });
     expect(page.summary).toBe('First paragraph is the summary.');
   });
 });
@@ -424,8 +414,9 @@ Expected: FAIL — module not found.
 
 ```typescript
 // packages/core/src/domain/wiki-page.ts
-import matter from 'gray-matter';
-import path from 'node:path';
+// Domain entity — zero external dependencies.
+// Parsing (gray-matter) lives in the infrastructure layer (see FsFileStore).
+// This entity is constructed from already-parsed data.
 
 export interface WikiPageFrontmatter {
   title: string;
@@ -435,6 +426,11 @@ export interface WikiPageFrontmatter {
   sources: string[];
   supersedes: string | null;
   tags: string[];
+}
+
+export interface WikiPageData {
+  frontmatter: WikiPageFrontmatter;
+  content: string;
 }
 
 export class WikiPage {
@@ -450,34 +446,37 @@ export class WikiPage {
     public readonly content: string,
   ) {}
 
-  static fromMarkdown(filePath: string, raw: string): WikiPage {
-    const { data, content } = matter(raw);
-    const basename = path.basename(filePath, '.md');
+  /** Construct from pre-parsed data. Parsing (gray-matter) belongs in infra. */
+  static fromParsedData(filePath: string, data: WikiPageData): WikiPage {
+    const basename = filePath.split('/').pop()?.replace('.md', '') ?? 'untitled';
 
     return new WikiPage(
       filePath,
-      (data.title as string) ?? basename,
-      (data.created as string) ?? new Date().toISOString().slice(0, 10),
-      (data.updated as string) ?? new Date().toISOString().slice(0, 10),
-      (data.confidence as number) ?? 0.5,
-      (data.sources as string[]) ?? [],
-      (data.supersedes as string | null) ?? null,
-      (data.tags as string[]) ?? [],
-      content.trim(),
+      data.frontmatter.title ?? basename,
+      data.frontmatter.created ?? new Date().toISOString().slice(0, 10),
+      data.frontmatter.updated ?? new Date().toISOString().slice(0, 10),
+      data.frontmatter.confidence ?? 0.5,
+      data.frontmatter.sources ?? [],
+      data.frontmatter.supersedes ?? null,
+      data.frontmatter.tags ?? [],
+      data.content.trim(),
     );
   }
 
-  toMarkdown(): string {
-    const fm: WikiPageFrontmatter = {
-      title: this.title,
-      created: this.created,
-      updated: this.updated,
-      confidence: this.confidence,
-      sources: this.sources,
-      supersedes: this.supersedes,
-      tags: this.tags,
+  /** Serialize back to frontmatter + content structure. Actual markdown rendering in infra. */
+  toData(): WikiPageData {
+    return {
+      frontmatter: {
+        title: this.title,
+        created: this.created,
+        updated: this.updated,
+        confidence: this.confidence,
+        sources: this.sources,
+        supersedes: this.supersedes,
+        tags: this.tags,
+      },
+      content: this.content,
     };
-    return matter.stringify('\n' + this.content + '\n', fm);
   }
 
   get summary(): string {
@@ -555,31 +554,31 @@ describe('VerbatimEntry', () => {
     expect(a.filename).not.toBe(b.filename);
   });
 
-  it('test_toMarkdown_serializesCorrectly', () => {
+  it('test_toData_serializesCorrectly', () => {
     const entry = VerbatimEntry.create({
       content: '- Test fact\n- Another fact',
       agent: 'claude-code',
       project: 'cli-relay',
       sessionId: 'abc123',
     });
-    const md = entry.toMarkdown();
+    const data = entry.toData();
 
-    expect(md).toContain('session: abc123');
-    expect(md).toContain('project: cli-relay');
-    expect(md).toContain('agent: claude-code');
-    expect(md).toContain('consolidated: false');
-    expect(md).toContain('- Test fact');
-    expect(md).toContain('- Another fact');
+    expect(data.session).toBe('abc123');
+    expect(data.project).toBe('cli-relay');
+    expect(data.agent).toBe('claude-code');
+    expect(data.consolidated).toBe(false);
+    expect(data.content).toContain('- Test fact');
+    expect(data.content).toContain('- Another fact');
   });
 
-  it('test_fromMarkdown_roundtrip_preservesData', () => {
+  it('test_fromParsedData_roundtrip_preservesData', () => {
     const entry = VerbatimEntry.create({
       content: '- Fact here',
       agent: 'cursor',
       sessionId: 'xyz',
     });
-    const md = entry.toMarkdown();
-    const parsed = VerbatimEntry.fromMarkdown(entry.filename, md);
+    const data = entry.toData();
+    const parsed = VerbatimEntry.fromParsedData(entry.filename, data);
 
     expect(parsed.agent).toBe('cursor');
     expect(parsed.sessionId).toBe('xyz');
@@ -607,8 +606,9 @@ Expected: FAIL.
 
 ```typescript
 // packages/core/src/domain/verbatim-entry.ts
-import matter from 'gray-matter';
-import { v4 as uuidv4 } from 'uuid';
+// Domain entity — zero external dependencies.
+// UUID generation is injected via idGenerator param.
+// Markdown serialization (gray-matter) lives in infra (FsFileStore).
 
 export interface CreateVerbatimEntryOptions {
   content: string;
@@ -616,6 +616,18 @@ export interface CreateVerbatimEntryOptions {
   sessionId: string;
   project?: string;
   tags?: string[];
+  /** Injected ID generator — keeps domain free of uuid dependency */
+  idGenerator?: () => string;
+}
+
+export interface VerbatimEntryData {
+  session: string;
+  agent: string;
+  project?: string;
+  tags?: string[];
+  consolidated: boolean;
+  created: string;
+  content: string;
 }
 
 export class VerbatimEntry {
@@ -630,10 +642,12 @@ export class VerbatimEntry {
     public readonly content: string,
   ) {}
 
+  /** Create a new entry. UUID generation injected, defaults to random hex. */
   static create(opts: CreateVerbatimEntryOptions): VerbatimEntry {
     const now = new Date();
     const date = now.toISOString().slice(0, 10);
-    const uuid = uuidv4().slice(0, 8);
+    const genId = opts.idGenerator ?? (() => Math.random().toString(16).slice(2, 10));
+    const uuid = genId();
     const filename = `${date}-${opts.sessionId}-${uuid}.md`;
 
     return new VerbatimEntry(
@@ -648,17 +662,17 @@ export class VerbatimEntry {
     );
   }
 
-  static fromMarkdown(filename: string, raw: string): VerbatimEntry {
-    const { data, content } = matter(raw);
+  /** Construct from pre-parsed data. Parsing (gray-matter) belongs in infra. */
+  static fromParsedData(filename: string, data: VerbatimEntryData): VerbatimEntry {
     return new VerbatimEntry(
       filename,
-      data.agent as string,
-      data.session as string,
-      data.project as string | undefined,
-      (data.tags as string[]) ?? [],
-      (data.consolidated as boolean) ?? false,
-      (data.created as string) ?? new Date().toISOString(),
-      content.trim(),
+      data.agent,
+      data.session,
+      data.project,
+      data.tags ?? [],
+      data.consolidated ?? false,
+      data.created ?? new Date().toISOString(),
+      data.content.trim(),
     );
   }
 
@@ -666,16 +680,17 @@ export class VerbatimEntry {
     return `log/${this.agent}/raw/${this.filename}`;
   }
 
-  toMarkdown(): string {
-    const fm: Record<string, unknown> = {
+  /** Serialize to structured data. Actual markdown rendering in infra. */
+  toData(): VerbatimEntryData {
+    return {
       session: this.sessionId,
       agent: this.agent,
+      project: this.project,
+      tags: this.tags.length > 0 ? this.tags : undefined,
       consolidated: this.consolidated,
       created: this.created,
+      content: this.content,
     };
-    if (this.project) fm.project = this.project;
-    if (this.tags.length > 0) fm.tags = this.tags;
-    return matter.stringify('\n' + this.content + '\n', fm);
   }
 }
 ```
@@ -689,7 +704,13 @@ Expected: ALL PASS.
 
 ```typescript
 // packages/core/src/domain/project.ts
-import matter from 'gray-matter';
+// Domain entity — zero external dependencies.
+
+export interface ProjectData {
+  name: string;
+  git_remote: string;
+  description?: string;
+}
 
 export class Project {
   constructor(
@@ -698,21 +719,20 @@ export class Project {
     public readonly description: string,
   ) {}
 
-  static fromConfigMarkdown(raw: string): Project {
-    const { data } = matter(raw);
+  static fromData(data: ProjectData): Project {
     return new Project(
-      data.name as string,
-      data.git_remote as string,
-      (data.description as string) ?? '',
+      data.name,
+      data.git_remote,
+      data.description ?? '',
     );
   }
 
-  toConfigMarkdown(): string {
-    return matter.stringify('\n', {
+  toData(): ProjectData {
+    return {
       name: this.name,
       git_remote: this.gitRemote,
       description: this.description,
-    });
+    };
   }
 }
 ```
@@ -778,9 +798,9 @@ Expected: ALL PASS.
 ```typescript
 // packages/core/src/domain/index.ts
 export { WikiPage } from './wiki-page.js';
-export type { WikiPageFrontmatter } from './wiki-page.js';
+export type { WikiPageFrontmatter, WikiPageData } from './wiki-page.js';
 export { VerbatimEntry } from './verbatim-entry.js';
-export type { CreateVerbatimEntryOptions } from './verbatim-entry.js';
+export type { CreateVerbatimEntryOptions, VerbatimEntryData } from './verbatim-entry.js';
 export { Project } from './project.js';
 export { SanitizationResult } from './sanitization-result.js';
 export type { RedactionWarning } from './sanitization-result.js';
@@ -1398,6 +1418,22 @@ describe('ConfigLoader', () => {
     expect(config.sanitization.enabled).toBe(true);
     expect(config.sanitization.mode).toBe('redact');
   });
+
+  it('test_load_envOverridesLocal', async () => {
+    const store = new FsFileStore(tempDir);
+    await store.writeFile('.local/settings.local.yaml', 'llm:\n  model: gpt-4o\n  api_key: yaml-key');
+
+    process.env.LLM_WIKI_LLM_API_KEY = 'env-key';
+    try {
+      const loader = new ConfigLoader(tempDir);
+      const config = await loader.load();
+
+      expect(config.llm.model).toBe('gpt-4o'); // from yaml
+      expect(config.llm.api_key).toBe('env-key'); // env overrides yaml
+    } finally {
+      delete process.env.LLM_WIKI_LLM_API_KEY;
+    }
+  });
 });
 ```
 
@@ -1440,7 +1476,30 @@ export class ConfigLoader {
   async load(): Promise<WikiConfig> {
     const shared = await this.loadYaml('.config/settings.shared.yaml');
     const local = await this.loadYaml('.local/settings.local.yaml');
-    return this.deepMerge(DEFAULTS, shared, local) as WikiConfig;
+    const envOverrides = this.loadEnvOverrides();
+    return this.deepMerge(DEFAULTS, shared, local, envOverrides) as WikiConfig;
+  }
+
+  private loadEnvOverrides(): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+    const envMap: Record<string, [string, string]> = {
+      LLM_WIKI_LLM_API_KEY: ['llm', 'api_key'],
+      LLM_WIKI_LLM_MODEL: ['llm', 'model'],
+      LLM_WIKI_LLM_BASE_URL: ['llm', 'base_url'],
+      LLM_WIKI_EMBEDDING_API_KEY: ['embedding', 'api_key'],
+      LLM_WIKI_EMBEDDING_MODEL: ['embedding', 'model'],
+      LLM_WIKI_EMBEDDING_BASE_URL: ['embedding', 'base_url'],
+      LLM_WIKI_PATH: ['wiki', 'path'],
+    };
+
+    for (const [envKey, [section, field]] of Object.entries(envMap)) {
+      const value = process.env[envKey];
+      if (value !== undefined) {
+        if (!result[section]) result[section] = {};
+        (result[section] as Record<string, unknown>)[field] = value;
+      }
+    }
+    return result;
   }
 
   private async loadYaml(relativePath: string): Promise<Record<string, unknown>> {
@@ -1726,14 +1785,16 @@ describe('RememberService', () => {
       return null;
     });
 
-    // Second call with same session_id
+    // Second call with same session_id but different summary
     const second = await service.rememberSession({
-      summary: 'different summary',
+      summary: '- totally different\n- three lines\n- of content',
       agent: 'claude-code',
       sessionId: 'dedup-session',
     });
 
     expect(second.file).toBe(first.file);
+    // facts_count should reflect STORED entry (1 fact), not new summary (3 facts)
+    expect(second.facts_count).toBe(first.facts_count);
     // writeFile should have been called only once (for the first call)
     expect(fileStore.writeFile).toHaveBeenCalledOnce();
   });
@@ -1810,11 +1871,12 @@ export class RememberService {
   async rememberSession(req: RememberSessionRequest): Promise<RememberSessionResponse> {
     if (!req.summary.trim()) throw new ContentEmptyError();
 
-    // Deduplication by session_id
+    // Deduplication by session_id — return stored entry metadata, not new request data
     if (req.sessionId) {
       const existing = await this.findExistingSession(req.agent, req.sessionId);
       if (existing) {
-        const factsCount = this.countFacts(req.summary);
+        const storedContent = await this.fileStore.readFile(existing);
+        const factsCount = storedContent ? this.countFacts(storedContent) : 1;
         return { ok: true, file: existing, facts_count: factsCount };
       }
     }
@@ -1990,14 +2052,12 @@ describe('RecallService', () => {
     await expect(service.recall({ cwd: '/any' })).resolves.toBeDefined();
   });
 
-  it('test_recall_emptyWiki_returnsEmptyPages', async () => {
+  it('test_recall_emptyWiki_throwsWikiEmpty', async () => {
     const fileStore = createMockFileStore({});
     const resolver = createMockResolver(null);
     const service = new RecallService(fileStore, resolver);
 
-    const result = await service.recall({ cwd: '/any' });
-    expect(result.pages).toEqual([]);
-    expect(result.total_pages).toBe(0);
+    await expect(service.recall({ cwd: '/any' })).rejects.toThrow('WIKI_EMPTY');
   });
 
   it('test_recall_includesUnconsolidatedCount', async () => {
@@ -2039,6 +2099,7 @@ Expected: FAIL.
 ```typescript
 // packages/core/src/services/recall-service.ts
 import { WikiPage } from '../domain/wiki-page.js';
+import { WikiEmptyError } from '../domain/errors.js';
 import type { IFileStore } from '../ports/file-store.js';
 import type { IProjectResolver } from '../ports/project-resolver.js';
 
@@ -2081,6 +2142,10 @@ export class RecallService {
       : [];
 
     const wikiPages = await this.loadPageInfos('wiki');
+
+    if (projectPages.length === 0 && wikiPages.length === 0) {
+      throw new WikiEmptyError();
+    }
 
     // Budget allocation
     const totalBudget = Math.floor(maxTokens / APPROX_TOKENS_PER_PAGE);
@@ -2125,7 +2190,7 @@ export class RecallService {
       if (!content) continue;
 
       try {
-        const page = WikiPage.fromMarkdown(file.path, content);
+        const page = WikiPage.fromParsedData(file.path, this.parseMarkdown(content));
         infos.push({
           path: page.path,
           title: page.title,
@@ -2137,7 +2202,49 @@ export class RecallService {
       }
     }
 
+    // Sort by frontmatter `updated` (not filesystem mtime) for deterministic ordering
+    infos.sort((a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime());
+
     return infos;
+  }
+
+  /**
+   * Minimal frontmatter parser for recall — avoids gray-matter dependency in core.
+   * Extracts YAML frontmatter between --- delimiters.
+   */
+  private parseMarkdown(raw: string): import('../domain/wiki-page.js').WikiPageData {
+    const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+    if (!fmMatch) {
+      return { frontmatter: {} as any, content: raw };
+    }
+    const fmLines = fmMatch[1].split('\n');
+    const fm: Record<string, unknown> = {};
+    for (const line of fmLines) {
+      const colonIdx = line.indexOf(':');
+      if (colonIdx === -1) continue;
+      const key = line.slice(0, colonIdx).trim();
+      let value: unknown = line.slice(colonIdx + 1).trim();
+      if (value === 'null') value = null;
+      else if (value === 'true') value = true;
+      else if (value === 'false') value = false;
+      else if (/^\d+(\.\d+)?$/.test(value as string)) value = Number(value);
+      else if ((value as string).startsWith('[') && (value as string).endsWith(']')) {
+        value = (value as string).slice(1, -1).split(',').map(s => s.trim()).filter(Boolean);
+      }
+      fm[key] = value;
+    }
+    return {
+      frontmatter: {
+        title: fm.title as string,
+        created: fm.created as string,
+        updated: fm.updated as string,
+        confidence: (fm.confidence as number) ?? 0.5,
+        sources: (fm.sources as string[]) ?? [],
+        supersedes: (fm.supersedes as string | null) ?? null,
+        tags: (fm.tags as string[]) ?? [],
+      },
+      content: fmMatch[2],
+    };
   }
 }
 ```
