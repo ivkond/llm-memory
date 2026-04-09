@@ -42,14 +42,15 @@ llm-memory/
           sanitization-result.ts            # SanitizationResult value object
           errors.ts                         # Domain error types
         ports/
-          file-store.ts                     # IFileStore interface
+          file-store.ts                     # IFileStore interface (5 methods)
+          verbatim-store.ts                 # IVerbatimStore interface (3 methods)
           project-resolver.ts               # IProjectResolver interface
           version-control.ts                # IVersionControl interface (stub for M1)
           index.ts                          # re-exports
         services/
           sanitization-service.ts           # Pure logic: pattern matching + redaction
-          remember-service.ts               # Orchestrates: FileStore + Sanitizer
-          recall-service.ts                 # Orchestrates: ProjectResolver + FileStore
+          remember-service.ts               # Orchestrates: IFileStore + IVerbatimStore + Sanitizer
+          recall-service.ts                 # Orchestrates: IFileStore + IVerbatimStore + IProjectResolver
           index.ts                          # re-exports
         index.ts                            # package entry point
       tests/
@@ -67,11 +68,13 @@ llm-memory/
       tsconfig.json
       src/
         fs-file-store.ts                    # IFileStore via node:fs
+        fs-verbatim-store.ts                # IVerbatimStore via IFileStore + gray-matter
         git-project-resolver.ts             # IProjectResolver via git remote
         config-loader.ts                    # Loads shared + local YAML, env merge
         index.ts
       tests/
         fs-file-store.test.ts               # Contract tests for IFileStore
+        fs-verbatim-store.test.ts           # Contract tests for IVerbatimStore
         git-project-resolver.test.ts
         config-loader.test.ts
 ```
@@ -1312,7 +1315,10 @@ describe('FsVerbatimStore', () => {
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `pnpm vitest run packages/infra/tests/fs-file-store.test.ts`
-Expected: FAIL.
+Expected: FAIL — module not found.
+
+Run: `pnpm vitest run packages/infra/tests/fs-verbatim-store.test.ts`
+Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement FsFileStore (implements IFileStore)**
 
