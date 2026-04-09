@@ -1408,14 +1408,11 @@ export class FsFileStore implements IFileStore {
 
 ```typescript
 // packages/infra/src/fs-verbatim-store.ts
-import { readdir } from 'node:fs/promises';
-import path from 'node:path';
 import matter from 'gray-matter';
-import type { IVerbatimStore, FileInfo, VerbatimEntry } from '@llm-wiki/core';
-import { FsFileStore } from './fs-file-store.js';
+import type { IVerbatimStore, IFileStore, FileInfo, VerbatimEntry } from '@llm-wiki/core';
 
 export class FsVerbatimStore implements IVerbatimStore {
-  constructor(private readonly fileStore: FsFileStore) {}
+  constructor(private readonly fileStore: IFileStore) {}
 
   async writeEntry(entry: VerbatimEntry): Promise<void> {
     const data = entry.toData();
@@ -1451,22 +1448,22 @@ export class FsVerbatimStore implements IVerbatimStore {
   }
 
   async countUnconsolidated(): Promise<number> {
-    const rootDir = (this.fileStore as any).rootDir as string;
-    const logDir = path.join(rootDir, 'log');
-    let count = 0;
-
-    try {
-      const agents = await readdir(logDir, { withFileTypes: true });
-      for (const agent of agents) {
-        if (agent.isDirectory()) {
-          const entries = await this.listUnconsolidated(agent.name);
-          count += entries.length;
-        }
+    // Discover agents by listing directories under log/
+    const logEntries = await this.fileStore.listFiles('log');
+    const agentNames = new Set<string>();
+    for (const entry of logEntries) {
+      // Extract agent name from paths like log/{agent}/raw/{file}.md
+      const parts = entry.path.split('/');
+      if (parts.length >= 3 && parts[0] === 'log') {
+        agentNames.add(parts[1]);
       }
-    } catch {
-      // log/ doesn't exist yet
     }
 
+    let count = 0;
+    for (const agent of agentNames) {
+      const entries = await this.listUnconsolidated(agent);
+      count += entries.length;
+    }
     return count;
   }
 }
@@ -1478,16 +1475,21 @@ Note: `gray-matter` must also be added as a dependency to `@llm-wiki/infra`:
 pnpm --filter @llm-wiki/infra add gray-matter
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **Step 4: Run FsFileStore tests to verify they pass**
 
 Run: `pnpm vitest run packages/infra/tests/fs-file-store.test.ts`
 Expected: ALL PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Run FsVerbatimStore tests to verify they pass**
+
+Run: `pnpm vitest run packages/infra/tests/fs-verbatim-store.test.ts`
+Expected: ALL PASS.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add packages/infra/src/fs-file-store.ts packages/infra/tests/fs-file-store.test.ts packages/infra/package.json
-git commit -m ":sparkles: [infra] FsFileStore adapter implementing IFileStore"
+git add packages/infra/src/fs-file-store.ts packages/infra/src/fs-verbatim-store.ts packages/infra/tests/fs-file-store.test.ts packages/infra/tests/fs-verbatim-store.test.ts packages/infra/package.json
+git commit -m ":sparkles: [infra] FsFileStore + FsVerbatimStore adapters (ISP split)"
 ```
 
 ---
@@ -2603,10 +2605,10 @@ After completing all 9 tasks, the following is delivered:
 | Component | What it does |
 |-----------|-------------|
 | `@llm-wiki/core` domain | WikiPage, VerbatimEntry, Project, SanitizationResult entities |
-| `@llm-wiki/core` ports | IFileStore, IProjectResolver, IVersionControl interfaces |
+| `@llm-wiki/core` ports | IFileStore, IVerbatimStore, IProjectResolver, IVersionControl interfaces |
 | `@llm-wiki/core` services | SanitizationService, RememberService, RecallService |
-| `@llm-wiki/infra` | FsFileStore, GitProjectResolver, ConfigLoader adapters |
-| Tests | Unit tests for domain + services, contract tests for adapters, integration test |
+| `@llm-wiki/infra` | FsFileStore, FsVerbatimStore, GitProjectResolver, ConfigLoader adapters |
+| Tests | Unit tests for domain + services, contract tests for both adapters, integration test |
 
 **Invariants verified:** INV-1, INV-2, INV-7, INV-8, INV-11, INV-12
 
