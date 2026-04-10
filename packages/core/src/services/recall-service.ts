@@ -48,8 +48,14 @@ export class RecallService {
       throw new WikiEmptyError();
     }
 
-    // Budget allocation
-    const totalBudget = Math.floor(maxTokens / APPROX_TOKENS_PER_PAGE);
+    // Budget allocation. Guarantee at least one page per non-empty scope
+    // so wiki pages are always included when they exist (per spec).
+    const minBudget =
+      (projectPages.length > 0 && project ? 1 : 0) + (wikiPages.length > 0 ? 1 : 0);
+    const totalBudget = Math.max(
+      minBudget,
+      Math.floor(maxTokens / APPROX_TOKENS_PER_PAGE),
+    );
 
     let projectBudget: number;
     let wikiBudget: number;
@@ -63,6 +69,11 @@ export class RecallService {
       const remainder = projectBudget - actualProjectCount;
       projectBudget = actualProjectCount;
       wikiBudget += remainder;
+
+      // Guarantee wiki always gets at least 1 slot when wiki has pages
+      if (wikiPages.length > 0 && wikiBudget === 0) {
+        wikiBudget = 1;
+      }
     } else {
       projectBudget = 0;
       wikiBudget = totalBudget;

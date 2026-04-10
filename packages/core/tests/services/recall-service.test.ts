@@ -139,6 +139,39 @@ describe('RecallService', () => {
     expect(result.unconsolidated_count).toBe(3);
   });
 
+  it('test_recall_tinyBudget_stillReturnsWikiPageWhenExists', async () => {
+    // INV-2-like guarantee: wiki pages are always included when they exist,
+    // regardless of budget size
+    const files: Record<string, string> = {
+      'wiki/patterns/a.md': '---\ntitle: A\nupdated: 2026-04-09\n---\n## Summary\nPage A.',
+    };
+    const fileStore = createMockFileStore(files);
+    const resolver = createMockResolver(null);
+    const verbatimStore = { writeEntry: vi.fn(), listUnconsolidated: vi.fn(async () => []), countUnconsolidated: vi.fn(async () => 0) };
+    const service = new RecallService(fileStore, verbatimStore, resolver);
+
+    const result = await service.recall({ cwd: '/any', max_tokens: 1 });
+
+    expect(result.pages.length).toBeGreaterThan(0);
+    expect(result.pages[0].path).toBe('wiki/patterns/a.md');
+  });
+
+  it('test_recall_tinyBudget_withProject_stillReturnsWikiPage', async () => {
+    const files: Record<string, string> = {
+      'projects/cli-relay/arch.md': '---\ntitle: Arch\nupdated: 2026-04-09\n---\n## Summary\nArch.',
+      'wiki/patterns/a.md': '---\ntitle: A\nupdated: 2026-04-08\n---\n## Summary\nPage A.',
+    };
+    const fileStore = createMockFileStore(files);
+    const resolver = createMockResolver('cli-relay');
+    const verbatimStore = { writeEntry: vi.fn(), listUnconsolidated: vi.fn(async () => []), countUnconsolidated: vi.fn(async () => 0) };
+    const service = new RecallService(fileStore, verbatimStore, resolver);
+
+    const result = await service.recall({ cwd: '/any', max_tokens: 1 });
+
+    const wikiPages = result.pages.filter(p => p.path.startsWith('wiki/'));
+    expect(wikiPages.length).toBeGreaterThan(0);
+  });
+
   it('test_recall_reservedBudget_wikiGetsMinimum30percent', async () => {
     const files: Record<string, string> = {};
     for (let i = 0; i < 20; i++) {
