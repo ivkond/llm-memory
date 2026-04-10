@@ -117,14 +117,30 @@ export interface SourceContent {
   content: string;
   /** Optional mime type hint, e.g. 'text/markdown'. */
   mimeType?: string;
-  /** Size in bytes of the raw content. */
+  /** Size in bytes of the raw content (used for transport-layer bounds only). */
   bytes: number;
+  /** Estimated token count of `content`. This is the field enforced by
+   *  `wiki_ingest`'s 100K-token limit (spec: "Source max 100K tokens after
+   *  extraction"). Adapters MUST populate it using a deterministic estimator —
+   *  for MVP: `Math.ceil(content.length / 4)` (OpenAI-style ~4 chars/token).
+   *  A real tokenizer can be swapped in later without changing this contract. */
+  estimatedTokens: number;
 }
 
 export interface ISourceReader {
   /** Read a source by URI (local path or http(s):// URL).
    *  Throws SourceNotFoundError or SourceParseError on failure. */
   read(uri: string): Promise<SourceContent>;
+}
+```
+
+A small pure helper lives alongside the port so every adapter and test uses
+the same estimator:
+
+```typescript
+// packages/core/src/ports/source-reader.ts (same file)
+export function estimateTokens(content: string): number {
+  return Math.ceil(content.length / 4);
 }
 ```
 
@@ -565,7 +581,7 @@ Orchestrates: `ISearchEngine + ILlmClient + IProjectResolver + IFileStore`.
 Flow:
 1. Resolve scope (explicit scope parameter, or cascade derived from `project` param)
 2. Staleness sync: for each file in the resolved scope, if `file.updated > searchEngine.lastIndexedAt(path)`, call `searchEngine.index(entry)` to refresh it
-3. `searchEngine.search({ query, scope, limit })` → `SearchResult[]`
+3. `searchEngine.search({ text: req.question, scope, maxResults })` → `SearchResult[]`
 4. If results empty → throw `SearchEmptyError`
 5. Try `llmClient.complete(...)` to synthesize an answer with citations
 6. On `LlmUnavailableError` (or any thrown error from the LLM client): return `{ answer: '', citations: rawResults, scope_used, project_used }` — INV-3 guarantees citations are populated
@@ -603,10 +619,13 @@ constructor(
   private readonly versionControl: IVersionControl,
   private readonly mainFileStore: IFileStore,
   private readonly fileStoreFactory: FileStoreFactory,
+  private readonly stateStore: IStateStore,
 ) {}
 ```
 
 **Why a factory instead of reusing `IFileStore`.** M1's `IFileStore` is root-bound (`FsFileStore` is constructed with a single `rootDir`). IngestService writes inside a freshly created worktree whose path is only known at runtime, so it calls `fileStoreFactory(worktreeInfo.path)` to obtain a fresh `IFileStore` scoped to that worktree. Wiring code (MCP server / CLI) provides `(root) => new FsFileStore(root)`.
+
+**Why `IStateStore`.** Task 8 (`WikiStatusService`) treats `IStateStore` as the source of truth for `last_ingest`. That field is only meaningful if the write path updates it on every successful ingest — so the port is injected here and written from this service.
 
 **Why `ISourceReader`.** `wiki_ingest` accepts "path or URL" as the source. `IFileStore` only reads from the wiki root, so we need a separate port that routes file paths to `FsSourceReader` and URLs to `HttpSourceReader` (both shipped in Task 7).
 
@@ -614,18 +633,18 @@ constructor(
 
 Mock all ports. Cover:
 - `test_ingest_validSource_createsWikiPagesInWorktree` (INV-13)
-- `test_ingest_sourceOver100K_throwsSourceParseError`
+- `test_ingest_sourceOverTokenLimit_throwsSourceParseError` — build a `SourceContent` with `estimatedTokens = 100_001`, assert `SourceParseError` and that no worktree is created
 - `test_ingest_sourceMissing_throwsSourceNotFoundError`
-- `test_ingest_llmFails_worktreeDiscarded_mainBranchUntouched` (INV-4) — verify `removeWorktree(path, true)` is called and no file is written through `mainFileStore`
-- `test_ingest_success_pagesCommittedSquashedMerged_thenReindexed`
-- `test_ingest_mergeConflict_worktreePreserved_returnsPath` — verify `removeWorktree` is NOT called
+- `test_ingest_llmFails_worktreeDiscarded_mainBranchUntouched_stateUnchanged` (INV-4) — verify `removeWorktree(path, true)` is called, no `mainFileStore.writeFile`, and `stateStore.update` is NOT called
+- `test_ingest_success_pagesCommittedSquashedMerged_thenReindexed_stateUpdated` — assert final `stateStore.update({ last_ingest: <iso timestamp> })` is called exactly once after a successful merge
+- `test_ingest_mergeConflict_worktreePreserved_returnsPath_stateUnchanged` — `removeWorktree` is NOT called and `stateStore.update` is NOT called
 - `test_ingest_rerunSameSource_updatesExistingPage_noDuplicate`
 
 - [ ] **Step 2: Implement IngestService**
 
 Flow:
 1. `source = sourceReader.read(req.source)` — throws `SourceNotFoundError` / `SourceParseError` on failure
-2. Enforce size limit: reject if `source.bytes > MAX_SOURCE_BYTES` (maps to 100K tokens)
+2. Enforce the spec limit in tokens: reject with `SourceParseError` if `source.estimatedTokens > MAX_SOURCE_TOKENS` (`MAX_SOURCE_TOKENS = 100_000`). The `estimatedTokens` field is populated by the `ISourceReader` adapter via the shared `estimateTokens()` helper, keeping the public `wiki_ingest` contract in tokens and out of bytes.
 3. `worktree = versionControl.createWorktree('ingest')`
 4. `const worktreeStore = fileStoreFactory(worktree.path)` — isolated writes
 5. Call `llmClient.complete(...)` to extract structured pages; on error → `removeWorktree(worktree.path, true)` then rethrow as `LlmUnavailableError`
@@ -633,11 +652,12 @@ Flow:
 7. Update crossrefs (also through `worktreeStore`)
 8. `versionControl.commitInWorktree(worktree.path, changedFiles, ':memo: [ingest] ...')`
 9. `versionControl.squashWorktree(worktree.path, ':memo: [ingest] ...')`
-10. Try `versionControl.mergeWorktree(worktree.path)` — on `GitConflictError`: return the error with the worktree path, do NOT remove the worktree
-11. On success: for each changed file, read from `mainFileStore` and call `searchEngine.index(entry)`
+10. Try `versionControl.mergeWorktree(worktree.path)` — on `GitConflictError`: return the error with the worktree path, do NOT remove the worktree, do NOT update state
+11. On successful merge: for each changed file, read from `mainFileStore` and call `searchEngine.index(entry)`
 12. `versionControl.removeWorktree(worktree.path)`
+13. `await stateStore.update({ last_ingest: new Date().toISOString() })` — only on the success path; never on LLM failure or merge conflict
 
-Note: steps 5–12 run in a try/catch/finally that guarantees either (a) discard worktree on processing error, (b) preserve worktree on merge conflict, (c) remove worktree on success.
+Note: steps 5–13 run in a try/catch/finally that guarantees either (a) discard worktree on processing error (no state write), (b) preserve worktree on merge conflict (no state write), (c) remove worktree and update `last_ingest` on success.
 
 - [ ] **Step 3: Run tests, verify pass**
 
@@ -671,22 +691,23 @@ git commit -m ":sparkles: [core] IngestService via worktree isolation (INV-4, IN
 - Test: `packages/infra/tests/yaml-state-store.test.ts`
 - Modify: `packages/infra/src/index.ts`
 
+**Reader contract for sizing:** adapters do NOT enforce the 100K-token limit themselves — that is `IngestService`'s job. The readers MUST populate `bytes` AND `estimatedTokens` using the shared `estimateTokens()` helper from Task 1 so that a single place (`IngestService`) owns the public `wiki_ingest` bound.
+
 - [ ] **Step 1: Write failing contract tests for FsSourceReader**
 
 Cover:
-- Reads a local markdown file and returns `{ uri, content, mimeType: 'text/markdown' }`
+- Reads a local markdown file and returns `{ uri, content, mimeType: 'text/markdown', bytes, estimatedTokens }`
+- `estimatedTokens` equals `estimateTokens(content)` (use the helper directly in the assertion)
 - Resolves relative paths against cwd
 - Throws `SourceNotFoundError` when the file does not exist
-- Respects the 100K-token size limit (reject oversized sources)
 
 - [ ] **Step 2: Implement FsSourceReader via `node:fs/promises`**
 
 - [ ] **Step 3: Write failing contract tests for HttpSourceReader**
 
 Cover (use an in-process fetch stub — no real network):
-- Fetches a URL and returns the response body
+- Fetches a URL and returns the response body with populated `bytes` and `estimatedTokens`
 - Maps 404 to `SourceNotFoundError`, 5xx to `SourceParseError`
-- Aborts downloads larger than the size limit
 
 - [ ] **Step 4: Implement HttpSourceReader via global `fetch`**
 
@@ -863,7 +884,7 @@ After completing all 9 tasks, the following is added:
 | `FsSourceReader` / `HttpSourceReader` / `CompositeSourceReader` | Source ingestion adapters |
 | `YamlStateStore` | `.local/state.yaml` persistence via `IFileStore` + `js-yaml` |
 | `QueryService` | Semantic search + answer synthesis + pre-search staleness sync |
-| `IngestService` | External source ingestion via worktree isolation |
+| `IngestService` | External source ingestion via worktree isolation; writes `last_ingest` to `IStateStore` on success |
 | `WikiStatusService` | Operational diagnostics (total pages, projects, unconsolidated, index_health, last_lint, last_ingest) |
 | Integration tests | Query E2E, Ingest E2E, index rebuild (INV-6) |
 
