@@ -5,6 +5,10 @@ export type { CreateVerbatimEntryOptions, VerbatimEntryData } from './verbatim-e
 export { Project } from './project.js';
 export { SanitizationResult } from './sanitization-result.js';
 export type { RedactionWarning } from './sanitization-result.js';
+export { SearchResult } from './search-result.js';
+export type { SearchSource } from './search-result.js';
+export { EMPTY_RUNTIME_STATE } from './runtime-state.js';
+export type { WikiRuntimeState, ImportState } from './runtime-state.js';
 export {
   WikiError,
   ContentEmptyError,
@@ -14,4 +18,10 @@ export {
   PathEscapeError,
   InvalidIdentifierError,
   InvalidPatternError,
+  SearchEmptyError,
+  LlmUnavailableError,
+  GitConflictError,
+  SourceNotFoundError,
+  SourceParseError,
+  IngestPathViolationError,
 } from './errors.js';

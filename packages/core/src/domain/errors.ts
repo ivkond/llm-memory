@@ -55,3 +55,47 @@ export class InvalidPatternError extends WikiError {
     super('INVALID_PATTERN', `Invalid sanitization pattern ${JSON.stringify(pattern)}: ${reason}`);
   }
 }
+
+export class SearchEmptyError extends WikiError {
+  constructor(public readonly question: string) {
+    super('SEARCH_EMPTY', `No search results for query: ${JSON.stringify(question)}`);
+  }
+}
+
+export class LlmUnavailableError extends WikiError {
+  constructor(message: string) {
+    super('LLM_UNAVAILABLE', `LLM unavailable: ${message}`);
+  }
+}
+
+export class GitConflictError extends WikiError {
+  constructor(public readonly worktreePath: string, message?: string) {
+    super(
+      'GIT_CONFLICT',
+      message
+        ? `Git merge conflict in ${worktreePath}: ${message}`
+        : `Git merge conflict in ${worktreePath}`,
+    );
+  }
+}
+
+export class SourceNotFoundError extends WikiError {
+  constructor(public readonly uri: string) {
+    super('SOURCE_NOT_FOUND', `Source not found: ${uri}`);
+  }
+}
+
+export class SourceParseError extends WikiError {
+  constructor(public readonly uri: string, public readonly reason: string) {
+    super('SOURCE_PARSE_ERROR', `Failed to parse source ${uri}: ${reason}`);
+  }
+}
+
+export class IngestPathViolationError extends WikiError {
+  constructor(public readonly attemptedPath: string, public readonly reason: string) {
+    super(
+      'INGEST_PATH_VIOLATION',
+      `Ingest target path ${JSON.stringify(attemptedPath)} is not allowed: ${reason}`,
+    );
+  }
+}
