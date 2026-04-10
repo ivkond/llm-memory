@@ -20,3 +20,8 @@ export interface IFileStore {
    *  Parsing (gray-matter) is owned by infra — single parser path. */
   readWikiPage(relativePath: string): Promise<import('../domain/wiki-page.js').WikiPageData | null>;
 }
+
+/** Factory for building an IFileStore rooted at an arbitrary directory.
+ *  Used by IngestService / LintService to write inside a git worktree
+ *  without coupling services to any concrete adapter. */
+export type FileStoreFactory = (rootDir: string) => IFileStore;
