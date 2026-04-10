@@ -1,0 +1,19 @@
+{
+  "name": "@llm-wiki/infra",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@llm-wiki/core": "workspace:*",
+    "js-yaml": "^4.1.0",
+    "simple-git": "^3.27.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0",
+    "@types/js-yaml": "^4.0.9"
+  }
+}
