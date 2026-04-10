@@ -1,0 +1,16 @@
+{
+  "name": "@llm-wiki/core",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "re2": "^1.24.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0"
+  }
+}
