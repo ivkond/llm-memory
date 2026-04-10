@@ -131,10 +131,7 @@ export class IngestService {
         touchedPaths,
         `:memo: [ingest] ${source.uri}`,
       );
-      await this.versionControl.squashWorktree(
-        worktree.path,
-        `:memo: [ingest] ${source.uri}`,
-      );
+      await this.versionControl.squashWorktree(worktree.path, `:memo: [ingest] ${source.uri}`);
       commitSha = await this.versionControl.mergeWorktree(worktree.path);
     } catch (err) {
       if (err instanceof GitConflictError) {
@@ -254,10 +251,7 @@ export class IngestService {
     const segments = requestedPath.split('/');
     for (const seg of segments) {
       if (seg === '' || seg === '.' || seg === '..') {
-        throw new IngestPathViolationError(
-          requestedPath,
-          `invalid segment "${seg}"`,
-        );
+        throw new IngestPathViolationError(requestedPath, `invalid segment "${seg}"`);
       }
     }
     if (!requestedPath.endsWith('.md')) {
@@ -280,10 +274,7 @@ export class IngestService {
         );
       }
       if (!PROJECT_NAME_RE.test(segments[1])) {
-        throw new IngestPathViolationError(
-          requestedPath,
-          `invalid project name "${segments[1]}"`,
-        );
+        throw new IngestPathViolationError(requestedPath, `invalid project name "${segments[1]}"`);
       }
       return;
     }

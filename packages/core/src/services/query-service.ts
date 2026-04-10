@@ -63,8 +63,7 @@ export class QueryService {
   ) {}
 
   async query(req: QueryRequest): Promise<QueryResponse> {
-    const project =
-      req.project ?? (req.cwd ? await this.projectResolver.resolve(req.cwd) : null);
+    const project = req.project ?? (req.cwd ? await this.projectResolver.resolve(req.cwd) : null);
 
     const scopes = this.buildScopeCascade(req.scope, project);
     await this.syncStaleFiles(scopes);

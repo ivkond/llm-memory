@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { WikiStatusService } from '../../src/services/status-service.js';
 import { WikiNotInitializedError } from '../../src/domain/errors.js';
 import { EMPTY_RUNTIME_STATE, type WikiRuntimeState } from '../../src/domain/runtime-state.js';
@@ -121,8 +121,16 @@ describe('WikiStatusService', () => {
 
   it('test_status_nonEmptyWiki_returnsTotalPagesAndProjects', async () => {
     fileStore.files['wiki/a.md'] = makePage('wiki/a.md', 'A', '2026-04-09T00:00:00Z');
-    fileStore.files['projects/foo/x.md'] = makePage('projects/foo/x.md', 'X', '2026-04-09T00:00:00Z');
-    fileStore.files['projects/bar/y.md'] = makePage('projects/bar/y.md', 'Y', '2026-04-09T00:00:00Z');
+    fileStore.files['projects/foo/x.md'] = makePage(
+      'projects/foo/x.md',
+      'X',
+      '2026-04-09T00:00:00Z',
+    );
+    fileStore.files['projects/bar/y.md'] = makePage(
+      'projects/bar/y.md',
+      'Y',
+      '2026-04-09T00:00:00Z',
+    );
 
     // All pages are already indexed so the health check stays 'ok'.
     searchEngine.lastIndexedMap['wiki/a.md'] = '2026-04-10T00:00:00Z';

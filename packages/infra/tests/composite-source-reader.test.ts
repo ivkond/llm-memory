@@ -60,8 +60,6 @@ describe('CompositeSourceReader', () => {
     const http = stubReader('http');
     const composite = new CompositeSourceReader(fs, http);
 
-    await expect(composite.read('ftp://example.com/foo')).rejects.toBeInstanceOf(
-      SourceParseError,
-    );
+    await expect(composite.read('ftp://example.com/foo')).rejects.toBeInstanceOf(SourceParseError);
   });
 });

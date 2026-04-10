@@ -349,10 +349,7 @@ describe('IngestService', () => {
     // force-removed, main store must be untouched, and state must NOT be
     // updated — matching INV-4 semantics.
     expect(vcs.createSpy).toHaveBeenCalled();
-    expect(vcs.removeSpy).toHaveBeenCalledWith(
-      expect.stringContaining('.worktrees/ingest-'),
-      true,
-    );
+    expect(vcs.removeSpy).toHaveBeenCalledWith(expect.stringContaining('.worktrees/ingest-'), true);
     expect(mainStore.writeSpy).not.toHaveBeenCalled();
     expect(stateStore.updateSpy).not.toHaveBeenCalled();
     // No files were written to the worktree either

@@ -102,6 +102,6 @@ export class RememberService {
   }
 
   private countFacts(content: string): number {
-    return content.split('\n').filter(line => line.trim().startsWith('- ')).length || 1;
+    return content.split('\n').filter((line) => line.trim().startsWith('- ')).length || 1;
   }
 }

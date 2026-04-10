@@ -12,11 +12,7 @@ export class Project {
   ) {}
 
   static fromData(data: ProjectData): Project {
-    return new Project(
-      data.name,
-      data.git_remote,
-      data.description ?? '',
-    );
+    return new Project(data.name, data.git_remote, data.description ?? '');
   }
 
   toData(): ProjectData {

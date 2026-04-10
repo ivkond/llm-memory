@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  EMPTY_RUNTIME_STATE,
-  type WikiRuntimeState,
-} from '../../src/domain/runtime-state.js';
+import { EMPTY_RUNTIME_STATE, type WikiRuntimeState } from '../../src/domain/runtime-state.js';
 
 describe('WikiRuntimeState', () => {
   it('test_emptyRuntimeState_hasExpectedDefaults', () => {

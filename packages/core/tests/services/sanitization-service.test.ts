@@ -25,12 +25,16 @@ describe('SanitizationService', () => {
   });
 
   it('test_sanitize_jwtToken_redactsCorrectly', () => {
-    const result = service.sanitize('Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U');
+    const result = service.sanitize(
+      'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U',
+    );
     expect(result.content).toContain('[REDACTED:jwt]');
   });
 
   it('test_sanitize_privateKey_redactsCorrectly', () => {
-    const result = service.sanitize('Key:\n-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----');
+    const result = service.sanitize(
+      'Key:\n-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----',
+    );
     expect(result.content).toContain('[REDACTED:private_key]');
   });
 
@@ -55,7 +59,8 @@ describe('SanitizationService', () => {
   });
 
   it('test_sanitize_majorityRedacted_blocksContent', () => {
-    const content = 'sk-key1abc123def456ghi789jkl sk-key2abc123def456ghi789jkl sk-key3abc123def456ghi789jkl';
+    const content =
+      'sk-key1abc123def456ghi789jkl sk-key2abc123def456ghi789jkl sk-key3abc123def456ghi789jkl';
     const result = service.sanitize(content);
     expect(result.isBlocked).toBe(true);
   });
@@ -81,7 +86,8 @@ describe('SanitizationService', () => {
 
   it('test_sanitize_blockMode_anyMatch_setsBlocked', () => {
     const blockService = new SanitizationService({ enabled: true, mode: 'block' });
-    const content = 'Mostly normal text with one small AKIAIOSFODNN7EXAMPLE token inside a very long document that is otherwise entirely safe and harmless';
+    const content =
+      'Mostly normal text with one small AKIAIOSFODNN7EXAMPLE token inside a very long document that is otherwise entirely safe and harmless';
     const result = blockService.sanitize(content);
     expect(result.warnings).toHaveLength(1);
     expect(result.isBlocked).toBe(true);
@@ -131,22 +137,28 @@ describe('SanitizationService', () => {
 
     it('test_customPattern_exceedingLengthLimit_throwsInvalidPattern', () => {
       const tooLong = 'a'.repeat(513);
-      expect(() => new SanitizationService({
-        enabled: true,
-        mode: 'redact',
-        customPatterns: [tooLong],
-      })).toThrow(InvalidPatternError);
+      expect(
+        () =>
+          new SanitizationService({
+            enabled: true,
+            mode: 'redact',
+            customPatterns: [tooLong],
+          }),
+      ).toThrow(InvalidPatternError);
     });
 
     it('test_customPattern_backreference_rejectedByRe2', () => {
       // RE2 does not support backreferences — it must reject this pattern
       // at compile time, wrapped as InvalidPatternError. A native JS RegExp
       // would accept it and expose the process to ReDoS on crafted input.
-      expect(() => new SanitizationService({
-        enabled: true,
-        mode: 'redact',
-        customPatterns: ['(a+)\\1'],
-      })).toThrow(InvalidPatternError);
+      expect(
+        () =>
+          new SanitizationService({
+            enabled: true,
+            mode: 'redact',
+            customPatterns: ['(a+)\\1'],
+          }),
+      ).toThrow(InvalidPatternError);
     });
 
     it('test_customPattern_catastrophicBacktrackingInput_runsInBoundedTime', () => {

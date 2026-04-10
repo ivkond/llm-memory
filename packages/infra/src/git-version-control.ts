@@ -61,11 +61,7 @@ export class GitVersionControl implements IVersionControl {
     await this.git.raw(args);
   }
 
-  async commitInWorktree(
-    worktreePath: string,
-    files: string[],
-    message: string,
-  ): Promise<string> {
+  async commitInWorktree(worktreePath: string, files: string[], message: string): Promise<string> {
     const wtGit = simpleGit(worktreePath);
     await wtGit.add(files);
     const result = await wtGit.commit(message, files);

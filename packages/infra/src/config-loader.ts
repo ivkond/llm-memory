@@ -8,8 +8,17 @@ export interface WikiConfig {
   embedding: { provider: string; model: string; base_url: string | null; api_key: string | null };
   search: { db_path: string; rerank: boolean; cascade_threshold: number };
   git: { auto_commit: boolean; squash_on_lint: boolean; worktree_for_lint: boolean };
-  consolidation: { batch_threshold: number; archive_after_days: number; archive_retention_months: number };
-  sanitization: { enabled: boolean; mode: 'redact' | 'warn' | 'block'; custom_patterns: string[]; allowlist: string[] };
+  consolidation: {
+    batch_threshold: number;
+    archive_after_days: number;
+    archive_retention_months: number;
+  };
+  sanitization: {
+    enabled: boolean;
+    mode: 'redact' | 'warn' | 'block';
+    custom_patterns: string[];
+    allowlist: string[];
+  };
 }
 
 const DEFAULTS: WikiConfig = {
@@ -68,9 +77,18 @@ export class ConfigLoader {
     const result: Record<string, unknown> = {};
     for (const obj of objects) {
       for (const [key, value] of Object.entries(obj)) {
-        if (value !== null && typeof value === 'object' && !Array.isArray(value) &&
-            result[key] !== null && typeof result[key] === 'object' && !Array.isArray(result[key])) {
-          result[key] = this.deepMerge(result[key] as Record<string, unknown>, value as Record<string, unknown>);
+        if (
+          value !== null &&
+          typeof value === 'object' &&
+          !Array.isArray(value) &&
+          result[key] !== null &&
+          typeof result[key] === 'object' &&
+          !Array.isArray(result[key])
+        ) {
+          result[key] = this.deepMerge(
+            result[key] as Record<string, unknown>,
+            value as Record<string, unknown>,
+          );
         } else {
           result[key] = value;
         }

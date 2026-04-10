@@ -9,7 +9,9 @@ function createMocks() {
 
   const fileStore: IFileStore = {
     readFile: vi.fn(async (p: string) => files.get(p) ?? null),
-    writeFile: vi.fn(async (p: string, c: string) => { files.set(p, c); }),
+    writeFile: vi.fn(async (p: string, c: string) => {
+      files.set(p, c);
+    }),
     listFiles: vi.fn(async () => []),
     exists: vi.fn(async (p: string) => files.has(p)),
     readWikiPage: vi.fn(async () => null),
@@ -17,7 +19,10 @@ function createMocks() {
 
   const verbatimStore: IVerbatimStore = {
     writeEntry: vi.fn(async (entry: any) => {
-      files.set(entry.filePath, `---\nsession: ${entry.sessionId}\nagent: ${entry.agent}\nconsolidated: false\n---\n${entry.content}`);
+      files.set(
+        entry.filePath,
+        `---\nsession: ${entry.sessionId}\nagent: ${entry.agent}\nconsolidated: false\n---\n${entry.content}`,
+      );
     }),
     listUnconsolidated: vi.fn(async () => []),
     countUnconsolidated: vi.fn(async () => 0),
@@ -60,7 +65,8 @@ describe('RememberService', () => {
 
   it('test_rememberFact_sensitiveContent_redacts', async () => {
     const result = await service.rememberFact({
-      content: 'When connecting to PostgreSQL, use API key: sk-abc123def456ghi789jkl012mno345pqr678 for authentication to the service',
+      content:
+        'When connecting to PostgreSQL, use API key: sk-abc123def456ghi789jkl012mno345pqr678 for authentication to the service',
       agent: 'claude-code',
       sessionId: 'abc',
     });
@@ -104,7 +110,8 @@ describe('RememberService', () => {
       { path: first.file, updated: new Date().toISOString() },
     ]);
     (fileStore.readFile as ReturnType<typeof vi.fn>).mockImplementation(async (p: string) => {
-      if (p === first.file) return '---\nsession: dedup-session\nagent: claude-code\nconsolidated: false\n---\nfacts here';
+      if (p === first.file)
+        return '---\nsession: dedup-session\nagent: claude-code\nconsolidated: false\n---\nfacts here';
       return null;
     });
 

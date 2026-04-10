@@ -68,9 +68,7 @@ describe('HttpSourceReader', () => {
   });
 
   it('test_read_networkError_throwsSourceParseError', async () => {
-    const fetchImpl = vi
-      .fn()
-      .mockRejectedValue(new TypeError('fetch failed: ECONNREFUSED'));
+    const fetchImpl = vi.fn().mockRejectedValue(new TypeError('fetch failed: ECONNREFUSED'));
     const reader = new HttpSourceReader({ dnsLookup: mkDns(), fetchImpl });
     await expect(reader.read('https://unreachable.example/')).rejects.toBeInstanceOf(
       SourceParseError,
@@ -82,9 +80,7 @@ describe('HttpSourceReader', () => {
   it('test_read_nonHttpScheme_throwsSourceParseError', async () => {
     const fetchImpl = vi.fn();
     const reader = new HttpSourceReader({ dnsLookup: mkDns(), fetchImpl });
-    await expect(reader.read('ftp://example.com/data')).rejects.toBeInstanceOf(
-      SourceParseError,
-    );
+    await expect(reader.read('ftp://example.com/data')).rejects.toBeInstanceOf(SourceParseError);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
@@ -105,9 +101,7 @@ describe('HttpSourceReader', () => {
   it('test_read_loopbackIpLiteral_throwsSourceParseError', async () => {
     const fetchImpl = vi.fn();
     const reader = new HttpSourceReader({ dnsLookup: mkDns(), fetchImpl });
-    await expect(reader.read('http://127.0.0.1:8080/')).rejects.toBeInstanceOf(
-      SourceParseError,
-    );
+    await expect(reader.read('http://127.0.0.1:8080/')).rejects.toBeInstanceOf(SourceParseError);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
@@ -122,9 +116,9 @@ describe('HttpSourceReader', () => {
     const fetchImpl = vi.fn();
     const reader = new HttpSourceReader({ dnsLookup: mkDns(), fetchImpl });
     // 169.254.169.254 is the AWS / GCP / Azure instance-metadata IP.
-    await expect(
-      reader.read('http://169.254.169.254/latest/meta-data/'),
-    ).rejects.toBeInstanceOf(SourceParseError);
+    await expect(reader.read('http://169.254.169.254/latest/meta-data/')).rejects.toBeInstanceOf(
+      SourceParseError,
+    );
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
@@ -174,9 +168,7 @@ describe('HttpSourceReader', () => {
   it('test_read_literalLocalhostName_throwsSourceParseError', async () => {
     const fetchImpl = vi.fn();
     const reader = new HttpSourceReader({ dnsLookup: mkDns(), fetchImpl });
-    await expect(reader.read('http://localhost:3000/')).rejects.toBeInstanceOf(
-      SourceParseError,
-    );
+    await expect(reader.read('http://localhost:3000/')).rejects.toBeInstanceOf(SourceParseError);
     // The forbidden-hostname list short-circuits before DNS is consulted.
     expect(fetchImpl).not.toHaveBeenCalled();
   });
@@ -211,9 +203,7 @@ describe('HttpSourceReader', () => {
       fetchImpl: fetchImpl as unknown as typeof fetch,
       timeoutMs: 20,
     });
-    await expect(reader.read('https://example.com/slow')).rejects.toBeInstanceOf(
-      SourceParseError,
-    );
+    await expect(reader.read('https://example.com/slow')).rejects.toBeInstanceOf(SourceParseError);
   });
 
   // ---- Response size cap --------------------------------------------------
@@ -226,9 +216,7 @@ describe('HttpSourceReader', () => {
       fetchImpl,
       maxBytes: 4096, // 4 KiB cap — lower than the body above
     });
-    await expect(reader.read('https://example.com/big')).rejects.toBeInstanceOf(
-      SourceParseError,
-    );
+    await expect(reader.read('https://example.com/big')).rejects.toBeInstanceOf(SourceParseError);
   });
 
   it('test_read_responseAtLimit_succeeds', async () => {
@@ -300,18 +288,14 @@ describe('HttpSourceReader', () => {
       fetchImpl,
       maxRedirects: 2,
     });
-    await expect(reader.read('https://example.com/start')).rejects.toBeInstanceOf(
-      SourceParseError,
-    );
+    await expect(reader.read('https://example.com/start')).rejects.toBeInstanceOf(SourceParseError);
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
   it('test_read_redirectMissingLocation_throwsSourceParseError', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(makeResponse(302, ''));
     const reader = new HttpSourceReader({ dnsLookup: mkDns(), fetchImpl });
-    await expect(reader.read('https://example.com/start')).rejects.toBeInstanceOf(
-      SourceParseError,
-    );
+    await expect(reader.read('https://example.com/start')).rejects.toBeInstanceOf(SourceParseError);
   });
 
   it('test_read_redirectToNonHttpScheme_throwsSourceParseError', async () => {
@@ -319,8 +303,6 @@ describe('HttpSourceReader', () => {
       .fn()
       .mockResolvedValue(makeResponse(302, '', undefined, { location: 'ftp://evil.example/' }));
     const reader = new HttpSourceReader({ dnsLookup: mkDns(), fetchImpl });
-    await expect(reader.read('https://example.com/start')).rejects.toBeInstanceOf(
-      SourceParseError,
-    );
+    await expect(reader.read('https://example.com/start')).rejects.toBeInstanceOf(SourceParseError);
   });
 });

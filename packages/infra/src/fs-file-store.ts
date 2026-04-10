@@ -64,9 +64,7 @@ export class FsFileStore implements IFileStore {
       throw err;
     }
     const canonicalRoot = await this.getCanonicalRoot();
-    const rootWithSep = canonicalRoot.endsWith(path.sep)
-      ? canonicalRoot
-      : canonicalRoot + path.sep;
+    const rootWithSep = canonicalRoot.endsWith(path.sep) ? canonicalRoot : canonicalRoot + path.sep;
     if (canonical !== canonicalRoot && !canonical.startsWith(rootWithSep)) {
       throw new PathEscapeError(relativePath);
     }

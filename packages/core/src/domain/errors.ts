@@ -42,7 +42,10 @@ export class PathEscapeError extends WikiError {
 }
 
 export class InvalidIdentifierError extends WikiError {
-  constructor(public readonly field: string, public readonly value: string) {
+  constructor(
+    public readonly field: string,
+    public readonly value: string,
+  ) {
     super(
       'INVALID_IDENTIFIER',
       `Invalid ${field}: ${JSON.stringify(value)} — must match [a-zA-Z0-9][a-zA-Z0-9_-]{0,63}`,
@@ -51,7 +54,10 @@ export class InvalidIdentifierError extends WikiError {
 }
 
 export class InvalidPatternError extends WikiError {
-  constructor(public readonly pattern: string, public readonly reason: string) {
+  constructor(
+    public readonly pattern: string,
+    public readonly reason: string,
+  ) {
     super('INVALID_PATTERN', `Invalid sanitization pattern ${JSON.stringify(pattern)}: ${reason}`);
   }
 }
@@ -69,7 +75,10 @@ export class LlmUnavailableError extends WikiError {
 }
 
 export class GitConflictError extends WikiError {
-  constructor(public readonly worktreePath: string, message?: string) {
+  constructor(
+    public readonly worktreePath: string,
+    message?: string,
+  ) {
     super(
       'GIT_CONFLICT',
       message
@@ -86,13 +95,19 @@ export class SourceNotFoundError extends WikiError {
 }
 
 export class SourceParseError extends WikiError {
-  constructor(public readonly uri: string, public readonly reason: string) {
+  constructor(
+    public readonly uri: string,
+    public readonly reason: string,
+  ) {
     super('SOURCE_PARSE_ERROR', `Failed to parse source ${uri}: ${reason}`);
   }
 }
 
 export class IngestPathViolationError extends WikiError {
-  constructor(public readonly attemptedPath: string, public readonly reason: string) {
+  constructor(
+    public readonly attemptedPath: string,
+    public readonly reason: string,
+  ) {
     super(
       'INGEST_PATH_VIOLATION',
       `Ingest target path ${JSON.stringify(attemptedPath)} is not allowed: ${reason}`,

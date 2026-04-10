@@ -1,9 +1,5 @@
 import { generateText, type LanguageModel } from 'ai';
-import type {
-  ILlmClient,
-  LlmCompletionRequest,
-  LlmCompletionResponse,
-} from '@llm-wiki/core';
+import type { ILlmClient, LlmCompletionRequest, LlmCompletionResponse } from '@llm-wiki/core';
 import { LlmUnavailableError } from '@llm-wiki/core';
 
 /**

@@ -72,13 +72,14 @@ describe('Remember + Recall integration', () => {
 
     expect(result.project).toBe('test-project');
     expect(result.unconsolidated_count).toBe(2);
-    expect(result.pages.some(p => p.path.includes('architecture'))).toBe(true);
-    expect(result.pages.some(p => p.path.includes('testing'))).toBe(true);
+    expect(result.pages.some((p) => p.path.includes('architecture'))).toBe(true);
+    expect(result.pages.some((p) => p.path.includes('testing'))).toBe(true);
   });
 
   it('test_remember_sanitizes_before_writing', async () => {
     await rememberService.rememberFact({
-      content: 'Found API key sk-abc123def456ghi789jkl012mno345pqr678 in config file at /etc/app/settings.json',
+      content:
+        'Found API key sk-abc123def456ghi789jkl012mno345pqr678 in config file at /etc/app/settings.json',
       agent: 'claude-code',
       sessionId: 'test-session',
     });

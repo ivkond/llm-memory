@@ -144,16 +144,10 @@ export class HttpSourceReader implements ISourceReader {
       if (this.isRedirect(response.status)) {
         const location = response.headers.get('location');
         if (!location) {
-          throw new SourceParseError(
-            uri,
-            `${response.status} redirect missing Location header`,
-          );
+          throw new SourceParseError(uri, `${response.status} redirect missing Location header`);
         }
         if (hop >= this.maxRedirects) {
-          throw new SourceParseError(
-            uri,
-            `exceeded maximum of ${this.maxRedirects} redirects`,
-          );
+          throw new SourceParseError(uri, `exceeded maximum of ${this.maxRedirects} redirects`);
         }
         // Resolve the Location header against the current URL so relative
         // redirects work. Re-run the full scheme + host check on the new
@@ -164,10 +158,7 @@ export class HttpSourceReader implements ISourceReader {
           throw new SourceParseError(uri, `invalid redirect target: ${location}`);
         }
         if (current.protocol !== 'http:' && current.protocol !== 'https:') {
-          throw new SourceParseError(
-            uri,
-            `redirect to unsupported scheme: ${current.protocol}`,
-          );
+          throw new SourceParseError(uri, `redirect to unsupported scheme: ${current.protocol}`);
         }
         await this.assertSafeHost(current, uri);
         // Drain the intermediate response body so the underlying connection
@@ -277,10 +268,7 @@ export class HttpSourceReader implements ISourceReader {
       return await fetchImpl(url, { signal: controller.signal, redirect: 'manual' });
     } catch (err) {
       if ((err as Error | undefined)?.name === 'AbortError') {
-        throw new SourceParseError(
-          originalUri,
-          `request timed out after ${this.timeoutMs}ms`,
-        );
+        throw new SourceParseError(originalUri, `request timed out after ${this.timeoutMs}ms`);
       }
       const message = err instanceof Error ? err.message : String(err);
       throw new SourceParseError(originalUri, `network error: ${message}`);

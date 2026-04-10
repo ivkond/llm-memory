@@ -38,9 +38,7 @@ export class RecallService {
     const maxTokens = req.max_tokens ?? DEFAULT_MAX_TOKENS;
     const project = await this.projectResolver.resolve(req.cwd);
 
-    const projectPages = project
-      ? await this.loadPageInfos(`projects/${project}`)
-      : [];
+    const projectPages = project ? await this.loadPageInfos(`projects/${project}`) : [];
 
     const wikiPages = await this.loadPageInfos('wiki');
 
@@ -50,12 +48,8 @@ export class RecallService {
 
     // Budget allocation. Guarantee at least one page per non-empty scope
     // so wiki pages are always included when they exist (per spec).
-    const minBudget =
-      (projectPages.length > 0 && project ? 1 : 0) + (wikiPages.length > 0 ? 1 : 0);
-    const totalBudget = Math.max(
-      minBudget,
-      Math.floor(maxTokens / APPROX_TOKENS_PER_PAGE),
-    );
+    const minBudget = (projectPages.length > 0 && project ? 1 : 0) + (wikiPages.length > 0 ? 1 : 0);
+    const totalBudget = Math.max(minBudget, Math.floor(maxTokens / APPROX_TOKENS_PER_PAGE));
 
     let projectBudget: number;
     let wikiBudget: number;

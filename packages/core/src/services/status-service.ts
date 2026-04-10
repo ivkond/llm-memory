@@ -88,7 +88,9 @@ export class WikiStatusService {
    * file's frontmatter updated is newer than its lastIndexedAt timestamp,
    * or when a file has never been indexed at all.
    */
-  private async computeIndexHealth(files: { path: string; updated: string }[]): Promise<IndexHealth> {
+  private async computeIndexHealth(
+    files: { path: string; updated: string }[],
+  ): Promise<IndexHealth> {
     const engineHealth = await this.searchEngine.health();
     if (engineHealth === 'missing') return 'missing';
 

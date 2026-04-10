@@ -211,9 +211,7 @@ describe('QueryService', () => {
 
   it('test_query_llmThrows_returnsRawResultsAsCitations', async () => {
     // INV-3: LLM_UNAVAILABLE — return raw search results in citations
-    searchEngine.documents = [
-      new SearchResult('wiki/a.md', 'A', 'alpha', 0.9, 'hybrid'),
-    ];
+    searchEngine.documents = [new SearchResult('wiki/a.md', 'A', 'alpha', 0.9, 'hybrid')];
     llmClient.response = new LlmUnavailableError('rate limit');
 
     const response = await service.query({ question: 'q' });
@@ -227,9 +225,7 @@ describe('QueryService', () => {
     // Any thrown error from the LLM — not just LlmUnavailableError — should
     // degrade gracefully. INV-3 is about the USER visible guarantee, not
     // specifically the domain error class.
-    searchEngine.documents = [
-      new SearchResult('wiki/a.md', 'A', 'alpha', 0.9, 'hybrid'),
-    ];
+    searchEngine.documents = [new SearchResult('wiki/a.md', 'A', 'alpha', 0.9, 'hybrid')];
     llmClient.response = new Error('transient');
 
     const response = await service.query({ question: 'q' });
@@ -239,18 +235,14 @@ describe('QueryService', () => {
 
   it('test_query_noSearchResults_throwsSearchEmpty', async () => {
     searchEngine.documents = [];
-    await expect(service.query({ question: 'nothing' })).rejects.toBeInstanceOf(
-      SearchEmptyError,
-    );
+    await expect(service.query({ question: 'nothing' })).rejects.toBeInstanceOf(SearchEmptyError);
   });
 
   it('test_query_staleFile_triggersReindexBeforeSearch', async () => {
     // File is stale: its mtime is AFTER the index's lastIndexedAt
     fileStore.files['wiki/a.md'] = makePage('wiki/a.md', 'A', 'body', '2026-04-10T12:00:00Z');
     searchEngine.lastIndexedMap['wiki/a.md'] = '2026-04-09T00:00:00Z';
-    searchEngine.documents = [
-      new SearchResult('wiki/a.md', 'A', 'body', 0.9, 'hybrid'),
-    ];
+    searchEngine.documents = [new SearchResult('wiki/a.md', 'A', 'body', 0.9, 'hybrid')];
 
     await service.query({ question: 'q' });
 
@@ -267,25 +259,16 @@ describe('QueryService', () => {
   it('test_query_freshFile_doesNotReindex', async () => {
     fileStore.files['wiki/a.md'] = makePage('wiki/a.md', 'A', 'body', '2026-04-09T00:00:00Z');
     searchEngine.lastIndexedMap['wiki/a.md'] = '2026-04-10T12:00:00Z';
-    searchEngine.documents = [
-      new SearchResult('wiki/a.md', 'A', 'body', 0.9, 'hybrid'),
-    ];
+    searchEngine.documents = [new SearchResult('wiki/a.md', 'A', 'body', 0.9, 'hybrid')];
 
     await service.query({ question: 'q' });
     expect(searchEngine.indexSpy).not.toHaveBeenCalled();
   });
 
   it('test_query_unindexedFile_triggersIndexBeforeSearch', async () => {
-    fileStore.files['wiki/new.md'] = makePage(
-      'wiki/new.md',
-      'New',
-      'body',
-      '2026-04-10T00:00:00Z',
-    );
+    fileStore.files['wiki/new.md'] = makePage('wiki/new.md', 'New', 'body', '2026-04-10T00:00:00Z');
     // No lastIndexedMap entry -> null
-    searchEngine.documents = [
-      new SearchResult('wiki/new.md', 'New', 'body', 0.9, 'hybrid'),
-    ];
+    searchEngine.documents = [new SearchResult('wiki/new.md', 'New', 'body', 0.9, 'hybrid')];
 
     await service.query({ question: 'q' });
     const indexed = searchEngine.indexSpy.mock.calls.map((c) => c[0].path);
@@ -304,9 +287,7 @@ describe('QueryService', () => {
   });
 
   it('test_query_answerRespectsMaxTokens', async () => {
-    searchEngine.documents = [
-      new SearchResult('wiki/a.md', 'A', 'alpha', 0.9, 'hybrid'),
-    ];
+    searchEngine.documents = [new SearchResult('wiki/a.md', 'A', 'alpha', 0.9, 'hybrid')];
     await service.query({ question: 'q', maxTokens: 512 });
 
     expect(llmClient.lastRequest).not.toBeNull();

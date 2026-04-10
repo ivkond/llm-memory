@@ -75,39 +75,46 @@ describe('VerbatimEntry', () => {
     const baseOpts = { content: 'x', agent: 'claude-code', sessionId: 'abc' };
 
     it('test_create_agentWithSlash_throwsInvalidIdentifier', () => {
-      expect(() => VerbatimEntry.create({ ...baseOpts, agent: '../other' }))
-        .toThrow(InvalidIdentifierError);
+      expect(() => VerbatimEntry.create({ ...baseOpts, agent: '../other' })).toThrow(
+        InvalidIdentifierError,
+      );
     });
 
     it('test_create_agentWithDotDot_throwsInvalidIdentifier', () => {
-      expect(() => VerbatimEntry.create({ ...baseOpts, agent: '..' }))
-        .toThrow(InvalidIdentifierError);
+      expect(() => VerbatimEntry.create({ ...baseOpts, agent: '..' })).toThrow(
+        InvalidIdentifierError,
+      );
     });
 
     it('test_create_sessionIdWithSlash_throwsInvalidIdentifier', () => {
-      expect(() => VerbatimEntry.create({ ...baseOpts, sessionId: 'abc/def' }))
-        .toThrow(InvalidIdentifierError);
+      expect(() => VerbatimEntry.create({ ...baseOpts, sessionId: 'abc/def' })).toThrow(
+        InvalidIdentifierError,
+      );
     });
 
     it('test_create_emptyAgent_throwsInvalidIdentifier', () => {
-      expect(() => VerbatimEntry.create({ ...baseOpts, agent: '' }))
-        .toThrow(InvalidIdentifierError);
+      expect(() => VerbatimEntry.create({ ...baseOpts, agent: '' })).toThrow(
+        InvalidIdentifierError,
+      );
     });
 
     it('test_create_agentWithBackslash_throwsInvalidIdentifier', () => {
-      expect(() => VerbatimEntry.create({ ...baseOpts, agent: 'evil\\agent' }))
-        .toThrow(InvalidIdentifierError);
+      expect(() => VerbatimEntry.create({ ...baseOpts, agent: 'evil\\agent' })).toThrow(
+        InvalidIdentifierError,
+      );
     });
 
     it('test_create_agentStartingWithDash_throwsInvalidIdentifier', () => {
       // First character must be alphanumeric (prevents CLI-style arg confusion).
-      expect(() => VerbatimEntry.create({ ...baseOpts, agent: '-evil' }))
-        .toThrow(InvalidIdentifierError);
+      expect(() => VerbatimEntry.create({ ...baseOpts, agent: '-evil' })).toThrow(
+        InvalidIdentifierError,
+      );
     });
 
     it('test_create_agentExceeds64Chars_throwsInvalidIdentifier', () => {
-      expect(() => VerbatimEntry.create({ ...baseOpts, agent: 'a'.repeat(65) }))
-        .toThrow(InvalidIdentifierError);
+      expect(() => VerbatimEntry.create({ ...baseOpts, agent: 'a'.repeat(65) })).toThrow(
+        InvalidIdentifierError,
+      );
     });
 
     it('test_create_validSlugStyleIdentifiers_work', () => {
@@ -122,13 +129,15 @@ describe('VerbatimEntry', () => {
     });
 
     it('test_fromParsedData_invalidAgent_throwsInvalidIdentifier', () => {
-      expect(() => VerbatimEntry.fromParsedData('2026-04-10-abc-1111.md', {
-        session: 'abc',
-        agent: '../hostile',
-        consolidated: false,
-        created: '2026-04-10T00:00:00Z',
-        content: 'x',
-      })).toThrow(InvalidIdentifierError);
+      expect(() =>
+        VerbatimEntry.fromParsedData('2026-04-10-abc-1111.md', {
+          session: 'abc',
+          agent: '../hostile',
+          consolidated: false,
+          created: '2026-04-10T00:00:00Z',
+          content: 'x',
+        }),
+      ).toThrow(InvalidIdentifierError);
     });
   });
 });

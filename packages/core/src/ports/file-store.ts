@@ -1,3 +1,5 @@
+import type { WikiPageData } from '../domain/wiki-page.js';
+
 export interface FileInfo {
   path: string;
   updated: string;
@@ -18,7 +20,7 @@ export interface IFileStore {
 
   /** Read and parse a markdown file into WikiPageData. Returns null if not found.
    *  Parsing (gray-matter) is owned by infra — single parser path. */
-  readWikiPage(relativePath: string): Promise<import('../domain/wiki-page.js').WikiPageData | null>;
+  readWikiPage(relativePath: string): Promise<WikiPageData | null>;
 }
 
 /** Factory for building an IFileStore rooted at an arbitrary directory.

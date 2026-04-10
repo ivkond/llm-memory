@@ -48,7 +48,10 @@ describe('ConfigLoader', () => {
 
   it('test_load_envOverridesLocal', async () => {
     const store = new FsFileStore(tempDir);
-    await store.writeFile('.local/settings.local.yaml', 'llm:\n  model: gpt-4o\n  api_key: yaml-key');
+    await store.writeFile(
+      '.local/settings.local.yaml',
+      'llm:\n  model: gpt-4o\n  api_key: yaml-key',
+    );
 
     process.env.LLM_WIKI_LLM_API_KEY = 'env-key';
     try {

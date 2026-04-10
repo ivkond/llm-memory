@@ -56,7 +56,7 @@ describe('GitVersionControl', () => {
 
   it('test_createWorktree_returnsInfoAndDirectoryExists', async () => {
     const info = await vcs.createWorktree('ingest');
-    expect(info.path).toContain('.worktrees/ingest-');
+    expect(info.path).toMatch(/[/\\]\.worktrees[/\\]ingest-/);
     expect(info.branch).toMatch(/ingest-/);
     // The worktree directory must be a real checkout with git metadata
     execSync('git status', { cwd: info.path });

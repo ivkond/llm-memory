@@ -37,7 +37,7 @@ describe('FsFileStore', () => {
 
   it('test_listFiles_returnsSortedByMtimeDesc', async () => {
     await store.writeFile('wiki/old.md', '---\nupdated: 2026-01-01\n---\nold');
-    await new Promise(r => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 50));
     await store.writeFile('wiki/new.md', '---\nupdated: 2026-04-01\n---\nnew');
 
     const files = await store.listFiles('wiki');
@@ -61,7 +61,10 @@ describe('FsFileStore', () => {
   });
 
   it('test_readWikiPage_parsesMarkdownFrontmatter', async () => {
-    await store.writeFile('wiki/test.md', '---\ntitle: Test\nupdated: 2026-04-09\nconfidence: 0.9\nsources: []\nsupersedes: null\ntags: []\n---\n\n## Summary\n\nContent here.');
+    await store.writeFile(
+      'wiki/test.md',
+      '---\ntitle: Test\nupdated: 2026-04-09\nconfidence: 0.9\nsources: []\nsupersedes: null\ntags: []\n---\n\n## Summary\n\nContent here.',
+    );
     const data = await store.readWikiPage('wiki/test.md');
     expect(data).not.toBeNull();
     expect(data!.frontmatter.title).toBe('Test');
@@ -80,7 +83,9 @@ describe('FsFileStore', () => {
     });
 
     it('test_readFile_deepParentEscape_throwsPathEscape', async () => {
-      await expect(store.readFile('wiki/../../../etc/passwd')).rejects.toBeInstanceOf(PathEscapeError);
+      await expect(store.readFile('wiki/../../../etc/passwd')).rejects.toBeInstanceOf(
+        PathEscapeError,
+      );
     });
 
     it('test_readFile_absolutePath_throwsPathEscape', async () => {
@@ -133,19 +138,13 @@ describe('FsFileStore', () => {
     it('test_readFile_throughSymlinkToOutside_throwsPathEscape', async () => {
       // Plant a symlink inside the wiki that points outside of it.
       await mkdir(path.join(tempDir, 'wiki'), { recursive: true });
-      await symlink(
-        path.join(outsideDir, 'secret.md'),
-        path.join(tempDir, 'wiki/leak.md'),
-      );
+      await symlink(path.join(outsideDir, 'secret.md'), path.join(tempDir, 'wiki/leak.md'));
       await expect(store.readFile('wiki/leak.md')).rejects.toBeInstanceOf(PathEscapeError);
     });
 
     it('test_exists_symlinkToOutside_throwsPathEscape', async () => {
       await mkdir(path.join(tempDir, 'wiki'), { recursive: true });
-      await symlink(
-        path.join(outsideDir, 'secret.md'),
-        path.join(tempDir, 'wiki/leak.md'),
-      );
+      await symlink(path.join(outsideDir, 'secret.md'), path.join(tempDir, 'wiki/leak.md'));
       await expect(store.exists('wiki/leak.md')).rejects.toBeInstanceOf(PathEscapeError);
     });
 
@@ -163,17 +162,12 @@ describe('FsFileStore', () => {
     it('test_writeFile_overExistingSymlinkToOutside_throwsPathEscape', async () => {
       // File target itself is a pre-existing symlink pointing outside.
       await mkdir(path.join(tempDir, 'wiki'), { recursive: true });
-      await symlink(
-        path.join(outsideDir, 'secret.md'),
-        path.join(tempDir, 'wiki/leak.md'),
+      await symlink(path.join(outsideDir, 'secret.md'), path.join(tempDir, 'wiki/leak.md'));
+      await expect(store.writeFile('wiki/leak.md', 'pwned')).rejects.toBeInstanceOf(
+        PathEscapeError,
       );
-      await expect(store.writeFile('wiki/leak.md', 'pwned'))
-        .rejects.toBeInstanceOf(PathEscapeError);
       // The outside file must be untouched.
-      const untouched = await store.readFile.call(
-        new FsFileStore(outsideDir),
-        'secret.md',
-      );
+      const untouched = await store.readFile.call(new FsFileStore(outsideDir), 'secret.md');
       expect(untouched).toBe('TOP SECRET');
     });
 
@@ -183,10 +177,7 @@ describe('FsFileStore', () => {
       // PathEscapeError anyway, but we don't want to surface it at all.
       await mkdir(path.join(tempDir, 'wiki'), { recursive: true });
       await writeFile(path.join(tempDir, 'wiki/real.md'), '# real');
-      await symlink(
-        path.join(outsideDir, 'secret.md'),
-        path.join(tempDir, 'wiki/leak.md'),
-      );
+      await symlink(path.join(outsideDir, 'secret.md'), path.join(tempDir, 'wiki/leak.md'));
       const files = await store.listFiles('wiki');
       expect(files).toHaveLength(1);
       expect(files[0].path).toBe('wiki/real.md');

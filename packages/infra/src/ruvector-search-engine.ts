@@ -248,9 +248,7 @@ export class RuVectorSearchEngine implements ISearchEngine {
 
   /** Assumes the caller holds the write mutex. */
   private async indexUnsafe(entry: IndexEntry): Promise<void> {
-    const [vector] = await this.embeddingClient.embed([
-      `${entry.title}\n${entry.content}`,
-    ]);
+    const [vector] = await this.embeddingClient.embed([`${entry.title}\n${entry.content}`]);
 
     // Overwrite: delete any existing doc from both halves before re-inserting.
     // ruvector's delete is a no-op for unknown ids; MiniSearch's discard is

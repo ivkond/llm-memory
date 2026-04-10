@@ -49,8 +49,7 @@ describe('AiSdkLlmClient', () => {
   });
 
   it('test_complete_passesSystemAndTemperature', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let captured: any;
+    let captured: unknown;
     const model = new MockLanguageModelV2({
       doGenerate: async (options) => {
         captured = options;
