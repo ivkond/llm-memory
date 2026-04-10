@@ -34,3 +34,24 @@ export class WikiEmptyError extends WikiError {
     super('WIKI_EMPTY', 'No pages exist in the wiki');
   }
 }
+
+export class PathEscapeError extends WikiError {
+  constructor(public readonly attemptedPath: string) {
+    super('PATH_ESCAPE', `Path escapes wiki root: ${attemptedPath}`);
+  }
+}
+
+export class InvalidIdentifierError extends WikiError {
+  constructor(public readonly field: string, public readonly value: string) {
+    super(
+      'INVALID_IDENTIFIER',
+      `Invalid ${field}: ${JSON.stringify(value)} — must match [a-zA-Z0-9][a-zA-Z0-9_-]{0,63}`,
+    );
+  }
+}
+
+export class InvalidPatternError extends WikiError {
+  constructor(public readonly pattern: string, public readonly reason: string) {
+    super('INVALID_PATTERN', `Invalid sanitization pattern ${JSON.stringify(pattern)}: ${reason}`);
+  }
+}

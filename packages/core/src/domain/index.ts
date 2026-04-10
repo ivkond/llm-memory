@@ -11,4 +11,7 @@ export {
   SanitizationBlockedError,
   WikiNotInitializedError,
   WikiEmptyError,
+  PathEscapeError,
+  InvalidIdentifierError,
+  InvalidPatternError,
 } from './errors.js';

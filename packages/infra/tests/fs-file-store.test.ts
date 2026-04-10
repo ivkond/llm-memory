@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { FsFileStore } from '../src/fs-file-store.js';
+import { PathEscapeError } from '@llm-wiki/core';
 
 describe('FsFileStore', () => {
   let tempDir: string;
@@ -71,5 +72,49 @@ describe('FsFileStore', () => {
   it('test_readWikiPage_nonExistent_returnsNull', async () => {
     const data = await store.readWikiPage('missing.md');
     expect(data).toBeNull();
+  });
+
+  describe('path traversal defense', () => {
+    it('test_readFile_parentEscape_throwsPathEscape', async () => {
+      await expect(store.readFile('../outside.md')).rejects.toBeInstanceOf(PathEscapeError);
+    });
+
+    it('test_readFile_deepParentEscape_throwsPathEscape', async () => {
+      await expect(store.readFile('wiki/../../../etc/passwd')).rejects.toBeInstanceOf(PathEscapeError);
+    });
+
+    it('test_readFile_absolutePath_throwsPathEscape', async () => {
+      await expect(store.readFile('/etc/passwd')).rejects.toBeInstanceOf(PathEscapeError);
+    });
+
+    it('test_writeFile_parentEscape_throwsPathEscape', async () => {
+      await expect(store.writeFile('../pwned.md', 'x')).rejects.toBeInstanceOf(PathEscapeError);
+    });
+
+    it('test_exists_parentEscape_throwsPathEscape', async () => {
+      await expect(store.exists('../outside.md')).rejects.toBeInstanceOf(PathEscapeError);
+    });
+
+    it('test_listFiles_parentEscape_throwsPathEscape', async () => {
+      await expect(store.listFiles('../')).rejects.toBeInstanceOf(PathEscapeError);
+    });
+
+    it('test_readWikiPage_parentEscape_throwsPathEscape', async () => {
+      await expect(store.readWikiPage('../outside.md')).rejects.toBeInstanceOf(PathEscapeError);
+    });
+
+    it('test_readFile_siblingPrefixAttack_throwsPathEscape', async () => {
+      // If rootDir is /tmp/llm-wiki-test-abc, a relative path like
+      // '../llm-wiki-test-abc-other/file.md' would resolve to a sibling
+      // directory that shares the prefix — must still be rejected.
+      const sibling = path.basename(tempDir) + '-other/file.md';
+      await expect(store.readFile(`../${sibling}`)).rejects.toBeInstanceOf(PathEscapeError);
+    });
+
+    it('test_writeFile_normalNestedPath_stillWorks', async () => {
+      // Defense must not break legitimate nested writes.
+      await store.writeFile('wiki/concepts/safe.md', '# safe');
+      expect(await store.readFile('wiki/concepts/safe.md')).toBe('# safe');
+    });
   });
 });

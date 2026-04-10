@@ -3,26 +3,48 @@ import path from 'node:path';
 import matter from 'gray-matter';
 import type { IFileStore, FileInfo } from '@llm-wiki/core';
 import type { WikiPageData } from '@llm-wiki/core';
+import { PathEscapeError } from '@llm-wiki/core';
 
 export class FsFileStore implements IFileStore {
-  constructor(private readonly rootDir: string) {}
+  private readonly normalizedRoot: string;
+
+  constructor(private readonly rootDir: string) {
+    this.normalizedRoot = path.resolve(rootDir);
+  }
+
+  /**
+   * Resolve a user-provided relative path under rootDir and reject any value
+   * that would escape the wiki root (e.g. '..' segments, absolute paths,
+   * mixed separators). Returns the resolved absolute path on success.
+   */
+  private resolveSafePath(relativePath: string): string {
+    const resolved = path.resolve(this.normalizedRoot, relativePath);
+    const rootWithSep = this.normalizedRoot.endsWith(path.sep)
+      ? this.normalizedRoot
+      : this.normalizedRoot + path.sep;
+    if (resolved !== this.normalizedRoot && !resolved.startsWith(rootWithSep)) {
+      throw new PathEscapeError(relativePath);
+    }
+    return resolved;
+  }
 
   async readFile(relativePath: string): Promise<string | null> {
+    const safePath = this.resolveSafePath(relativePath);
     try {
-      return await readFile(path.join(this.rootDir, relativePath), 'utf-8');
+      return await readFile(safePath, 'utf-8');
     } catch {
       return null;
     }
   }
 
   async writeFile(relativePath: string, content: string): Promise<void> {
-    const fullPath = path.join(this.rootDir, relativePath);
+    const fullPath = this.resolveSafePath(relativePath);
     await mkdir(path.dirname(fullPath), { recursive: true });
     await writeFile(fullPath, content, 'utf-8');
   }
 
   async listFiles(directory: string): Promise<FileInfo[]> {
-    const dirPath = path.join(this.rootDir, directory);
+    const dirPath = this.resolveSafePath(directory);
     try {
       await access(dirPath);
     } catch {
@@ -57,8 +79,9 @@ export class FsFileStore implements IFileStore {
   }
 
   async exists(relativePath: string): Promise<boolean> {
+    const safePath = this.resolveSafePath(relativePath);
     try {
-      await access(path.join(this.rootDir, relativePath));
+      await access(safePath);
       return true;
     } catch {
       return false;
@@ -66,6 +89,7 @@ export class FsFileStore implements IFileStore {
   }
 
   async readWikiPage(relativePath: string): Promise<WikiPageData | null> {
+    // Goes through readFile → resolveSafePath, no need to re-validate here.
     const raw = await this.readFile(relativePath);
     if (!raw) return null;
     const { data, content } = matter(raw);
