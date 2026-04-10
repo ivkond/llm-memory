@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 // `ruvector` exposes VectorDb as the wrapper class with metadata support.
 // It does not ship declaration files that re-export the class in a way
@@ -70,12 +70,48 @@ const RRF_K = 60;
  *
  * The adapter is lazily initialised on first use so that construction is
  * cheap and tests can introspect `health()` before any index() call.
+ *
+ * Concurrency model:
+ *
+ *   - `init()` caches its in-flight promise so concurrent first-callers all
+ *     await the same one-shot initialisation and the ruvector DB is opened
+ *     exactly once.
+ *   - All mutating operations (`index`, `remove`, `rebuild`) run through a
+ *     chained-promise mutex (`runExclusive`) so read-modify-write of both
+ *     the in-memory MiniSearch index and its `bm25.json` sidecar is atomic
+ *     relative to other mutators. No "last writer wins" race or torn JSON.
+ *   - `persist()` writes to `<bm25>.tmp` and `rename()`s on success —
+ *     the `bm25.json` file on disk is never observed in a half-written
+ *     state, even if the process dies mid-serialise.
+ *   - Reads (`search`, `lastIndexedAt`) still only await `init()`. They
+ *     consume the in-memory snapshots directly, so a concurrent mutator
+ *     either hasn't reached its in-memory update yet (read sees old state)
+ *     or has finished (read sees new state) — never an interleaved mix.
+ *
+ * Cross-process coordination is out of scope for this adapter. The
+ * intended deployment is a single-writer wiki root (CLI or MCP server,
+ * not both concurrently) and that assumption is enforced by callers.
  */
 export class RuVectorSearchEngine implements ISearchEngine {
   private vectorDb: VectorDbLike | null = null;
   private bm25: MiniSearch<DocFields> | null = null;
   private indexedAt: Record<string, string> = {};
   private initialized = false;
+  /**
+   * Cached init promise. The first caller assigns this; every concurrent
+   * caller awaits the same promise, so `doInit()` runs exactly once even
+   * under heavy concurrency. `initPromise` is intentionally never reset —
+   * initialisation is idempotent and there is no recovery path that would
+   * require re-running it.
+   */
+  private initPromise: Promise<void> | null = null;
+  /**
+   * Write mutex — each mutating op schedules itself after the previous
+   * mutation's completion. Errors are swallowed on the chain itself so a
+   * failed write does not permanently poison future mutations; the failure
+   * still surfaces via the per-call return value.
+   */
+  private writeChain: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly dbPath: string,
@@ -105,6 +141,18 @@ export class RuVectorSearchEngine implements ISearchEngine {
 
   private async init(): Promise<void> {
     if (this.initialized) return;
+    // Cache the in-flight init promise so two concurrent first-callers
+    // BOTH await the same doInit() invocation. Without this the TOCTOU
+    // window between `if (!this.initialized)` and `this.initialized = true`
+    // would let a second caller open the ruvector DB a second time and
+    // racing MiniSearch.loadJSON could clobber the in-memory index.
+    if (this.initPromise === null) {
+      this.initPromise = this.doInit();
+    }
+    await this.initPromise;
+  }
+
+  private async doInit(): Promise<void> {
     await mkdir(this.dbPath, { recursive: true });
 
     // Dense side — ruvector uses a single file at storagePath
@@ -142,6 +190,34 @@ export class RuVectorSearchEngine implements ISearchEngine {
     this.initialized = true;
   }
 
+  /**
+   * Serialise `fn` against all other mutating operations on this engine.
+   * Each scheduled op runs strictly after the previous one's promise
+   * settles, even if the previous one rejected — a thrown mutation does
+   * not permanently poison the chain, but its caller still receives the
+   * rejection. Matches the YamlStateStore pattern.
+   */
+  private runExclusive<T>(fn: () => Promise<T>): Promise<T> {
+    const next = this.writeChain.then(() => fn());
+    // `next` may reject; swallow that on the chain (not on `next` itself)
+    // so callers still see the error but the serial ordering continues.
+    this.writeChain = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    return next;
+  }
+
+  /**
+   * Persist the BM25 JSON sidecar atomically: write to `<bm25>.tmp` and
+   * rename over the target. On POSIX `rename` is atomic on the same
+   * filesystem, so the file on disk is always either the previous snapshot
+   * or the new snapshot — never a torn mix that would fail `JSON.parse`
+   * on the next `doInit()`.
+   *
+   * Callers MUST hold the write mutex. Invoking `persist()` outside
+   * `runExclusive` can interleave two renames and lose updates.
+   */
   private async persist(): Promise<void> {
     if (!this.bm25) return;
     const file: Bm25FileV1 = {
@@ -149,11 +225,29 @@ export class RuVectorSearchEngine implements ISearchEngine {
       index: this.bm25.toJSON(),
       lastIndexedAt: this.indexedAt,
     };
-    await writeFile(this.bm25FilePath(), JSON.stringify(file), 'utf-8');
+    const target = this.bm25FilePath();
+    const tmp = `${target}.tmp`;
+    await writeFile(tmp, JSON.stringify(file), 'utf-8');
+    try {
+      await rename(tmp, target);
+    } catch (err) {
+      // If rename failed, do not leave the tmp file lying around.
+      try {
+        await unlink(tmp);
+      } catch {
+        /* ignore */
+      }
+      throw err;
+    }
   }
 
   async index(entry: IndexEntry): Promise<void> {
     await this.init();
+    return this.runExclusive(() => this.indexUnsafe(entry));
+  }
+
+  /** Assumes the caller holds the write mutex. */
+  private async indexUnsafe(entry: IndexEntry): Promise<void> {
     const [vector] = await this.embeddingClient.embed([
       `${entry.title}\n${entry.content}`,
     ]);
@@ -196,6 +290,11 @@ export class RuVectorSearchEngine implements ISearchEngine {
 
   async remove(docPath: string): Promise<void> {
     await this.init();
+    return this.runExclusive(() => this.removeUnsafe(docPath));
+  }
+
+  /** Assumes the caller holds the write mutex. */
+  private async removeUnsafe(docPath: string): Promise<void> {
     try {
       await this.vectorDb!.delete(docPath);
     } catch {
@@ -321,20 +420,24 @@ export class RuVectorSearchEngine implements ISearchEngine {
 
   async rebuild(entries: IndexEntry[]): Promise<void> {
     await this.init();
-    // Clear the BM25 side wholesale. ruvector lacks a bulk clear, so delete
-    // each known id individually before re-indexing.
-    for (const id of Object.keys(this.indexedAt)) {
-      try {
-        await this.vectorDb!.delete(id);
-      } catch {
-        /* ignore */
+    return this.runExclusive(async () => {
+      // Clear the BM25 side wholesale. ruvector lacks a bulk clear, so
+      // delete each known id individually before re-indexing.
+      for (const id of Object.keys(this.indexedAt)) {
+        try {
+          await this.vectorDb!.delete(id);
+        } catch {
+          /* ignore */
+        }
       }
-    }
-    this.bm25!.removeAll();
-    this.indexedAt = {};
-    for (const entry of entries) {
-      await this.index(entry);
-    }
+      this.bm25!.removeAll();
+      this.indexedAt = {};
+      // Reuse indexUnsafe (not index()) — calling the public method here
+      // would try to re-enter the mutex and deadlock.
+      for (const entry of entries) {
+        await this.indexUnsafe(entry);
+      }
+    });
   }
 
   async health(): Promise<IndexHealth> {

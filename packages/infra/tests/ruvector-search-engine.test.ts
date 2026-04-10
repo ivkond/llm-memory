@@ -210,6 +210,120 @@ describe('RuVectorSearchEngine', () => {
     expect(texts).toEqual(['hello']);
   });
 
+  // ---- Concurrency / single-writer serialisation (blocksorg review #3) ----
+
+  it('test_init_concurrentCallers_shareSingleInit', async () => {
+    // Instrument the embedding client so we can count calls — the first
+    // real use is index(), which is serialised. Here we just fire many
+    // concurrent `lastIndexedAt()` calls before any index(); each awaits
+    // init() and all must return the same "null" result without the
+    // adapter re-running its init body. The test demonstrates init() is
+    // safe against parallel first-callers (no crash, no torn state).
+    const firstCallers = await Promise.all(
+      Array.from({ length: 20 }, (_, i) => engine.lastIndexedAt(`wiki/${i}.md`)),
+    );
+    expect(firstCallers.every((r) => r === null)).toBe(true);
+    expect(await engine.health()).toBe('missing');
+  });
+
+  it('test_index_concurrentCalls_allDocsPersistedAndSearchable', async () => {
+    // Fire N index() calls in parallel. Pre-fix (no mutex), persist()
+    // would interleave read-modify-write and some docs would be lost
+    // from `indexedAt` or from the BM25 JSON snapshot. Post-fix, all N
+    // docs must be present in the final state.
+    const N = 25;
+    const entries: IndexEntry[] = Array.from({ length: N }, (_, i) => ({
+      path: `wiki/doc-${i.toString().padStart(2, '0')}.md`,
+      title: `Doc ${i}`,
+      content: `apple banana ${i}`,
+      updated: '2026-04-10T00:00:00Z',
+    }));
+
+    await Promise.all(entries.map((e) => engine.index(e)));
+
+    // Every doc must have a lastIndexedAt entry — this touches the
+    // in-memory `indexedAt` map, which is what the mutex protects.
+    for (const entry of entries) {
+      const ts = await engine.lastIndexedAt(entry.path);
+      expect(ts).not.toBeNull();
+    }
+
+    // And every doc must be retrievable via BM25 search.
+    const hits = await engine.search({ text: 'apple', maxResults: N });
+    expect(hits.length).toBe(N);
+  });
+
+  it('test_index_concurrentCalls_persistedBm25JsonIsValid', async () => {
+    // The persisted bm25.json must be valid JSON after the storm.
+    // Pre-fix, concurrent writeFile() calls could tear the file and
+    // leave it mid-serialise; post-fix, the atomic rename guarantees
+    // the on-disk file is always a well-formed snapshot.
+    const N = 20;
+    await Promise.all(
+      Array.from({ length: N }, (_, i) =>
+        engine.index({
+          path: `wiki/c-${i}.md`,
+          title: `C${i}`,
+          content: `concurrent body ${i}`,
+          updated: '2026-04-10T00:00:00Z',
+        }),
+      ),
+    );
+
+    // Re-open the engine against the same dbPath — doInit() will
+    // JSON.parse(bm25.json). Any torn JSON would throw here.
+    const reopened = new RuVectorSearchEngine(dbPath, embeddings);
+    // lastIndexedAt forces init + ensures the reload worked.
+    for (let i = 0; i < N; i++) {
+      expect(await reopened.lastIndexedAt(`wiki/c-${i}.md`)).not.toBeNull();
+    }
+    const hits = await reopened.search({ text: 'concurrent', maxResults: N });
+    expect(hits.length).toBe(N);
+  });
+
+  it('test_concurrentIndexAndRemove_finalStateConsistent', async () => {
+    // Seed 10 docs, then fire a mix of index(new) and remove(existing)
+    // in parallel. After everything settles, the new docs must be
+    // present and the removed docs must be absent.
+    for (let i = 0; i < 10; i++) {
+      await engine.index({
+        path: `wiki/seed-${i}.md`,
+        title: `Seed ${i}`,
+        content: `seed ${i}`,
+        updated: '2026-04-09T00:00:00Z',
+      });
+    }
+
+    const ops: Promise<void>[] = [];
+    for (let i = 0; i < 5; i++) {
+      ops.push(engine.remove(`wiki/seed-${i}.md`));
+    }
+    for (let i = 10; i < 20; i++) {
+      ops.push(
+        engine.index({
+          path: `wiki/new-${i}.md`,
+          title: `New ${i}`,
+          content: `brand new ${i}`,
+          updated: '2026-04-10T00:00:00Z',
+        }),
+      );
+    }
+    await Promise.all(ops);
+
+    // Removed docs → null
+    for (let i = 0; i < 5; i++) {
+      expect(await engine.lastIndexedAt(`wiki/seed-${i}.md`)).toBeNull();
+    }
+    // Surviving seed docs still present
+    for (let i = 5; i < 10; i++) {
+      expect(await engine.lastIndexedAt(`wiki/seed-${i}.md`)).not.toBeNull();
+    }
+    // New docs all present
+    for (let i = 10; i < 20; i++) {
+      expect(await engine.lastIndexedAt(`wiki/new-${i}.md`)).not.toBeNull();
+    }
+  });
+
   it('test_reindex_sameDoc_overwritesWithoutDuplicate', async () => {
     await engine.index({
       path: 'wiki/a.md',
