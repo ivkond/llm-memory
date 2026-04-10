@@ -1,5 +1,7 @@
+import RE2 from 're2';
 import { SanitizationResult } from '../domain/sanitization-result.js';
 import type { RedactionWarning } from '../domain/sanitization-result.js';
+import { InvalidPatternError } from '../domain/errors.js';
 
 export interface SanitizationConfig {
   enabled: boolean;
@@ -12,10 +14,19 @@ export interface SanitizationConfig {
   allowlist?: string[];
 }
 
+// RE2 instances are API-compatible with RegExp for the methods we use
+// (lastIndex, and String.prototype.replace). The wider type lets us keep
+// the default patterns as native RegExp while user-supplied custom patterns
+// compile through RE2 so they can never cause catastrophic backtracking.
+type CompiledPattern = RegExp | RE2;
+
 interface PatternRule {
   name: string;
-  pattern: RegExp;
+  pattern: CompiledPattern;
 }
+
+/** Hard cap on user-supplied pattern length. Defense-in-depth next to RE2. */
+const MAX_CUSTOM_PATTERN_LENGTH = 512;
 
 const DEFAULT_PATTERNS: PatternRule[] = [
   { name: 'private_key', pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g },
@@ -33,8 +44,28 @@ export class SanitizationService {
     this.patterns = [...DEFAULT_PATTERNS];
     if (config.customPatterns) {
       for (const p of config.customPatterns) {
-        this.patterns.push({ name: 'custom', pattern: new RegExp(p, 'g') });
+        this.patterns.push({ name: 'custom', pattern: this.compileCustomPattern(p) });
       }
+    }
+  }
+
+  /**
+   * Compile a user-supplied pattern through RE2 so it executes in guaranteed
+   * linear time. RE2 rejects patterns it cannot handle (e.g. backreferences,
+   * lookaheads) — we surface that as a domain error instead of letting a
+   * shared config break the whole sanitizer.
+   */
+  private compileCustomPattern(source: string): RE2 {
+    if (source.length > MAX_CUSTOM_PATTERN_LENGTH) {
+      throw new InvalidPatternError(
+        source,
+        `pattern exceeds max length of ${MAX_CUSTOM_PATTERN_LENGTH} characters`,
+      );
+    }
+    try {
+      return new RE2(source, 'g');
+    } catch (err) {
+      throw new InvalidPatternError(source, (err as Error).message);
     }
   }
 

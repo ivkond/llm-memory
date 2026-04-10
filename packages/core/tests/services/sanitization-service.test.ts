@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { SanitizationService } from '../../src/services/sanitization-service.js';
+import { InvalidPatternError } from '../../src/domain/errors.js';
 
 describe('SanitizationService', () => {
   const service = new SanitizationService({ enabled: true, mode: 'redact' });
@@ -114,5 +115,56 @@ describe('SanitizationService', () => {
     const content = 'DB: postgresql://user:s3cretP@ss@prod.example.com:5432/mydb';
     const result = allowedService.sanitize(content);
     expect(result.content).toContain('[REDACTED:connection_string]');
+  });
+
+  describe('custom pattern safety (RE2)', () => {
+    it('test_customPattern_validRegex_redactsMatches', () => {
+      const svc = new SanitizationService({
+        enabled: true,
+        mode: 'redact',
+        customPatterns: ['SECRET-\\d+'],
+      });
+      const result = svc.sanitize('leak: SECRET-1234 in logs');
+      expect(result.content).toContain('[REDACTED:custom]');
+      expect(result.content).not.toContain('SECRET-1234');
+    });
+
+    it('test_customPattern_exceedingLengthLimit_throwsInvalidPattern', () => {
+      const tooLong = 'a'.repeat(513);
+      expect(() => new SanitizationService({
+        enabled: true,
+        mode: 'redact',
+        customPatterns: [tooLong],
+      })).toThrow(InvalidPatternError);
+    });
+
+    it('test_customPattern_backreference_rejectedByRe2', () => {
+      // RE2 does not support backreferences — it must reject this pattern
+      // at compile time, wrapped as InvalidPatternError. A native JS RegExp
+      // would accept it and expose the process to ReDoS on crafted input.
+      expect(() => new SanitizationService({
+        enabled: true,
+        mode: 'redact',
+        customPatterns: ['(a+)\\1'],
+      })).toThrow(InvalidPatternError);
+    });
+
+    it('test_customPattern_catastrophicBacktrackingInput_runsInBoundedTime', () => {
+      // RE2 guarantees linear-time matching. Compiling and running a classic
+      // "(a+)+$" pattern on a long non-matching input would hang a native
+      // RegExp but must complete quickly under RE2.
+      const svc = new SanitizationService({
+        enabled: true,
+        mode: 'redact',
+        customPatterns: ['(a+)+$'],
+      });
+      const evil = 'a'.repeat(30) + 'b';
+      const started = Date.now();
+      svc.sanitize(evil);
+      const elapsed = Date.now() - started;
+      // Generous bound — on any reasonable host RE2 completes in under 100ms;
+      // a vulnerable RegExp would take seconds-to-minutes on this input.
+      expect(elapsed).toBeLessThan(1000);
+    });
   });
 });
