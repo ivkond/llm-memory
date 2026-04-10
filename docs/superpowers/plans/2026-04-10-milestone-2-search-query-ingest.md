@@ -520,9 +520,9 @@ git commit -m ":sparkles: [infra] RuVectorSearchEngine adapter implementing ISea
 - Test: `packages/infra/tests/ai-sdk-embedding-client.test.ts`
 - Modify: `packages/infra/src/index.ts`
 
-**Test strategy:** pure unit tests against the AI SDK's official mocks. **No real network calls.** The `ai/test` module exports `MockLanguageModelV3` and `MockEmbeddingModelV3`, which implement the current v3 model specification (AI SDK 5.x). Tests construct a mock, pass it into the adapter's constructor via the same dependency-injection point used in production, and assert on the returned shape. **Mock `doGenerate` / `doEmbed` return shapes follow the v3 spec** (`content: [{ type: 'text', text }]`, `finishReason: { unified: 'stop', raw: undefined }`, nested `usage.inputTokens` / `usage.outputTokens` objects). The surface that `generateText()` / `embedMany()` expose to the adapter is `result.text`, `result.usage.inputTokens` (plain number), `result.usage.outputTokens` (plain number), `result.usage.totalTokens` (plain number) — these are what the production code reads.
+**Test strategy:** pure unit tests against the AI SDK's official mocks. **No real network calls.** The installed AI SDK (`ai@^5.0.172`) is built on the **v2 model spec** and exposes `MockLanguageModelV2` / `MockEmbeddingModelV2` from `ai/test` (not `*V3` as the original draft of this plan assumed — those identifiers do not exist in any currently published AI SDK version). Tests construct a mock, pass it into the adapter's constructor via the same dependency-injection point used in production, and assert on the returned shape. **Mock `doGenerate` / `doEmbed` return shapes follow the v2 spec** (`content: [{ type: 'text', text }]`, `finishReason: 'stop'` — a plain string literal, not a wrapped object — `usage: { inputTokens, outputTokens, totalTokens }` as plain numbers, `warnings: []`). The surface that `generateText()` / `embedMany()` expose to the adapter is `result.text`, `result.usage.inputTokens` (plain number), `result.usage.outputTokens` (plain number), `result.usage.totalTokens` (plain number) — these are what the production code reads. `ai/test` imports `vitest` and `msw` internally, so these are devDependencies of `@llm-wiki/infra`.
 
-- [ ] **Step 1: Install AI SDK (pin to v5.x for v3 model spec)**
+- [ ] **Step 1: Install AI SDK (pin to v5.x; ships the v2 model spec)**
 
 ```bash
 pnpm --filter @llm-wiki/infra add ai@^5 @ai-sdk/openai@^1
@@ -535,26 +535,24 @@ If the install fails for an offline environment, BLOCK and escalate — Task 3 c
 ```typescript
 // packages/infra/tests/ai-sdk-llm-client.test.ts
 import { describe, it, expect } from 'vitest';
-import { MockLanguageModelV3 } from 'ai/test';
+import { MockLanguageModelV2 } from 'ai/test';
 import { AiSdkLlmClient } from '../src/ai-sdk-llm-client.js';
 import { LlmUnavailableError } from '@llm-wiki/core';
 
-// Helper: build a v3 mock doGenerate result with a single text content block.
+// Helper: build a v2 mock doGenerate result with a single text content block.
+// v2 uses a plain string FinishReason and plain-number usage fields.
 function ok(text: string, input = 10, output = 20) {
   return {
     content: [{ type: 'text' as const, text }],
-    finishReason: { unified: 'stop' as const, raw: undefined },
-    usage: {
-      inputTokens: { total: input, noCache: input, cacheRead: undefined, cacheWrite: undefined },
-      outputTokens: { total: output, text: output, reasoning: undefined },
-    },
+    finishReason: 'stop' as const,
+    usage: { inputTokens: input, outputTokens: output, totalTokens: input + output },
     warnings: [],
   };
 }
 
 describe('AiSdkLlmClient', () => {
   it('test_complete_returnsContentAndUsage', async () => {
-    const model = new MockLanguageModelV3({
+    const model = new MockLanguageModelV2({
       doGenerate: async () => ok('Hello world', 12, 34),
     });
     const client = new AiSdkLlmClient(model);
@@ -569,7 +567,7 @@ describe('AiSdkLlmClient', () => {
   });
 
   it('test_complete_providerThrows_wrappedAsLlmUnavailable', async () => {
-    const model = new MockLanguageModelV3({
+    const model = new MockLanguageModelV2({
       doGenerate: async () => { throw new Error('boom'); },
     });
     const client = new AiSdkLlmClient(model);
@@ -581,7 +579,7 @@ describe('AiSdkLlmClient', () => {
 
   it('test_complete_passesSystemAndTemperature', async () => {
     let captured: unknown;
-    const model = new MockLanguageModelV3({
+    const model = new MockLanguageModelV2({
       doGenerate: async (options) => {
         captured = options;
         return ok('ok', 1, 1);
@@ -644,14 +642,14 @@ export class AiSdkLlmClient implements ILlmClient {
 ```typescript
 // packages/infra/tests/ai-sdk-embedding-client.test.ts
 import { describe, it, expect } from 'vitest';
-import { MockEmbeddingModelV3 } from 'ai/test';
+import { MockEmbeddingModelV2 } from 'ai/test';
 import { AiSdkEmbeddingClient } from '../src/ai-sdk-embedding-client.js';
 
 describe('AiSdkEmbeddingClient', () => {
   const stubVector = Array.from({ length: 8 }, (_, i) => i / 10);
 
   it('test_embed_returnsVectorsOfCorrectDimensionality', async () => {
-    const model = new MockEmbeddingModelV3({
+    const model = new MockEmbeddingModelV2({
       doEmbed: async ({ values }) => ({
         embeddings: values.map(() => stubVector),
       }),
@@ -666,7 +664,7 @@ describe('AiSdkEmbeddingClient', () => {
   });
 
   it('test_embed_emptyBatch_returnsEmpty', async () => {
-    const model = new MockEmbeddingModelV3({
+    const model = new MockEmbeddingModelV2({
       doEmbed: async () => ({ embeddings: [] }),
     });
     const client = new AiSdkEmbeddingClient(model, 8);
@@ -675,7 +673,7 @@ describe('AiSdkEmbeddingClient', () => {
   });
 
   it('test_embed_providerThrows_propagatesError', async () => {
-    const model = new MockEmbeddingModelV3({
+    const model = new MockEmbeddingModelV2({
       doEmbed: async () => { throw new Error('rate limit'); },
     });
     const client = new AiSdkEmbeddingClient(model, 8);
@@ -1175,7 +1173,7 @@ git commit -m ":sparkles: [core] WikiStatusService with index health and state s
 - Real `GitVersionControl` on a `git init` repo
 - Real `FsVerbatimStore`, `GitProjectResolver`, `YamlStateStore`
 - Real `FsSourceReader` for ingest input
-- `AiSdkLlmClient` / `AiSdkEmbeddingClient` constructed with AI SDK **mock models** (`MockLanguageModelV3` / `MockEmbeddingModelV3` from `ai/test`, v3 model spec) — deterministic, offline, reproducible
+- `AiSdkLlmClient` / `AiSdkEmbeddingClient` constructed with AI SDK **mock models** (`MockLanguageModelV2` / `MockEmbeddingModelV2` from `ai/test`, v2 model spec — the version actually shipped in AI SDK 5.x) — deterministic, offline, reproducible
 
 `beforeEach` creates the temp dir + initial git commit; `afterEach` removes the directory.
 
@@ -1187,22 +1185,19 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { MockLanguageModelV3, MockEmbeddingModelV3 } from 'ai/test';
+import { MockLanguageModelV2, MockEmbeddingModelV2 } from 'ai/test';
 import {
   FsFileStore, FsVerbatimStore, GitProjectResolver,
   RuVectorSearchEngine, AiSdkLlmClient, AiSdkEmbeddingClient,
 } from '@llm-wiki/infra';
 import { QueryService } from '@llm-wiki/core';
 
-// v3 mock doGenerate helper — see Task 3 for the full shape.
+// v2 mock doGenerate helper — see Task 3 for the full shape.
 function okGen(text: string, input = 10, output = 5) {
   return {
     content: [{ type: 'text' as const, text }],
-    finishReason: { unified: 'stop' as const, raw: undefined },
-    usage: {
-      inputTokens: { total: input, noCache: input, cacheRead: undefined, cacheWrite: undefined },
-      outputTokens: { total: output, text: output, reasoning: undefined },
-    },
+    finishReason: 'stop' as const,
+    usage: { inputTokens: input, outputTokens: output, totalTokens: input + output },
     warnings: [],
   };
 }
@@ -1221,7 +1216,7 @@ describe('Query E2E', () => {
       '---\ntitle: Architecture\nupdated: 2026-04-09\nsources: []\nsupersedes: null\ntags: []\nconfidence: 0.9\ncreated: 2026-04-09\n---\n## Summary\nClean Architecture with ports/adapters.\n');
 
     const stubVec = Array.from({ length: 8 }, (_, i) => i / 10);
-    const embedModel = new MockEmbeddingModelV3({
+    const embedModel = new MockEmbeddingModelV2({
       doEmbed: async ({ values }) => ({ embeddings: values.map(() => stubVec) }),
     });
     const embeddings = new AiSdkEmbeddingClient(embedModel, stubVec.length);
@@ -1232,7 +1227,7 @@ describe('Query E2E', () => {
     await search.index({ path: 'projects/cli-relay/architecture.md', title: 'Architecture',
       content: 'Clean Architecture with ports/adapters.', updated: '2026-04-09' });
 
-    const llmModel = new MockLanguageModelV3({
+    const llmModel = new MockLanguageModelV2({
       doGenerate: async () => okGen('Use testcontainers.', 10, 5),
     });
     const llm = new AiSdkLlmClient(llmModel);
@@ -1240,7 +1235,7 @@ describe('Query E2E', () => {
 
     service = new QueryService(search, llm, resolver, fs);
 
-    const throwingLlm = new AiSdkLlmClient(new MockLanguageModelV3({
+    const throwingLlm = new AiSdkLlmClient(new MockLanguageModelV2({
       doGenerate: async () => { throw new Error('LLM DOWN'); },
     }));
     throwingService = new QueryService(search, throwingLlm, resolver, fs);
@@ -1281,22 +1276,19 @@ import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
-import { MockLanguageModelV3, MockEmbeddingModelV3 } from 'ai/test';
+import { MockLanguageModelV2, MockEmbeddingModelV2 } from 'ai/test';
 import {
   FsFileStore, RuVectorSearchEngine, AiSdkLlmClient, AiSdkEmbeddingClient,
   GitVersionControl, FsSourceReader, YamlStateStore,
 } from '@llm-wiki/infra';
 import { IngestService } from '@llm-wiki/core';
 
-// v3 mock doGenerate helper.
+// v2 mock doGenerate helper.
 function okGen(text: string, input = 10, output = 20) {
   return {
     content: [{ type: 'text' as const, text }],
-    finishReason: { unified: 'stop' as const, raw: undefined },
-    usage: {
-      inputTokens: { total: input, noCache: input, cacheRead: undefined, cacheWrite: undefined },
-      outputTokens: { total: output, text: output, reasoning: undefined },
-    },
+    finishReason: 'stop' as const,
+    usage: { inputTokens: input, outputTokens: output, totalTokens: input + output },
     warnings: [],
   };
 }
@@ -1325,13 +1317,13 @@ describe('Ingest E2E', () => {
     const fs = new FsFileStore(wiki);
     const stubVec = Array.from({ length: 8 }, (_, i) => i / 10);
     const embeddings = new AiSdkEmbeddingClient(
-      new MockEmbeddingModelV3({
+      new MockEmbeddingModelV2({
         doEmbed: async ({ values }) => ({ embeddings: values.map(() => stubVec) }),
       }),
       stubVec.length,
     );
     const search = new RuVectorSearchEngine(path.join(wiki, '.local/search.db'), embeddings);
-    const llm = new AiSdkLlmClient(new MockLanguageModelV3({
+    const llm = new AiSdkLlmClient(new MockLanguageModelV2({
       doGenerate: async () => {
         if (llmThrows) throw new Error('DOWN');
         return okGen(
@@ -1400,7 +1392,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { MockEmbeddingModelV3 } from 'ai/test';
+import { MockEmbeddingModelV2 } from 'ai/test';
 import { RuVectorSearchEngine, AiSdkEmbeddingClient } from '@llm-wiki/infra';
 
 describe('search.db rebuild (INV-6)', () => {
@@ -1412,7 +1404,7 @@ describe('search.db rebuild (INV-6)', () => {
 
   function engine() {
     const embeddings = new AiSdkEmbeddingClient(
-      new MockEmbeddingModelV3({
+      new MockEmbeddingModelV2({
         doEmbed: async ({ values }) => ({ embeddings: values.map(() => stubVec) }),
       }),
       stubVec.length,
