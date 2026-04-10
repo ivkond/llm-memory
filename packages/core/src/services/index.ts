@@ -9,3 +9,5 @@ export type {
 } from './remember-service.js';
 export { RecallService } from './recall-service.js';
 export type { RecallRequest, RecallResponse, RecallPageInfo } from './recall-service.js';
+export { QueryService } from './query-service.js';
+export type { QueryRequest, QueryResponse, Citation } from './query-service.js';
