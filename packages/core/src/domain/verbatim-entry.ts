@@ -1,3 +1,5 @@
+import { InvalidIdentifierError } from './errors.js';
+
 export interface CreateVerbatimEntryOptions {
   content: string;
   agent: string;
@@ -17,6 +19,19 @@ export interface VerbatimEntryData {
   content: string;
 }
 
+/**
+ * Identifiers that get interpolated into filesystem paths (agent, sessionId)
+ * must be restricted to safe slug characters — otherwise a value like
+ * '../other-agent' would let a writer escape log/<agent>/raw/.
+ */
+const IDENTIFIER_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
+
+function assertIdentifier(field: string, value: string): void {
+  if (!IDENTIFIER_PATTERN.test(value)) {
+    throw new InvalidIdentifierError(field, value);
+  }
+}
+
 export class VerbatimEntry {
   private constructor(
     public readonly filename: string,
@@ -30,6 +45,9 @@ export class VerbatimEntry {
   ) {}
 
   static create(opts: CreateVerbatimEntryOptions): VerbatimEntry {
+    assertIdentifier('agent', opts.agent);
+    assertIdentifier('sessionId', opts.sessionId);
+
     const now = new Date();
     const date = now.toISOString().slice(0, 10);
     const genId = opts.idGenerator ?? (() => Math.random().toString(16).slice(2, 10));
@@ -49,6 +67,9 @@ export class VerbatimEntry {
   }
 
   static fromParsedData(filename: string, data: VerbatimEntryData): VerbatimEntry {
+    assertIdentifier('agent', data.agent);
+    assertIdentifier('sessionId', data.session);
+
     return new VerbatimEntry(
       filename,
       data.agent,
