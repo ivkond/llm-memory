@@ -29,7 +29,8 @@ export class ConfigLoader {
     const shared = await this.loadYaml('.config/settings.shared.yaml');
     const local = await this.loadYaml('.local/settings.local.yaml');
     const envOverrides = this.loadEnvOverrides();
-    return this.deepMerge(DEFAULTS, shared, local, envOverrides) as WikiConfig;
+    const defaultsAsRecord = DEFAULTS as unknown as Record<string, unknown>;
+    return this.deepMerge(defaultsAsRecord, shared, local, envOverrides) as unknown as WikiConfig;
   }
 
   private loadEnvOverrides(): Record<string, unknown> {
