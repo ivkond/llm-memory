@@ -23,4 +23,5 @@ export {
   GitConflictError,
   SourceNotFoundError,
   SourceParseError,
+  IngestPathViolationError,
 } from './errors.js';

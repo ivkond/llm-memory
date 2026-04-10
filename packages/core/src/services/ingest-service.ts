@@ -2,6 +2,7 @@ import {
   LlmUnavailableError,
   SourceParseError,
   GitConflictError,
+  IngestPathViolationError,
   WikiError,
 } from '../domain/errors.js';
 import type { ISourceReader } from '../ports/source-reader.js';
@@ -13,6 +14,9 @@ import type { IStateStore } from '../ports/state-store.js';
 
 /** Spec bound for wiki_ingest: max 100K tokens after extraction. */
 export const MAX_SOURCE_TOKENS = 100_000;
+
+/** Project identifier shape — mirrors InvalidIdentifierError's regex. */
+const PROJECT_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 
 export interface IngestRequest {
   source: string;
@@ -207,9 +211,86 @@ export class IngestService {
         throw new LlmUnavailableError('model returned malformed page entry');
       }
       const obj = raw as { path: string; title: string; content: string };
+      // Validate the model-provided path BEFORE it reaches any filesystem
+      // write. Anything that is not a wiki/ or projects/<name>/ markdown
+      // file must be rejected — without this check an LLM could target
+      // package.json, .github/workflows/, pnpm-lock.yaml, etc., and those
+      // writes would survive the squash + fast-forward merge into main.
+      this.validateTargetPath(obj.path);
       pages.push({ path: obj.path, title: obj.title, content: obj.content });
     }
     return pages;
+  }
+
+  /**
+   * Validate that an LLM-provided page path is a safe ingest target.
+   *
+   * Rules:
+   *  - Non-empty string.
+   *  - Relative (no leading `/`), no backslashes (Windows-style segments),
+   *    no empty / `.` / `..` segments (blocks traversal even before
+   *    normalisation).
+   *  - Must end in `.md`.
+   *  - First segment must be `wiki` OR `projects/<name>` where `<name>`
+   *    matches the project identifier regex.
+   *
+   * On violation, throws `IngestPathViolationError`. The outer `ingest()`
+   * catch treats this as a `WikiError` and force-removes the worktree —
+   * state is never written, main branch is never touched.
+   */
+  private validateTargetPath(requestedPath: string): void {
+    if (typeof requestedPath !== 'string' || requestedPath.length === 0) {
+      throw new IngestPathViolationError(requestedPath, 'path must be a non-empty string');
+    }
+    if (requestedPath.includes('\\')) {
+      throw new IngestPathViolationError(requestedPath, 'path must not contain backslashes');
+    }
+    if (requestedPath.startsWith('/')) {
+      throw new IngestPathViolationError(requestedPath, 'path must be relative');
+    }
+    if (/\0/.test(requestedPath)) {
+      throw new IngestPathViolationError(requestedPath, 'path must not contain NUL bytes');
+    }
+    const segments = requestedPath.split('/');
+    for (const seg of segments) {
+      if (seg === '' || seg === '.' || seg === '..') {
+        throw new IngestPathViolationError(
+          requestedPath,
+          `invalid segment "${seg}"`,
+        );
+      }
+    }
+    if (!requestedPath.endsWith('.md')) {
+      throw new IngestPathViolationError(requestedPath, 'path must have a .md extension');
+    }
+    if (segments[0] === 'wiki') {
+      if (segments.length < 2) {
+        throw new IngestPathViolationError(
+          requestedPath,
+          'wiki path must be wiki/<file>.md or deeper',
+        );
+      }
+      return;
+    }
+    if (segments[0] === 'projects') {
+      if (segments.length < 3) {
+        throw new IngestPathViolationError(
+          requestedPath,
+          'projects path must be projects/<name>/<file>.md',
+        );
+      }
+      if (!PROJECT_NAME_RE.test(segments[1])) {
+        throw new IngestPathViolationError(
+          requestedPath,
+          `invalid project name "${segments[1]}"`,
+        );
+      }
+      return;
+    }
+    throw new IngestPathViolationError(
+      requestedPath,
+      'path must start with wiki/ or projects/<name>/',
+    );
   }
 
   /** Some models wrap JSON output in ``` fences; trim them conservatively. */

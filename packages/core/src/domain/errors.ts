@@ -90,3 +90,12 @@ export class SourceParseError extends WikiError {
     super('SOURCE_PARSE_ERROR', `Failed to parse source ${uri}: ${reason}`);
   }
 }
+
+export class IngestPathViolationError extends WikiError {
+  constructor(public readonly attemptedPath: string, public readonly reason: string) {
+    super(
+      'INGEST_PATH_VIOLATION',
+      `Ingest target path ${JSON.stringify(attemptedPath)} is not allowed: ${reason}`,
+    );
+  }
+}

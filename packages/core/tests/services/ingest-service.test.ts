@@ -5,6 +5,7 @@ import {
   SourceNotFoundError,
   SourceParseError,
   GitConflictError,
+  IngestPathViolationError,
 } from '../../src/domain/errors.js';
 import { EMPTY_RUNTIME_STATE, type WikiRuntimeState } from '../../src/domain/runtime-state.js';
 import type {
@@ -317,6 +318,79 @@ describe('IngestService', () => {
 
     expect(vcs.removeSpy).not.toHaveBeenCalled();
     expect(stateStore.updateSpy).not.toHaveBeenCalled();
+  });
+
+  // ---- Path validation (Problem 1 from blocksorg review) -------------------
+
+  it.each([
+    ['package.json', 'top-level config file'],
+    ['pnpm-lock.yaml', 'lock file'],
+    ['.github/workflows/ci.yml', 'CI workflow'],
+    ['README.md', 'top-level markdown outside wiki/'],
+    ['docs/foo.md', 'unsupported top-level directory'],
+    ['wiki', 'directory without file'],
+    ['wiki/foo.txt', 'non-markdown suffix'],
+    ['wiki/../package.json', 'parent traversal segment'],
+    ['wiki/./foo.md', 'current-dir segment'],
+    ['/etc/passwd', 'absolute path'],
+    ['projects/foo.md', 'projects without project name'],
+    ['projects/with space/foo.md', 'invalid project name'],
+    ['projects/..foo/bar.md', 'leading dot in project name'],
+    ['wiki\\foo.md', 'backslash separator'],
+    ['wiki//foo.md', 'empty segment'],
+  ])('test_ingest_rejectsMaliciousPath_%s', async (badPath, _description) => {
+    llm.response = [{ path: badPath, title: 'Evil', content: '# oops' }];
+
+    await expect(service.ingest({ source: '/tmp/src.md' })).rejects.toBeInstanceOf(
+      IngestPathViolationError,
+    );
+
+    // Worktree was created (validation runs after createWorktree) but must be
+    // force-removed, main store must be untouched, and state must NOT be
+    // updated — matching INV-4 semantics.
+    expect(vcs.createSpy).toHaveBeenCalled();
+    expect(vcs.removeSpy).toHaveBeenCalledWith(
+      expect.stringContaining('.worktrees/ingest-'),
+      true,
+    );
+    expect(mainStore.writeSpy).not.toHaveBeenCalled();
+    expect(stateStore.updateSpy).not.toHaveBeenCalled();
+    // No files were written to the worktree either
+    if (worktreeStores.length > 0) {
+      expect(worktreeStores[0].writeSpy).not.toHaveBeenCalled();
+    }
+    // Never attempted a merge on the poisoned worktree
+    expect(vcs.mergeSpy).not.toHaveBeenCalled();
+  });
+
+  it('test_ingest_rejectsFirstBadPath_doesNotWriteLaterGoodPages', async () => {
+    // Mixed batch — second page is valid, first is not. The whole ingest
+    // must fail atomically: no files written even to the worktree.
+    llm.response = [
+      { path: '.github/workflows/ci.yml', title: 'Bad', content: 'bad' },
+      { path: 'wiki/tools/ok.md', title: 'OK', content: '## ok' },
+    ];
+
+    await expect(service.ingest({ source: '/tmp/src.md' })).rejects.toBeInstanceOf(
+      IngestPathViolationError,
+    );
+    if (worktreeStores.length > 0) {
+      expect(worktreeStores[0].writeSpy).not.toHaveBeenCalled();
+    }
+  });
+
+  it('test_ingest_acceptsValidWikiAndProjectPaths', async () => {
+    // Both a wiki/ and a projects/<name>/ target with identifier-shaped
+    // name and valid .md suffix should be accepted.
+    llm.response = [
+      { path: 'wiki/patterns/testing.md', title: 'T', content: '## ok' },
+      { path: 'projects/cli-relay_v2/architecture.md', title: 'A', content: '## ok' },
+    ];
+
+    const result = await service.ingest({ source: '/tmp/src.md' });
+    expect(result.pages_created.length + result.pages_updated.length).toBe(2);
+    expect(vcs.mergeSpy).toHaveBeenCalled();
+    expect(stateStore.updateSpy).toHaveBeenCalled();
   });
 
   it('test_ingest_rerunSameSource_updatesExistingPage_noDuplicate', async () => {
