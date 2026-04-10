@@ -7,3 +7,5 @@ export type {
   RememberSessionRequest,
   RememberSessionResponse,
 } from './remember-service.js';
+export { RecallService } from './recall-service.js';
+export type { RecallRequest, RecallResponse, RecallPageInfo } from './recall-service.js';
