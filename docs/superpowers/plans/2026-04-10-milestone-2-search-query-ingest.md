@@ -6,7 +6,9 @@
 
 **Architecture:** Extends Clean Architecture from M1. New ports: `ISearchEngine`, `ILlmClient`, `IEmbeddingClient`, `ISourceReader`, `IStateStore`, plus a `FileStoreFactory` type for worktree writes. `IVersionControl` is extended with worktree methods. New infra adapters: `RuVectorSearchEngine`, `AiSdkLlmClient`, `AiSdkEmbeddingClient`, `GitVersionControl`, `FsSourceReader`, `HttpSourceReader`, `CompositeSourceReader`, `YamlStateStore`. New services: `QueryService`, `IngestService`, `WikiStatusService`. `RecallService` is NOT modified — the spec defines `wiki_recall` as a pure file listing.
 
-**Tech Stack additions:** RuVector (embedded hybrid search), AI SDK (Vercel), simple-git (worktree management)
+**Tech Stack additions:** RuVector (embedded dense HNSW vector store) + MiniSearch (in-process BM25 / sparse index) fused via RRF inside the search adapter, AI SDK (Vercel), simple-git (worktree management)
+
+> **Plan revision (2026-04-10):** the published `ruvector@0.2.x` package only exposes a dense HNSW vector DB — it has no BM25 / inverted-index / hybrid-search API. The original plan's claim that RuVector provides "both BM25 (sparse) and vector (dense) search in one embedded package" is incorrect for the version we can actually install, so Task 2 ships hybrid search as `RuVectorSearchEngine` layered on `ruvector` (dense) + `minisearch` (sparse), merged inside the adapter via Reciprocal Rank Fusion. The public `ISearchEngine` contract and all invariants (INV-3, INV-6, INV-10) are unchanged.
 
 **Spec:** `docs/superpowers/specs/2026-04-10-llm-wiki-design.md`
 
@@ -415,50 +417,59 @@ git commit -m ":sparkles: [core] Add SearchResult, WikiRuntimeState, and M2 port
 
 ---
 
-## Task 2: ISearchEngine adapter — RuVectorSearchEngine
+## Task 2: ISearchEngine adapter — RuVectorSearchEngine (ruvector + minisearch)
 
 **Files:**
 - Create: `packages/infra/src/ruvector-search-engine.ts`
 - Test: `packages/infra/tests/ruvector-search-engine.test.ts`
 
-**Note:** RuVector is the sole backing implementation for M2. It provides both BM25 (sparse) and vector (dense) search in one embedded package. Placeholder adapters are explicitly forbidden — INV-6 requires real `search.db` rebuild semantics, and the project's `No placeholders` rule applies.
+**Backing libraries (revised 2026-04-10):** the `ruvector` npm package only exposes a dense HNSW vector DB. The ISearchEngine adapter therefore layers:
+- **ruvector** — dense vector index (HNSW, cosine similarity). Persists to `<dbPath>/vectors`.
+- **minisearch** — in-process BM25 / sparse index. Persists to `<dbPath>/bm25.json`.
+- **RRF fusion** — done inside the adapter, not by either library.
 
-If `ruvector` turns out to be unpublished or has a blocking API issue at implementation time, **stop and escalate to the human.** Do not ship an in-memory stand-in.
+Both halves live behind the same `RuVectorSearchEngine` class so the rest of the system still sees a single `ISearchEngine` instance and a single `search.db` directory. Placeholder adapters are still forbidden — the sparse half MUST be a real BM25 index (MiniSearch qualifies: it is a real BM25 implementation persisted to disk, not an ad-hoc regex match).
 
 **Dependencies (constructor-injected):**
 
 ```typescript
 constructor(
-  private readonly dbPath: string,
+  private readonly dbPath: string, // directory: stores vectors and bm25.json
   private readonly embeddingClient: IEmbeddingClient,
 ) {}
 ```
 
-**Why `IEmbeddingClient` lives here.** The spec defines hybrid search as `RuVector sparse (BM25) + RuVector dense (embeddings)` with embeddings coming from AI SDK (spec, Search Architecture section). `RuVector` owns sparse retrieval natively, but the dense half needs a vector per document. Instead of hard-coding AI SDK inside the search adapter, the adapter depends on `IEmbeddingClient` so:
+**Why `IEmbeddingClient` lives here.** Dense search needs a vector per document. Instead of hard-coding AI SDK inside the search adapter, the adapter depends on `IEmbeddingClient` so:
 - Task 2 can unit-test the engine with a trivial in-test fake (no AI SDK, no network)
 - Task 3 wires the real `AiSdkEmbeddingClient` in at composition time
 - Dense search is guaranteed to be covered end-to-end by Task 9's integration test
 
 **`index(entry)` flow inside the adapter:**
 1. `const [vector] = await embeddingClient.embed([entry.title + '\n' + entry.content])`
-2. Upsert `{ path, title, content, vector }` into RuVector (RuVector stores both the BM25 term index and the dense vector against the same doc id)
-3. Record `lastIndexedAt(path) = now()`
+2. Upsert `{ id: path, vector, metadata: { path, title, content, updated } }` into the ruvector DB
+3. Upsert `{ id: path, path, title, content, updated }` into the MiniSearch BM25 index
+4. Record `lastIndexedAt(path) = now()` (stored in the BM25 JSON sidecar so it's persisted)
 
 **`search(query)` flow inside the adapter:**
 1. `const [qVector] = await embeddingClient.embed([query.text])`
-2. Run RuVector hybrid search with BM25 over `query.text` and dense ANN over `qVector`
-3. Apply RRF fusion (if RuVector does not already fuse), optional scope prefix filter
-4. Return `SearchResult[]` sorted by fused score
+2. Dense: `ruvector.search({ vector: qVector, k: 2*maxResults, filter: scope?  })`
+3. Sparse: `minisearch.search(query.text, { prefix: true, fuzzy: 0.2 })` (post-filter by scope prefix)
+4. Reciprocal Rank Fusion: for each doc `d`, `score(d) = Σ 1/(k+rank_i(d))` with `k=60` over both rankings. Docs appearing in only one ranking are still included.
+5. Slice to `maxResults`, convert each hit to `SearchResult(path, title, excerpt, score, source)` where `source = 'hybrid'` if the doc was in both rankings, else `'vector'` or `'bm25'`. `excerpt` = first non-heading paragraph of the stored content.
 
-**`rebuild(entries)`:** batch-embed in chunks (respect `IEmbeddingClient` rate limits), clear the DB, bulk-insert. INV-6 (delete `search.db`, rebuild, identical results) is covered by Task 9.
+**`rebuild(entries)`:** batch-embed in chunks (respect `IEmbeddingClient` rate limits), clear the dense DB and the BM25 index, bulk-insert. INV-6 (delete `search.db`, rebuild, identical results) is covered by Task 9.
 
-- [ ] **Step 1: Install RuVector**
+**`health()`:** returns `'missing'` if the BM25 sidecar file does not exist, `'ok'` otherwise. The adapter does not own mtime checks — callers (QueryService / WikiStatusService) compare against `lastIndexedAt`.
+
+**`remove(path)`:** deletes both the vector and the BM25 document with the given id, and the `lastIndexedAt` entry.
+
+- [ ] **Step 1: Install backing libraries**
 
 ```bash
-pnpm --filter @llm-wiki/infra add ruvector
+pnpm --filter @llm-wiki/infra add ruvector minisearch
 ```
 
-If install fails, BLOCK and escalate — do NOT work around it with a stub.
+If install fails for ruvector OR minisearch, BLOCK and escalate — do NOT work around it with a stub.
 
 - [ ] **Step 2: Write failing contract tests for ISearchEngine**
 
