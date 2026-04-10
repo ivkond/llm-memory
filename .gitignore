@@ -4,6 +4,7 @@ node_modules
 dist
 *.tsbuildinfo
 .local/
+.worktrees/
 conversation.txt
 
 # Claude config — ignore local settings, keep skills
