@@ -4,7 +4,7 @@
 
 **Goal:** Add search infrastructure (RuVector), LLM/embedding clients (AI SDK), QueryService, IngestService, GitManager (worktree-based writes), and wiki_status — enabling semantic search, question answering with citations, external source ingestion, and operational diagnostics.
 
-**Architecture:** Extends Clean Architecture from M1. New ports: ISearchEngine, ILlmClient, IEmbeddingClient, IArchiver. New infra adapters: RuVectorSearchEngine, AiSdkLlmClient, AiSdkEmbeddingClient, GitVersionControl. New services: QueryService, IngestService. Enhanced RecallService with search index awareness.
+**Architecture:** Extends Clean Architecture from M1. New ports: `ISearchEngine`, `ILlmClient`, `IEmbeddingClient`, `ISourceReader`, `IStateStore`, plus a `FileStoreFactory` type for worktree writes. `IVersionControl` is extended with worktree methods. New infra adapters: `RuVectorSearchEngine`, `AiSdkLlmClient`, `AiSdkEmbeddingClient`, `GitVersionControl`, `FsSourceReader`, `HttpSourceReader`, `CompositeSourceReader`, `YamlStateStore`. New services: `QueryService`, `IngestService`, `WikiStatusService`. `RecallService` is NOT modified — the spec defines `wiki_recall` as a pure file listing.
 
 **Tech Stack additions:** RuVector (embedded hybrid search), AI SDK (Vercel), simple-git (worktree management)
 
@@ -14,9 +14,10 @@
 - INV-3: `wiki_query` with `LLM_UNAVAILABLE` returns raw search results in citations
 - INV-4: After `wiki_ingest` failure, main branch is untouched (worktree discarded)
 - INV-6: `search.db` can be deleted and rebuilt from markdown files with identical results
-- INV-9: `wiki_lint` in worktree does not modify main branch until merge
 - INV-10: Scope cascade returns project results first, wiki second, all third
 - INV-13: `wiki_ingest` runs in worktree, never modifies main branch files directly
+
+**Out of scope (deferred to Milestone 3):** `LintService` / `wiki_lint` and the consolidation / promote / health pipeline. INV-5, INV-9 remain uncovered until M3.
 
 **Depends on:** Milestone 1 (domain entities, ports, FsFileStore, FsVerbatimStore, RememberService, RecallService, SanitizationService, ConfigLoader, GitProjectResolver)
 
@@ -31,56 +32,144 @@ llm-memory/
       src/
         domain/
           search-result.ts                  # SearchResult value object (NEW)
+          runtime-state.ts                  # WikiRuntimeState value object (NEW)
         ports/
           search-engine.ts                  # ISearchEngine interface (NEW)
           llm-client.ts                     # ILlmClient interface (NEW)
           embedding-client.ts               # IEmbeddingClient interface (NEW)
-          archiver.ts                       # IArchiver interface (NEW)
+          source-reader.ts                  # ISourceReader interface (NEW)
+          state-store.ts                    # IStateStore interface (NEW)
+          file-store.ts                     # + FileStoreFactory type (MODIFIED)
           version-control.ts                # Extended with worktree methods
           index.ts                          # Updated re-exports
         services/
           query-service.ts                  # Orchestrates: SearchEngine + LlmClient (NEW)
-          ingest-service.ts                 # Orchestrates: LlmClient + FileStore + SearchEngine + VersionControl (NEW)
-          recall-service.ts                 # Enhanced: add search index staleness check
+          ingest-service.ts                 # Orchestrates: LlmClient + FileStoreFactory + SearchEngine + VersionControl + SourceReader (NEW)
+          status-service.ts                 # Orchestrates: FileStore + VerbatimStore + SearchEngine + StateStore (NEW)
           index.ts                          # Updated re-exports
       tests/
         domain/
           search-result.test.ts
+          runtime-state.test.ts
         services/
           query-service.test.ts
           ingest-service.test.ts
+          status-service.test.ts
 
     infra/
       src/
         ruvector-search-engine.ts           # ISearchEngine via RuVector (NEW)
-        ai-sdk-llm-client.ts               # ILlmClient via AI SDK (NEW)
+        ai-sdk-llm-client.ts                # ILlmClient via AI SDK (NEW)
         ai-sdk-embedding-client.ts          # IEmbeddingClient via AI SDK (NEW)
         git-version-control.ts              # IVersionControl via simple-git (NEW)
+        fs-source-reader.ts                 # ISourceReader for file:// and bare paths (NEW)
+        http-source-reader.ts               # ISourceReader for http(s):// URLs (NEW)
+        composite-source-reader.ts          # Dispatches by URI scheme (NEW)
+        yaml-state-store.ts                 # IStateStore via .local/state.yaml (NEW)
         index.ts                            # Updated re-exports
       tests/
         ruvector-search-engine.test.ts
         ai-sdk-llm-client.test.ts
         ai-sdk-embedding-client.test.ts
         git-version-control.test.ts
+        fs-source-reader.test.ts
+        composite-source-reader.test.ts
+        yaml-state-store.test.ts
         integration/
           query-e2e.test.ts
           ingest-e2e.test.ts
 ```
 
+**IArchiver is NOT delivered in this milestone.** It ships with `LintService` in Milestone 3 because nothing in M2 archives anything.
+
 ---
 
-## Task 1: SearchResult domain entity + new port interfaces
+## Task 1: Domain additions + new port interfaces
+
+**Goal:** Add everything M2 services need at the domain and port level, without any infra dependencies.
 
 **Files:**
 - Create: `packages/core/src/domain/search-result.ts`
+- Create: `packages/core/src/domain/runtime-state.ts`
 - Create: `packages/core/src/ports/search-engine.ts`
 - Create: `packages/core/src/ports/llm-client.ts`
 - Create: `packages/core/src/ports/embedding-client.ts`
-- Create: `packages/core/src/ports/archiver.ts`
+- Create: `packages/core/src/ports/source-reader.ts`
+- Create: `packages/core/src/ports/state-store.ts`
+- Modify: `packages/core/src/ports/file-store.ts` (add `FileStoreFactory` type)
 - Modify: `packages/core/src/ports/version-control.ts` (extend with worktree methods)
 - Modify: `packages/core/src/ports/index.ts`
 - Modify: `packages/core/src/domain/index.ts`
+- Modify: `packages/core/src/domain/errors.ts` (add SearchEmptyError, LlmUnavailableError, GitConflictError, SourceNotFoundError, SourceParseError)
 - Test: `packages/core/tests/domain/search-result.test.ts`
+- Test: `packages/core/tests/domain/runtime-state.test.ts`
+
+**Note:** `IArchiver` is deliberately not introduced here — it moves to Milestone 3 together with `LintService`.
+
+**Design of new port interfaces:**
+
+```typescript
+// packages/core/src/ports/source-reader.ts
+export interface SourceContent {
+  /** Canonical URI of the source (absolute path or URL). */
+  uri: string;
+  /** Raw text content. */
+  content: string;
+  /** Optional mime type hint, e.g. 'text/markdown'. */
+  mimeType?: string;
+  /** Size in bytes of the raw content. */
+  bytes: number;
+}
+
+export interface ISourceReader {
+  /** Read a source by URI (local path or http(s):// URL).
+   *  Throws SourceNotFoundError or SourceParseError on failure. */
+  read(uri: string): Promise<SourceContent>;
+}
+```
+
+```typescript
+// packages/core/src/ports/state-store.ts
+import type { WikiRuntimeState } from '../domain/runtime-state.js';
+
+export interface IStateStore {
+  /** Load runtime state. Returns defaults if the state file is missing. */
+  load(): Promise<WikiRuntimeState>;
+
+  /** Overwrite runtime state atomically. */
+  save(state: WikiRuntimeState): Promise<void>;
+
+  /** Shallow-merge a patch, persist, and return the new state. */
+  update(patch: Partial<WikiRuntimeState>): Promise<WikiRuntimeState>;
+}
+```
+
+```typescript
+// packages/core/src/domain/runtime-state.ts
+export interface ImportState {
+  last_import: string | null;
+}
+
+export interface WikiRuntimeState {
+  imports: Record<string, ImportState>;
+  last_lint: string | null;
+  last_ingest: string | null;
+}
+
+export const EMPTY_RUNTIME_STATE: WikiRuntimeState = {
+  imports: {},
+  last_lint: null,
+  last_ingest: null,
+};
+```
+
+```typescript
+// addition to packages/core/src/ports/file-store.ts
+/** Factory for building an IFileStore rooted at an arbitrary directory.
+ *  Used by IngestService / LintService to write inside a git worktree
+ *  without coupling services to any concrete adapter. */
+export type FileStoreFactory = (rootDir: string) => IFileStore;
+```
 
 - [ ] **Step 1: Write SearchResult value object test**
 
@@ -233,30 +322,7 @@ export interface IEmbeddingClient {
 }
 ```
 
-- [ ] **Step 6: Define IArchiver port**
-
-```typescript
-// packages/core/src/ports/archiver.ts
-
-export interface ArchiveResult {
-  archivePath: string;
-  filesArchived: number;
-  bytesCompressed: number;
-}
-
-export interface IArchiver {
-  /** Compress files to 7zip archive. */
-  archive(files: string[], outputPath: string): Promise<ArchiveResult>;
-
-  /** List archives in a directory. */
-  listArchives(directory: string): Promise<string[]>;
-
-  /** Clean up archives older than retention period. */
-  cleanup(directory: string, retentionMonths: number): Promise<number>;
-}
-```
-
-- [ ] **Step 7: Extend IVersionControl with worktree methods**
+- [ ] **Step 6: Extend IVersionControl with worktree methods**
 
 ```typescript
 // packages/core/src/ports/version-control.ts
@@ -290,18 +356,44 @@ export interface IVersionControl {
 }
 ```
 
-- [ ] **Step 8: Update port and domain index files**
+- [ ] **Step 7: Add new domain error types**
 
-- [ ] **Step 9: Verify build**
+Extend `packages/core/src/domain/errors.ts` with `SearchEmptyError` (`SEARCH_EMPTY`), `LlmUnavailableError` (`LLM_UNAVAILABLE`), `GitConflictError` (`GIT_CONFLICT`), `SourceNotFoundError` (`SOURCE_NOT_FOUND`), `SourceParseError` (`SOURCE_PARSE_ERROR`). Each extends `WikiError` and sets the documented code string.
 
-Run: `pnpm --filter @llm-wiki/core build`
+- [ ] **Step 8: Define ISourceReader and IStateStore ports**
+
+Copy the two interface blocks shown at the start of Task 1. ISourceReader is a single-method port (ISP-compliant). IStateStore is 3 methods: `load`, `save`, `update`.
+
+- [ ] **Step 9: Add `FileStoreFactory` type to `packages/core/src/ports/file-store.ts`**
+
+Append the `FileStoreFactory` definition shown at the start of Task 1. Do NOT modify `IFileStore` itself — keep the interface unchanged so M1 adapters still satisfy the contract.
+
+- [ ] **Step 10: Write failing tests for new domain types**
+
+- `search-result.test.ts` — already specified above.
+- `runtime-state.test.ts` — verify `EMPTY_RUNTIME_STATE` defaults, shape, and that it is a plain data object (no methods).
+
+- [ ] **Step 11: Implement SearchResult and runtime-state module**
+
+- [ ] **Step 12: Update port and domain index files**
+
+`packages/core/src/ports/index.ts` re-exports: `ISearchEngine`, `ILlmClient`, `IEmbeddingClient`, `ISourceReader`, `SourceContent`, `IStateStore`, `FileStoreFactory`, and the extended `IVersionControl` / `WorktreeInfo`.
+
+`packages/core/src/domain/index.ts` re-exports `SearchResult`, `WikiRuntimeState`, `EMPTY_RUNTIME_STATE`, and the new error types.
+
+- [ ] **Step 13: Verify build**
+
+Run: `pnpm lint`
 Expected: Compiles without errors.
 
-- [ ] **Step 10: Commit**
+Run: `pnpm vitest run packages/core/tests/domain/search-result.test.ts packages/core/tests/domain/runtime-state.test.ts`
+Expected: ALL PASS.
+
+- [ ] **Step 14: Commit**
 
 ```bash
 git add packages/core/
-git commit -m ":sparkles: [core] SearchResult entity + ISearchEngine, ILlmClient, IEmbeddingClient, IArchiver ports"
+git commit -m ":sparkles: [core] Add SearchResult, WikiRuntimeState, and M2 port interfaces"
 ```
 
 ---
@@ -312,7 +404,9 @@ git commit -m ":sparkles: [core] SearchResult entity + ISearchEngine, ILlmClient
 - Create: `packages/infra/src/ruvector-search-engine.ts`
 - Test: `packages/infra/tests/ruvector-search-engine.test.ts`
 
-**Note:** RuVector is an embedded npm package (`ruvector`). It provides both BM25 (sparse) and vector (dense) search in a single package. If RuVector is not yet published or has API issues, implement with an in-memory adapter that can be swapped later.
+**Note:** RuVector is the sole backing implementation for M2. It provides both BM25 (sparse) and vector (dense) search in one embedded package. Placeholder adapters are explicitly forbidden — INV-6 requires real `search.db` rebuild semantics, and the project's `No placeholders` rule applies.
+
+If `ruvector` turns out to be unpublished or has a blocking API issue at implementation time, **stop and escalate to the human.** Do not ship an in-memory stand-in.
 
 - [ ] **Step 1: Install RuVector**
 
@@ -320,25 +414,37 @@ git commit -m ":sparkles: [core] SearchResult entity + ISearchEngine, ILlmClient
 pnpm --filter @llm-wiki/infra add ruvector
 ```
 
-If `ruvector` is not available, create an in-memory hybrid search adapter as a placeholder.
+If install fails, BLOCK and escalate — do NOT work around it with a stub.
 
-- [ ] **Step 2: Write contract tests for ISearchEngine**
+- [ ] **Step 2: Write failing contract tests for ISearchEngine**
 
-Tests should verify:
-- `index()` then `search()` finds the document
-- `search()` with no matches returns empty array
-- `remove()` then `search()` does not find removed document
-- `rebuild()` re-creates the full index
-- `health()` returns 'ok' after index, 'missing' before
-- `lastIndexedAt()` returns timestamp after indexing
-- Hybrid search ranks documents by relevance
-- Scope filtering works correctly
+Required scenarios (use a real `search.db` under a temp dir, clean up in `afterEach`):
+- `test_index_then_search_findsDocument`
+- `test_search_noMatches_returnsEmptyArray`
+- `test_remove_then_search_missing`
+- `test_rebuild_fromEntries_recreatesIndex`
+- `test_health_returnsMissingBeforeIndex_okAfter`
+- `test_lastIndexedAt_returnsTimestamp`
+- `test_hybrid_ranksMoreRelevantFirst`
+- `test_scope_filtersByPrefix`
 
-- [ ] **Step 3: Implement RuVectorSearchEngine (or InMemorySearchEngine fallback)**
+Run: `pnpm vitest run packages/infra/tests/ruvector-search-engine.test.ts`
+Expected: FAIL (module not found).
 
-- [ ] **Step 4: Run tests, verify pass**
+- [ ] **Step 3: Implement RuVectorSearchEngine**
+
+- Wrap the `ruvector` API.
+- Persist the index at a path provided via the constructor (`.local/search.db` by default in wiring code).
+- `health()` returns `'missing'` when the DB file does not exist, `'ok'` otherwise. Staleness is reported by comparing `lastIndexedAt(path)` against file mtime in callers (QueryService / WikiStatusService) — the adapter itself does not own mtime checks.
+
+- [ ] **Step 4: Run tests, verify ALL PASS**
 
 - [ ] **Step 5: Commit**
+
+```bash
+git add packages/infra/src/ruvector-search-engine.ts packages/infra/tests/ruvector-search-engine.test.ts packages/infra/package.json pnpm-lock.yaml
+git commit -m ":sparkles: [infra] RuVectorSearchEngine adapter implementing ISearchEngine"
+```
 
 ---
 
@@ -428,41 +534,56 @@ All tests use real git repos in temp directories.
 
 ---
 
-## Task 5: QueryService
+## Task 5: QueryService (with pre-search staleness sync)
 
 **Files:**
 - Create: `packages/core/src/services/query-service.ts`
 - Test: `packages/core/tests/services/query-service.test.ts`
 
+**Scope of this service.** The spec says staleness detection runs "before each query". That responsibility lives here, NOT in `RecallService`:
+
+> For each file in wiki scope: if `file.mtime > index.lastIndexedAt(file)`, queue for incremental reindex.
+
+This keeps `wiki_recall` a pure file listing (per spec) and concentrates the search engine coupling in `wiki_query`.
+
 - [ ] **Step 1: Write failing tests (covers INV-3, INV-10)**
 
-Tests should verify:
-- `query()` with valid question returns answer + citations
-- `query()` with scope applies scope filtering
-- `query()` with project cascades: project -> wiki -> all (INV-10)
-- `query()` when LLM fails returns raw search results as citations (INV-3)
-- `query()` with no results throws SEARCH_EMPTY
-- Answer respects maxTokens limit
-- Citations capped at max 20
+Mock `ISearchEngine`, `ILlmClient`, `IFileStore`, `IProjectResolver`. Required scenarios:
+- `test_query_validQuestion_returnsAnswerAndCitations`
+- `test_query_explicitScope_searchEngineReceivesScope`
+- `test_query_cascadeByProject_projectFirst_thenWiki_thenAll` (INV-10)
+- `test_query_llmThrows_returnsRawResultsAsCitations` (INV-3)
+- `test_query_noSearchResults_throwsSearchEmpty`
+- `test_query_staleFile_triggersReindexBeforeSearch`
+- `test_query_citationsCappedAt20`
+- `test_query_answerRespectsMaxTokens`
 
 - [ ] **Step 2: Implement QueryService**
 
-```typescript
-// packages/core/src/services/query-service.ts
-// Orchestrates: ISearchEngine + ILlmClient + IProjectResolver
-//
-// Flow:
-// 1. Resolve scope (explicit, or cascade via project)
-// 2. Search via ISearchEngine
-// 3. Synthesize answer via ILlmClient (with fallback to raw results)
-// 4. Return answer + citations
-```
+Orchestrates: `ISearchEngine + ILlmClient + IProjectResolver + IFileStore`.
+
+Flow:
+1. Resolve scope (explicit scope parameter, or cascade derived from `project` param)
+2. Staleness sync: for each file in the resolved scope, if `file.updated > searchEngine.lastIndexedAt(path)`, call `searchEngine.index(entry)` to refresh it
+3. `searchEngine.search({ query, scope, limit })` → `SearchResult[]`
+4. If results empty → throw `SearchEmptyError`
+5. Try `llmClient.complete(...)` to synthesize an answer with citations
+6. On `LlmUnavailableError` (or any thrown error from the LLM client): return `{ answer: '', citations: rawResults, scope_used, project_used }` — INV-3 guarantees citations are populated
+7. Cap `citations` at 20
 
 - [ ] **Step 3: Run tests, verify pass**
+
+Run: `pnpm vitest run packages/core/tests/services/query-service.test.ts`
+Expected: ALL PASS.
 
 - [ ] **Step 4: Update services index**
 
 - [ ] **Step 5: Commit**
+
+```bash
+git add packages/core/src/services/query-service.ts packages/core/tests/services/query-service.test.ts packages/core/src/services/index.ts
+git commit -m ":sparkles: [core] QueryService with staleness sync and LLM fallback (INV-3, INV-10)"
+```
 
 ---
 
@@ -472,70 +593,137 @@ Tests should verify:
 - Create: `packages/core/src/services/ingest-service.ts`
 - Test: `packages/core/tests/services/ingest-service.test.ts`
 
+**Dependencies (constructor-injected, all ports from Task 1):**
+
+```typescript
+constructor(
+  private readonly sourceReader: ISourceReader,
+  private readonly llmClient: ILlmClient,
+  private readonly searchEngine: ISearchEngine,
+  private readonly versionControl: IVersionControl,
+  private readonly mainFileStore: IFileStore,
+  private readonly fileStoreFactory: FileStoreFactory,
+) {}
+```
+
+**Why a factory instead of reusing `IFileStore`.** M1's `IFileStore` is root-bound (`FsFileStore` is constructed with a single `rootDir`). IngestService writes inside a freshly created worktree whose path is only known at runtime, so it calls `fileStoreFactory(worktreeInfo.path)` to obtain a fresh `IFileStore` scoped to that worktree. Wiring code (MCP server / CLI) provides `(root) => new FsFileStore(root)`.
+
+**Why `ISourceReader`.** `wiki_ingest` accepts "path or URL" as the source. `IFileStore` only reads from the wiki root, so we need a separate port that routes file paths to `FsSourceReader` and URLs to `HttpSourceReader` (both shipped in Task 7).
+
 - [ ] **Step 1: Write failing tests (covers INV-4, INV-13)**
 
-Tests should verify:
-- `ingest()` creates/updates wiki pages from source content
-- `ingest()` runs in worktree, not main branch (INV-13)
-- `ingest()` on LLM failure: main branch untouched, worktree discarded (INV-4)
-- `ingest()` on success: pages committed, merged to main, reindexed
-- `ingest()` re-ingesting same source updates (not duplicates)
-- `ingest()` on GIT_CONFLICT: worktree preserved with path returned
-- Source size limit enforced (100K tokens)
+Mock all ports. Cover:
+- `test_ingest_validSource_createsWikiPagesInWorktree` (INV-13)
+- `test_ingest_sourceOver100K_throwsSourceParseError`
+- `test_ingest_sourceMissing_throwsSourceNotFoundError`
+- `test_ingest_llmFails_worktreeDiscarded_mainBranchUntouched` (INV-4) — verify `removeWorktree(path, true)` is called and no file is written through `mainFileStore`
+- `test_ingest_success_pagesCommittedSquashedMerged_thenReindexed`
+- `test_ingest_mergeConflict_worktreePreserved_returnsPath` — verify `removeWorktree` is NOT called
+- `test_ingest_rerunSameSource_updatesExistingPage_noDuplicate`
 
 - [ ] **Step 2: Implement IngestService**
 
-```typescript
-// packages/core/src/services/ingest-service.ts
-// Orchestrates: ILlmClient + IFileStore + ISearchEngine + IVersionControl
-//
-// Flow:
-// 1. Read source (file or URL)
-// 2. Create worktree
-// 3. LLM: extract facts, create wiki pages in worktree
-// 4. Update crossrefs
-// 5. Squash commit in worktree
-// 6. Merge worktree -> main
-// 7. Reindex changed pages in search.db
-// 8. Remove worktree
-// On failure: discard worktree (LLM error) or preserve (GIT_CONFLICT)
-```
+Flow:
+1. `source = sourceReader.read(req.source)` — throws `SourceNotFoundError` / `SourceParseError` on failure
+2. Enforce size limit: reject if `source.bytes > MAX_SOURCE_BYTES` (maps to 100K tokens)
+3. `worktree = versionControl.createWorktree('ingest')`
+4. `const worktreeStore = fileStoreFactory(worktree.path)` — isolated writes
+5. Call `llmClient.complete(...)` to extract structured pages; on error → `removeWorktree(worktree.path, true)` then rethrow as `LlmUnavailableError`
+6. Write pages through `worktreeStore.writeFile(...)`
+7. Update crossrefs (also through `worktreeStore`)
+8. `versionControl.commitInWorktree(worktree.path, changedFiles, ':memo: [ingest] ...')`
+9. `versionControl.squashWorktree(worktree.path, ':memo: [ingest] ...')`
+10. Try `versionControl.mergeWorktree(worktree.path)` — on `GitConflictError`: return the error with the worktree path, do NOT remove the worktree
+11. On success: for each changed file, read from `mainFileStore` and call `searchEngine.index(entry)`
+12. `versionControl.removeWorktree(worktree.path)`
 
-- [ ] **Step 3: Add new domain errors**
+Note: steps 5–12 run in a try/catch/finally that guarantees either (a) discard worktree on processing error, (b) preserve worktree on merge conflict, (c) remove worktree on success.
 
-```typescript
-// Add to packages/core/src/domain/errors.ts
-export class SearchEmptyError extends WikiError { ... }
-export class LlmUnavailableError extends WikiError { ... }
-export class GitConflictError extends WikiError { ... }
-export class SourceNotFoundError extends WikiError { ... }
-export class SourceParseError extends WikiError { ... }
-```
+- [ ] **Step 3: Run tests, verify pass**
 
-- [ ] **Step 4: Run tests, verify pass**
+Run: `pnpm vitest run packages/core/tests/services/ingest-service.test.ts`
+Expected: ALL PASS.
+
+- [ ] **Step 4: Update services index**
 
 - [ ] **Step 5: Commit**
 
+```bash
+git add packages/core/src/services/ingest-service.ts packages/core/tests/services/ingest-service.test.ts packages/core/src/services/index.ts
+git commit -m ":sparkles: [core] IngestService via worktree isolation (INV-4, INV-13)"
+```
+
 ---
 
-## Task 7: Enhanced RecallService — search index staleness detection
+## Task 7: ISourceReader + IStateStore adapters
+
+**Why this task:** `IngestService` (Task 6) needs to read a path-or-URL source, and `WikiStatusService` (Task 8) needs to read `.local/state.yaml` for `last_lint` / `last_ingest`. Neither responsibility fits inside `IFileStore` or `ConfigLoader`, so they ship as dedicated ports + adapters.
+
+**Note:** `RecallService` is NOT modified in this milestone. The spec defines `wiki_recall` as pure file listing (`{ project, pages, unconsolidated_count, total_pages }` with no `index_health`, no `SearchEngine` call), and that contract is honored as-is. Index staleness handling belongs to `QueryService` (pre-search) and `WikiStatusService` (`index_health` field) — both introduced in this milestone.
 
 **Files:**
-- Modify: `packages/core/src/services/recall-service.ts`
-- Modify: `packages/core/tests/services/recall-service.test.ts`
+- Create: `packages/infra/src/fs-source-reader.ts` (reads local files)
+- Create: `packages/infra/src/http-source-reader.ts` (reads http/https URLs)
+- Create: `packages/infra/src/composite-source-reader.ts` (dispatches by URI scheme)
+- Create: `packages/infra/src/yaml-state-store.ts` (reads/writes `.local/state.yaml`)
+- Test: `packages/infra/tests/fs-source-reader.test.ts`
+- Test: `packages/infra/tests/composite-source-reader.test.ts`
+- Test: `packages/infra/tests/yaml-state-store.test.ts`
+- Modify: `packages/infra/src/index.ts`
 
-- [ ] **Step 1: Add index staleness check to RecallService**
+- [ ] **Step 1: Write failing contract tests for FsSourceReader**
 
-The RecallService should detect when files have changed since last index:
-- Compare file mtime with `ISearchEngine.lastIndexedAt()`
-- Queue stale files for reindex
-- Include `index_health` in response
+Cover:
+- Reads a local markdown file and returns `{ uri, content, mimeType: 'text/markdown' }`
+- Resolves relative paths against cwd
+- Throws `SourceNotFoundError` when the file does not exist
+- Respects the 100K-token size limit (reject oversized sources)
 
-- [ ] **Step 2: Write tests for staleness detection**
+- [ ] **Step 2: Implement FsSourceReader via `node:fs/promises`**
 
-- [ ] **Step 3: Implement**
+- [ ] **Step 3: Write failing contract tests for HttpSourceReader**
 
-- [ ] **Step 4: Commit**
+Cover (use an in-process fetch stub — no real network):
+- Fetches a URL and returns the response body
+- Maps 404 to `SourceNotFoundError`, 5xx to `SourceParseError`
+- Aborts downloads larger than the size limit
+
+- [ ] **Step 4: Implement HttpSourceReader via global `fetch`**
+
+- [ ] **Step 5: Write tests for CompositeSourceReader**
+
+- `http://` / `https://` URIs go to `HttpSourceReader`
+- Everything else goes to `FsSourceReader`
+- Unknown scheme -> `SourceParseError`
+
+- [ ] **Step 6: Implement CompositeSourceReader**
+
+- [ ] **Step 7: Write failing contract tests for YamlStateStore**
+
+Cover:
+- `load()` returns default state when `.local/state.yaml` does not exist (no error)
+- `save()` writes YAML and creates parent dirs
+- `update(patch)` merges shallowly and persists, returning the new state
+- Round-trip: `save(state)` then `load()` returns structurally equal state
+- Concurrent `update()` calls do not drop writes (use a simple mutex)
+
+- [ ] **Step 8: Implement YamlStateStore via `IFileStore` + `js-yaml`**
+
+YamlStateStore is injected with an `IFileStore` so it reuses `FsFileStore` rather than owning its own filesystem handle.
+
+- [ ] **Step 9: Update `packages/infra/src/index.ts` to export the new adapters**
+
+- [ ] **Step 10: Run tests, verify pass**
+
+Run: `pnpm vitest run packages/infra/tests/fs-source-reader.test.ts packages/infra/tests/composite-source-reader.test.ts packages/infra/tests/yaml-state-store.test.ts`
+Expected: ALL PASS.
+
+- [ ] **Step 11: Commit**
+
+```bash
+git add packages/infra/src/fs-source-reader.ts packages/infra/src/http-source-reader.ts packages/infra/src/composite-source-reader.ts packages/infra/src/yaml-state-store.ts packages/infra/tests/ packages/infra/src/index.ts
+git commit -m ":sparkles: [infra] FsSourceReader, HttpSourceReader, YamlStateStore adapters"
+```
 
 ---
 
@@ -545,27 +733,69 @@ The RecallService should detect when files have changed since last index:
 - Create: `packages/core/src/services/status-service.ts`
 - Test: `packages/core/tests/services/status-service.test.ts`
 
+**Dependencies (constructor-injected):**
+
+```typescript
+constructor(
+  private readonly fileStore: IFileStore,
+  private readonly verbatimStore: IVerbatimStore,
+  private readonly searchEngine: ISearchEngine,
+  private readonly stateStore: IStateStore,
+) {}
+```
+
+`IStateStore` is the source of truth for `last_lint` and `last_ingest` — they come from `.local/state.yaml`, not from `ConfigLoader` (which only merges settings). `IngestService` and (future) `LintService` call `stateStore.update(...)` after successful operations; this service only reads.
+
 - [ ] **Step 1: Write failing tests**
 
-Tests should verify:
-- `status()` returns total_pages, projects list, unconsolidated count
-- `status()` returns index_health ('ok', 'stale', 'missing')
-- `status()` returns last_lint, last_ingest timestamps from state
-- `status()` throws WIKI_NOT_INITIALIZED when wiki doesn't exist
+Mock all four ports. Cover:
+- `test_status_emptyWiki_throwsWikiNotInitialized`
+- `test_status_nonEmptyWiki_returnsTotalPagesAndProjects`
+- `test_status_unconsolidatedCountPropagatedFromVerbatimStore`
+- `test_status_indexHealth_returnsFromSearchEngine`
+- `test_status_staleFiles_indexHealthReportsStale` — mock `searchEngine.health()` returning `'ok'` but simulate at least one file with `file.updated > searchEngine.lastIndexedAt(path)`, expect `'stale'`
+- `test_status_lastLintAndLastIngest_fromStateStore` — pre-populate `IStateStore` with non-null timestamps, assert they appear in the response
+- `test_status_freshState_lastLintAndLastIngestAreNull`
 
 - [ ] **Step 2: Implement WikiStatusService**
 
 ```typescript
 // packages/core/src/services/status-service.ts
-// Orchestrates: IFileStore + IVerbatimStore + ISearchEngine
+// Orchestrates: IFileStore + IVerbatimStore + ISearchEngine + IStateStore
 //
 // Response: {
-//   total_pages, projects, unconsolidated,
-//   last_lint, last_ingest, index_health
+//   total_pages: number,
+//   projects: string[],
+//   unconsolidated: number,
+//   last_lint: string | null,
+//   last_ingest: string | null,
+//   index_health: 'ok' | 'stale' | 'missing',
 // }
 ```
 
-- [ ] **Step 3: Commit**
+Flow:
+1. Enumerate `wiki/` and `projects/` via `fileStore.listFiles(...)`; throw `WikiNotInitializedError` if both are empty
+2. Derive `projects` list from directory names under `projects/`
+3. `unconsolidated = verbatimStore.countUnconsolidated()`
+4. Determine `index_health`:
+   - `searchEngine.health()` → if `'missing'`, return `'missing'`
+   - Otherwise, for each file, if `file.updated > lastIndexedAt(file.path)`, mark stale
+   - Return `'stale'` if any stale, else `'ok'`
+5. `state = stateStore.load()` → extract `last_lint`, `last_ingest`
+
+- [ ] **Step 3: Run tests, verify pass**
+
+Run: `pnpm vitest run packages/core/tests/services/status-service.test.ts`
+Expected: ALL PASS.
+
+- [ ] **Step 4: Update services index**
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add packages/core/src/services/status-service.ts packages/core/tests/services/status-service.test.ts packages/core/src/services/index.ts
+git commit -m ":sparkles: [core] WikiStatusService with index health and state store"
+```
 
 ---
 
@@ -577,12 +807,13 @@ Tests should verify:
 
 - [ ] **Step 1: Write Query E2E test**
 
-End-to-end with real filesystem + in-memory search:
-- Create wiki pages
-- Index them
+End-to-end wiring: real `FsFileStore`, real `RuVectorSearchEngine` backed by a temp `search.db`, stubbed `ILlmClient` (in-process fake — no real network).
+
+- Create wiki pages on disk
+- Index them via `RuVectorSearchEngine`
 - Query and verify answer + citations
 - Test scope cascade (INV-10)
-- Test LLM failure fallback (INV-3)
+- Test LLM failure fallback: inject an `ILlmClient` stub that throws; assert citations are still returned (INV-3)
 
 - [ ] **Step 2: Write Ingest E2E test**
 
@@ -616,20 +847,30 @@ After completing all 9 tasks, the following is added:
 | Component | What it does |
 |-----------|-------------|
 | `SearchResult` entity | Scored search hit value object |
-| `ISearchEngine` port | Index, search, rebuild interface |
+| `WikiRuntimeState` domain type | Shape of `.local/state.yaml` (imports, last_lint, last_ingest) |
+| New domain errors | `SearchEmptyError`, `LlmUnavailableError`, `GitConflictError`, `SourceNotFoundError`, `SourceParseError` |
+| `ISearchEngine` port | Index, search, rebuild, health, lastIndexedAt |
 | `ILlmClient` port | LLM completion interface |
 | `IEmbeddingClient` port | Embedding generation interface |
-| `IArchiver` port | Archive compression interface |
-| `IVersionControl` (extended) | Worktree create/remove/squash/merge |
+| `ISourceReader` port | Read source by path or URL for ingest |
+| `IStateStore` port | Load / save / update runtime state |
+| `FileStoreFactory` type | Build `IFileStore` rooted at arbitrary dir (worktree writes) |
+| `IVersionControl` (extended) | Worktree create / remove / squash / merge / commitInWorktree |
 | `RuVectorSearchEngine` | Hybrid BM25+vector search adapter |
 | `AiSdkLlmClient` | LLM via AI SDK |
 | `AiSdkEmbeddingClient` | Embeddings via AI SDK |
 | `GitVersionControl` | Git operations via simple-git |
-| `QueryService` | Semantic search + answer synthesis |
-| `IngestService` | External source ingestion via worktree |
-| `WikiStatusService` | Operational diagnostics |
-| Integration tests | Query E2E, Ingest E2E, index rebuild |
+| `FsSourceReader` / `HttpSourceReader` / `CompositeSourceReader` | Source ingestion adapters |
+| `YamlStateStore` | `.local/state.yaml` persistence via `IFileStore` + `js-yaml` |
+| `QueryService` | Semantic search + answer synthesis + pre-search staleness sync |
+| `IngestService` | External source ingestion via worktree isolation |
+| `WikiStatusService` | Operational diagnostics (total pages, projects, unconsolidated, index_health, last_lint, last_ingest) |
+| Integration tests | Query E2E, Ingest E2E, index rebuild (INV-6) |
 
-**Invariants verified:** INV-3, INV-4, INV-6, INV-9, INV-10, INV-13
+**Unchanged from M1:** `RecallService` stays a pure file listing as defined in the spec; no `SearchEngine` dependency is introduced. Any staleness handling needed for `wiki_query` lives inside `QueryService`.
+
+**Invariants verified:** INV-3, INV-4, INV-6, INV-10, INV-13
+
+**Deferred to Milestone 3:** `LintService`, `wiki_lint`, consolidation/promote/health pipeline, `IArchiver` adapter, INV-5, INV-9.
 
 **Next milestone:** MCP Server + CLI + Claude Code integration (MCP transport, CLI commands, Claude Code hooks/skill)
