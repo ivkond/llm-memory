@@ -11,6 +11,8 @@
     "@llm-wiki/core": "workspace:*",
     "gray-matter": "^4.0.3",
     "js-yaml": "^4.1.0",
+    "minisearch": "^7.2.0",
+    "ruvector": "^0.2.22",
     "simple-git": "^3.27.0"
   },
   "devDependencies": {
