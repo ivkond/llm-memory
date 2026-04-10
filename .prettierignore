@@ -1,0 +1,11 @@
+dist
+node_modules
+.worktrees
+.planning
+coverage
+pnpm-lock.yaml
+*.tsbuildinfo
+
+# Markdown: plan and doc files are hand-formatted (tables, code blocks, long lines)
+# — prettier reflow would hurt readability. Keep .md files out of prettier's scope.
+*.md
