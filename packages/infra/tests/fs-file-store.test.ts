@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, mkdir, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { FsFileStore } from '../src/fs-file-store.js';
@@ -115,6 +115,108 @@ describe('FsFileStore', () => {
       // Defense must not break legitimate nested writes.
       await store.writeFile('wiki/concepts/safe.md', '# safe');
       expect(await store.readFile('wiki/concepts/safe.md')).toBe('# safe');
+    });
+  });
+
+  describe('symlink defense', () => {
+    let outsideDir: string;
+
+    beforeEach(async () => {
+      outsideDir = await mkdtemp(path.join(tmpdir(), 'llm-wiki-outside-'));
+      await writeFile(path.join(outsideDir, 'secret.md'), 'TOP SECRET');
+    });
+
+    afterEach(async () => {
+      await rm(outsideDir, { recursive: true, force: true });
+    });
+
+    it('test_readFile_throughSymlinkToOutside_throwsPathEscape', async () => {
+      // Plant a symlink inside the wiki that points outside of it.
+      await mkdir(path.join(tempDir, 'wiki'), { recursive: true });
+      await symlink(
+        path.join(outsideDir, 'secret.md'),
+        path.join(tempDir, 'wiki/leak.md'),
+      );
+      await expect(store.readFile('wiki/leak.md')).rejects.toBeInstanceOf(PathEscapeError);
+    });
+
+    it('test_exists_symlinkToOutside_throwsPathEscape', async () => {
+      await mkdir(path.join(tempDir, 'wiki'), { recursive: true });
+      await symlink(
+        path.join(outsideDir, 'secret.md'),
+        path.join(tempDir, 'wiki/leak.md'),
+      );
+      await expect(store.exists('wiki/leak.md')).rejects.toBeInstanceOf(PathEscapeError);
+    });
+
+    it('test_readFile_symlinkedAncestor_throwsPathEscape', async () => {
+      // Symlink a directory-level ancestor to an outside directory.
+      await symlink(outsideDir, path.join(tempDir, 'linked'));
+      await expect(store.readFile('linked/secret.md')).rejects.toBeInstanceOf(PathEscapeError);
+    });
+
+    it('test_writeFile_throughSymlinkedAncestor_throwsPathEscape', async () => {
+      await symlink(outsideDir, path.join(tempDir, 'linked'));
+      await expect(store.writeFile('linked/pwned.md', 'x')).rejects.toBeInstanceOf(PathEscapeError);
+    });
+
+    it('test_writeFile_overExistingSymlinkToOutside_throwsPathEscape', async () => {
+      // File target itself is a pre-existing symlink pointing outside.
+      await mkdir(path.join(tempDir, 'wiki'), { recursive: true });
+      await symlink(
+        path.join(outsideDir, 'secret.md'),
+        path.join(tempDir, 'wiki/leak.md'),
+      );
+      await expect(store.writeFile('wiki/leak.md', 'pwned'))
+        .rejects.toBeInstanceOf(PathEscapeError);
+      // The outside file must be untouched.
+      const untouched = await store.readFile.call(
+        new FsFileStore(outsideDir),
+        'secret.md',
+      );
+      expect(untouched).toBe('TOP SECRET');
+    });
+
+    it('test_listFiles_skipsSymlinkedFilesUnderRoot', async () => {
+      // A symlink whose name happens to end in .md must NOT show up in listFiles
+      // — otherwise a subsequent readFile on the returned path would trip
+      // PathEscapeError anyway, but we don't want to surface it at all.
+      await mkdir(path.join(tempDir, 'wiki'), { recursive: true });
+      await writeFile(path.join(tempDir, 'wiki/real.md'), '# real');
+      await symlink(
+        path.join(outsideDir, 'secret.md'),
+        path.join(tempDir, 'wiki/leak.md'),
+      );
+      const files = await store.listFiles('wiki');
+      expect(files).toHaveLength(1);
+      expect(files[0].path).toBe('wiki/real.md');
+    });
+
+    it('test_listFiles_skipsSymlinkedSubdirectories', async () => {
+      // A symlinked subdirectory must be skipped by the walker entirely;
+      // otherwise it would enumerate outside-of-root files.
+      await mkdir(path.join(tempDir, 'wiki'), { recursive: true });
+      await writeFile(path.join(tempDir, 'wiki/real.md'), '# real');
+      await symlink(outsideDir, path.join(tempDir, 'wiki/linked-dir'));
+      const files = await store.listFiles('wiki');
+      expect(files).toHaveLength(1);
+      expect(files[0].path).toBe('wiki/real.md');
+    });
+
+    it('test_rootDirItselfIsSymlink_normalReadWriteStillWorks', async () => {
+      // A legitimate setup: wiki root is a symlink (e.g. ~/.llm-wiki → /data/wiki).
+      // Canonicalization must handle this without false positives.
+      const realRoot = await mkdtemp(path.join(tmpdir(), 'llm-wiki-real-'));
+      const linkedRoot = path.join(tmpdir(), `llm-wiki-linked-${Date.now()}`);
+      await symlink(realRoot, linkedRoot);
+      try {
+        const linkedStore = new FsFileStore(linkedRoot);
+        await linkedStore.writeFile('wiki/ok.md', '# ok');
+        expect(await linkedStore.readFile('wiki/ok.md')).toBe('# ok');
+      } finally {
+        await rm(linkedRoot, { force: true });
+        await rm(realRoot, { recursive: true, force: true });
+      }
     });
   });
 });
