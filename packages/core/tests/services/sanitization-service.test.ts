@@ -66,4 +66,53 @@ describe('SanitizationService', () => {
     expect(result.content).toContain('[REDACTED:github_token]');
     expect(result.warnings).toHaveLength(2);
   });
+
+  it('test_sanitize_warnMode_keepsContent_butReportsWarnings', () => {
+    const warnService = new SanitizationService({ enabled: true, mode: 'warn' });
+    const content = 'Found AWS key AKIAIOSFODNN7EXAMPLE in log';
+    const result = warnService.sanitize(content);
+    expect(result.content).toBe(content);
+    expect(result.content).not.toContain('[REDACTED');
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0].type).toBe('aws_key');
+    expect(result.isBlocked).toBe(false);
+  });
+
+  it('test_sanitize_blockMode_anyMatch_setsBlocked', () => {
+    const blockService = new SanitizationService({ enabled: true, mode: 'block' });
+    const content = 'Mostly normal text with one small AKIAIOSFODNN7EXAMPLE token inside a very long document that is otherwise entirely safe and harmless';
+    const result = blockService.sanitize(content);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.isBlocked).toBe(true);
+  });
+
+  it('test_sanitize_blockMode_noMatch_notBlocked', () => {
+    const blockService = new SanitizationService({ enabled: true, mode: 'block' });
+    const result = blockService.sanitize('Perfectly safe content.');
+    expect(result.warnings).toHaveLength(0);
+    expect(result.isBlocked).toBe(false);
+  });
+
+  it('test_sanitize_allowlist_skipsLocalhostConnectionString', () => {
+    const allowedService = new SanitizationService({
+      enabled: true,
+      mode: 'redact',
+      allowlist: ['localhost'],
+    });
+    const content = 'DB: postgresql://user:s3cretP@ss@localhost:5432/mydb';
+    const result = allowedService.sanitize(content);
+    expect(result.content).toBe(content);
+    expect(result.warnings).toHaveLength(0);
+  });
+
+  it('test_sanitize_allowlist_doesNotSkipNonMatching', () => {
+    const allowedService = new SanitizationService({
+      enabled: true,
+      mode: 'redact',
+      allowlist: ['localhost'],
+    });
+    const content = 'DB: postgresql://user:s3cretP@ss@prod.example.com:5432/mydb';
+    const result = allowedService.sanitize(content);
+    expect(result.content).toContain('[REDACTED:connection_string]');
+  });
 });

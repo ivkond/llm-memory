@@ -3,8 +3,12 @@ import type { RedactionWarning } from '../domain/sanitization-result.js';
 
 export interface SanitizationConfig {
   enabled: boolean;
+  /** 'redact' replaces matches with placeholders, 'warn' keeps content but reports warnings,
+   *  'block' forces SanitizationResult.isBlocked = true whenever any pattern matches. */
   mode: 'redact' | 'warn' | 'block';
   customPatterns?: string[];
+  /** Substrings that, when present in a match, exempt it from redaction
+   *  (e.g. 'localhost' to preserve local connection strings). */
   allowlist?: string[];
 }
 
@@ -48,6 +52,11 @@ export class SanitizationService {
       rule.pattern.lastIndex = 0;
 
       result = result.replace(rule.pattern, (match, ...args) => {
+        // Skip matches that are covered by the allowlist
+        if (this.isAllowed(match)) {
+          return match;
+        }
+
         const offset = typeof args[args.length - 2] === 'number' ? args[args.length - 2] : 0;
         warnings.push({
           type: rule.name,
@@ -55,11 +64,32 @@ export class SanitizationService {
           original_length: match.length,
         });
         totalRedactedLength += match.length;
+
+        // warn mode: keep original content, only collect warnings
+        if (this.config.mode === 'warn') {
+          return match;
+        }
+
         return `[REDACTED:${rule.name}]`;
       });
     }
 
+    // warn mode: no content modification, no blocking
+    if (this.config.mode === 'warn') {
+      return new SanitizationResult(content, warnings, 0);
+    }
+
+    // block mode: any match forces the result to be blocked
+    if (this.config.mode === 'block' && warnings.length > 0) {
+      return new SanitizationResult(result, warnings, 1);
+    }
+
     const redactedRatio = content.length > 0 ? totalRedactedLength / content.length : 0;
     return new SanitizationResult(result, warnings, redactedRatio);
+  }
+
+  private isAllowed(match: string): boolean {
+    if (!this.config.allowlist || this.config.allowlist.length === 0) return false;
+    return this.config.allowlist.some(allowed => match.includes(allowed));
   }
 }
