@@ -57,7 +57,7 @@ export class FsVerbatimStore implements IVerbatimStore {
         agentNames.add(parts[1]);
       }
     }
-    return [...agentNames].sort();
+    return [...agentNames].sort((a, b) => a.localeCompare(b));
   }
 
   async readEntry(filePath: string): Promise<VerbatimEntry | null> {

@@ -71,7 +71,7 @@ export class ClaudeCodeMemoryReader implements IAgentMemoryReader {
   private pickSessionId(data: Record<string, unknown>, basename: string): string | null {
     const fromFm = typeof data.session === 'string' ? data.session : null;
     if (fromFm && IDENTIFIER_SAFE.test(fromFm)) return fromFm;
-    const match = basename.match(/^\d{4}-\d{2}-\d{2}-(.+)$/);
+    const match = /^\d{4}-\d{2}-\d{2}-(.+)$/.exec(basename);
     if (match && IDENTIFIER_SAFE.test(match[1])) return match[1];
     if (IDENTIFIER_SAFE.test(basename)) return basename;
     return null;

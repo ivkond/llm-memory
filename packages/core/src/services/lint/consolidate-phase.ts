@@ -209,7 +209,7 @@ export class ConsolidatePhase {
 
   private stripCodeFence(content: string): string {
     const trimmed = content.trim();
-    const match = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
+    const match = /^```(?:json)?\s*([\s\S]*?)\s*```$/.exec(trimmed);
     return match ? match[1] : trimmed;
   }
 

@@ -90,7 +90,7 @@ describe('Lint E2E', () => {
     const dims = 8;
     const embed = (s: string): number[] => {
       const v = new Array(dims).fill(0);
-      for (let i = 0; i < s.length; i++) v[s.charCodeAt(i) % dims] += 1;
+      for (const cp of s) v[(cp.codePointAt(0) ?? 0) % dims] += 1;
       const n = Math.sqrt(v.reduce((a, b) => a + b * b, 0)) || 1;
       return v.map((x) => x / n);
     };

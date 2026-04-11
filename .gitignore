@@ -6,6 +6,7 @@ dist
 .local/
 .worktrees/
 conversation.txt
+sonar_issues.*
 
 # Claude config — ignore local settings, keep skills
 .claude/settings.json

@@ -54,27 +54,38 @@ export class PromotePhase {
 
     const touchedPaths: string[] = [];
     for (const prop of proposals) {
-      const body = this.renderPage(prop);
-      await this.worktreeFileStore.writeFile(prop.target, body);
-      touchedPaths.push(prop.target);
-
-      for (const sourcePath of prop.sources) {
-        const original = await this.worktreeFileStore.readFile(sourcePath);
-        if (original === null) continue;
-        const rewritten = this.replaceMarkerWithLink(
-          original,
-          prop.replacement_marker,
-          sourcePath,
-          prop.target,
-        );
-        if (rewritten !== original) {
-          await this.worktreeFileStore.writeFile(sourcePath, rewritten);
-          if (!touchedPaths.includes(sourcePath)) touchedPaths.push(sourcePath);
-        }
-      }
+      await this.applyProposal(prop, touchedPaths);
     }
 
     return { promotedCount: proposals.length, touchedPaths };
+  }
+
+  private async applyProposal(prop: PromoteProposal, touchedPaths: string[]): Promise<void> {
+    const body = this.renderPage(prop);
+    await this.worktreeFileStore.writeFile(prop.target, body);
+    touchedPaths.push(prop.target);
+
+    for (const sourcePath of prop.sources) {
+      await this.rewriteSource(sourcePath, prop, touchedPaths);
+    }
+  }
+
+  private async rewriteSource(
+    sourcePath: string,
+    prop: PromoteProposal,
+    touchedPaths: string[],
+  ): Promise<void> {
+    const original = await this.worktreeFileStore.readFile(sourcePath);
+    if (original === null) return;
+    const rewritten = this.replaceMarkerWithLink(
+      original,
+      prop.replacement_marker,
+      sourcePath,
+      prop.target,
+    );
+    if (rewritten === original) return;
+    await this.worktreeFileStore.writeFile(sourcePath, rewritten);
+    if (!touchedPaths.includes(sourcePath)) touchedPaths.push(sourcePath);
   }
 
   private async collectPracticeFiles(): Promise<FileInfo[]> {
@@ -178,12 +189,12 @@ export class PromotePhase {
     targetPath: string,
   ): string {
     const relLink = this.relativeLink(sourcePath, targetPath);
-    const markerEscaped = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const asHeading = new RegExp(`^##\\s+${markerEscaped}\\s*$`, 'm');
+    const markerEscaped = marker.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+    const asHeading = new RegExp(String.raw`^##\s+${markerEscaped}\s*$`, 'm');
     if (asHeading.test(original)) {
       return original.replace(asHeading, `## [${marker}](${relLink})`);
     }
-    const asLine = new RegExp(`^${markerEscaped}\\s*$`, 'm');
+    const asLine = new RegExp(String.raw`^${markerEscaped}\s*$`, 'm');
     if (asLine.test(original)) {
       return original.replace(asLine, `[${marker}](${relLink})`);
     }
@@ -199,7 +210,7 @@ export class PromotePhase {
 
   private stripCodeFence(content: string): string {
     const trimmed = content.trim();
-    const match = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
+    const match = /^```(?:json)?\s*([\s\S]*?)\s*```$/.exec(trimmed);
     return match ? match[1] : trimmed;
   }
 

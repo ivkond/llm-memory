@@ -99,7 +99,7 @@ describe('VerbatimEntry', () => {
     });
 
     it('test_create_agentWithBackslash_throwsInvalidIdentifier', () => {
-      expect(() => VerbatimEntry.create({ ...baseOpts, agent: 'evil\\agent' })).toThrow(
+      expect(() => VerbatimEntry.create({ ...baseOpts, agent: String.raw`evil\agent` })).toThrow(
         InvalidIdentifierError,
       );
     });

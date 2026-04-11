@@ -40,10 +40,11 @@ export class HealthPhase {
       if (data) pages.push(WikiPage.fromParsedData(info.path, data));
     }
 
-    const issues: HealthIssue[] = [];
-    issues.push(...this.checkOrphans(pages));
-    issues.push(...this.checkStale(pages));
-    issues.push(...this.checkBrokenLinks(pages));
+    const issues: HealthIssue[] = [
+      ...this.checkOrphans(pages),
+      ...this.checkStale(pages),
+      ...this.checkBrokenLinks(pages),
+    ];
     return { issues };
   }
 

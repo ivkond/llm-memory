@@ -9,7 +9,9 @@ class FakeFileStore implements IFileStore {
   async readFile(): Promise<string | null> {
     return null;
   }
-  async writeFile(): Promise<void> {}
+  async writeFile(): Promise<void> {
+    // HealthPhase is read-only — never writes through this fake.
+  }
   async listFiles(dir: string): Promise<FileInfo[]> {
     return Object.keys(this.files)
       .filter((k) => k.startsWith(dir + '/') || k === dir)

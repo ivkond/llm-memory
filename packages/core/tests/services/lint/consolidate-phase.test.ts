@@ -62,7 +62,7 @@ class FakeVerbatimStore implements IVerbatimStore {
   async listAgents(): Promise<string[]> {
     const set = new Set<string>();
     for (const e of this.entries.values()) set.add(e.agent);
-    return [...set].sort();
+    return [...set].sort((a, b) => a.localeCompare(b));
   }
   async readEntry(p: string): Promise<VerbatimEntry | null> {
     return this.entries.get(p) ?? null;

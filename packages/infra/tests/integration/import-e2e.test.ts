@@ -32,7 +32,7 @@ describe('Import E2E', () => {
   }
 
   function globPath(): string {
-    return path.join(sourceRoot, 'projects', '*', 'memory', '*.md').replace(/\\/g, '/');
+    return path.join(sourceRoot, 'projects', '*', 'memory', '*.md').replaceAll('\\', '/');
   }
 
   it('imports new files into log/claude-code/raw and stamps state', async () => {

@@ -31,7 +31,7 @@ class FakeReader implements IAgentMemoryReader {
 
 class FakeVerbatimStore implements IVerbatimStore {
   public written: VerbatimEntry[] = [];
-  private byPath: Map<string, VerbatimEntry> = new Map();
+  private readonly byPath: Map<string, VerbatimEntry> = new Map();
   async writeEntry(e: VerbatimEntry): Promise<void> {
     this.written.push(e);
     this.byPath.set(e.filePath, e);
@@ -48,7 +48,9 @@ class FakeVerbatimStore implements IVerbatimStore {
   async readEntry(filePath: string): Promise<VerbatimEntry | null> {
     return this.byPath.get(filePath) ?? null;
   }
-  async markConsolidated(): Promise<void> {}
+  async markConsolidated(): Promise<void> {
+    // ImportService never consolidates — stub to satisfy the port.
+  }
 }
 
 class FakeStateStore implements IStateStore {

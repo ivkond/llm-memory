@@ -49,11 +49,15 @@ class FakeSearchEngine implements ISearchEngine {
   async index(entry: IndexEntry): Promise<void> {
     this.indexed.push(entry);
   }
-  async remove(): Promise<void> {}
+  async remove(): Promise<void> {
+    // LintService only exercises index(); remove() is never called in these tests.
+  }
   async search(_q: SearchQuery): Promise<SearchResult[]> {
     return [];
   }
-  async rebuild(): Promise<void> {}
+  async rebuild(): Promise<void> {
+    // LintService never rebuilds — stub to satisfy the port.
+  }
   async health(): Promise<'ok' | 'stale' | 'missing'> {
     return 'ok';
   }
@@ -65,7 +69,9 @@ class FakeSearchEngine implements ISearchEngine {
 class FakeVerbatimStore implements IVerbatimStore {
   public unconsolidated = 3;
   public marked: string[] = [];
-  async writeEntry(): Promise<void> {}
+  async writeEntry(): Promise<void> {
+    // LintService never writes verbatim entries through this fake.
+  }
   async listUnconsolidated(): Promise<FileInfo[]> {
     return [];
   }
@@ -395,7 +401,7 @@ describe('LintService', () => {
 
     await service.lint({});
 
-    const indexedPaths = searchEngine.indexed.map((e) => e.path).sort();
+    const indexedPaths = searchEngine.indexed.map((e) => e.path).sort((a, b) => a.localeCompare(b));
     expect(indexedPaths).toEqual(['wiki/patterns/no-db-mocking.md', 'wiki/tools/postgresql.md']);
     expect(searchEngine.indexed.some((e) => e.path === 'log')).toBe(false);
   });

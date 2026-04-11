@@ -53,31 +53,14 @@ export class ImportService {
     const stateUpdates: Record<string, { last_import: string }> = {};
 
     for (const agent of selected) {
-      const config = this.deps.agentConfigs[agent];
-      if (!config || !config.enabled) continue;
-      const reader = this.deps.readers.get(agent);
+      const reader = this.readerForEnabledAgent(agent);
       if (!reader) continue;
+      const config = this.deps.agentConfigs[agent];
       const since = state.imports[agent]?.last_import ?? null;
-
-      try {
-        const items = await reader.discover({ paths: config.paths, since });
-        let imported = 0;
-        let skipped = 0;
-        for (const item of items) {
-          const entry = this.toVerbatim(item);
-          const existing = await this.deps.verbatimStore.readEntry(entry.filePath);
-          if (existing !== null) {
-            skipped++;
-            continue;
-          }
-          await this.deps.verbatimStore.writeEntry(entry);
-          imported++;
-        }
-        results.push({ agent, discovered: items.length, imported, skipped });
+      const result = await this.sweepAgent(agent, reader, config.paths, since);
+      results.push(result);
+      if (!result.error) {
         stateUpdates[agent] = { last_import: this.now().toISOString() };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        results.push({ agent, discovered: 0, imported: 0, skipped: 0, error: message });
       }
     }
 
@@ -90,6 +73,39 @@ export class ImportService {
     return { agents: results };
   }
 
+  private readerForEnabledAgent(agent: string): IAgentMemoryReader | null {
+    const config = this.deps.agentConfigs[agent];
+    if (!config?.enabled) return null;
+    return this.deps.readers.get(agent) ?? null;
+  }
+
+  private async sweepAgent(
+    agent: string,
+    reader: IAgentMemoryReader,
+    paths: string[],
+    since: string | null,
+  ): Promise<AgentImportResult> {
+    try {
+      const items = await reader.discover({ paths, since });
+      let imported = 0;
+      let skipped = 0;
+      for (const item of items) {
+        const entry = this.toVerbatim(item);
+        const existing = await this.deps.verbatimStore.readEntry(entry.filePath);
+        if (existing !== null) {
+          skipped++;
+          continue;
+        }
+        await this.deps.verbatimStore.writeEntry(entry);
+        imported++;
+      }
+      return { agent, discovered: items.length, imported, skipped };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { agent, discovered: 0, imported: 0, skipped: 0, error: message };
+    }
+  }
+
   private resolveAgents(filter?: string[]): string[] {
     if (filter && filter.length > 0) {
       for (const agent of filter) {
@@ -99,7 +115,7 @@ export class ImportService {
       }
       return filter;
     }
-    return [...this.deps.readers.keys()].sort();
+    return [...this.deps.readers.keys()].sort((a, b) => a.localeCompare(b));
   }
 
   private toVerbatim(item: AgentMemoryItem): VerbatimEntry {
@@ -116,8 +132,8 @@ export class ImportService {
 
   private static stableHash(input: string): string {
     let hash = 0;
-    for (let i = 0; i < input.length; i++) {
-      hash = ((hash << 5) - hash + input.charCodeAt(i)) | 0;
+    for (const cp of input) {
+      hash = Math.trunc((hash << 5) - hash + (cp.codePointAt(0) ?? 0));
     }
     return (hash >>> 0).toString(16).padStart(8, '0');
   }

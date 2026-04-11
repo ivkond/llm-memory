@@ -39,7 +39,7 @@ describe('ClaudeCodeMemoryReader', () => {
 
     const reader = new ClaudeCodeMemoryReader();
     const items = await reader.discover({
-      paths: [path.join(root, 'projects', '*', 'memory', '*.md').replace(/\\/g, '/')],
+      paths: [path.join(root, 'projects', '*', 'memory', '*.md').replaceAll('\\', '/')],
       since: null,
     });
     expect(items).toHaveLength(1);
@@ -65,7 +65,7 @@ describe('ClaudeCodeMemoryReader', () => {
     );
     const reader = new ClaudeCodeMemoryReader();
     const items = await reader.discover({
-      paths: [path.join(root, 'projects', '*', 'memory', '*.md').replace(/\\/g, '/')],
+      paths: [path.join(root, 'projects', '*', 'memory', '*.md').replaceAll('\\', '/')],
       since: '2026-04-01T00:00:00Z',
     });
     expect(items).toHaveLength(1);
@@ -81,7 +81,7 @@ describe('ClaudeCodeMemoryReader', () => {
     );
     const reader = new ClaudeCodeMemoryReader();
     const items = await reader.discover({
-      paths: [path.join(root, 'projects', '*', 'memory', '*.md').replace(/\\/g, '/')],
+      paths: [path.join(root, 'projects', '*', 'memory', '*.md').replaceAll('\\', '/')],
       since: null,
     });
     expect(items).toHaveLength(1);
@@ -91,7 +91,7 @@ describe('ClaudeCodeMemoryReader', () => {
   it('returns empty on missing paths without throwing', async () => {
     const reader = new ClaudeCodeMemoryReader();
     const items = await reader.discover({
-      paths: [path.join(root, 'does', 'not', 'exist', '*.md').replace(/\\/g, '/')],
+      paths: [path.join(root, 'does', 'not', 'exist', '*.md').replaceAll('\\', '/')],
       since: null,
     });
     expect(items).toEqual([]);

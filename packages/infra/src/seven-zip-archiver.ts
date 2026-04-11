@@ -46,6 +46,25 @@ export class SevenZipArchiver implements IArchiver {
   }
 
   async createArchive(archivePath: string, entries: ArchiveEntry[]): Promise<ArchiveResult> {
+    await this.validateInputs(archivePath, entries);
+
+    await mkdir(path.dirname(archivePath), { recursive: true });
+    const tmpPath = `${archivePath}.tmp`;
+    await this.safeUnlink(tmpPath);
+    await this.seedTmpFromExisting(archivePath, tmpPath);
+
+    await this.addToArchive(archivePath, tmpPath, entries);
+    await this.finalizeRename(archivePath, tmpPath);
+
+    const info = await stat(archivePath);
+    return {
+      archivePath,
+      fileCount: entries.length,
+      bytes: info.size,
+    };
+  }
+
+  private async validateInputs(archivePath: string, entries: ArchiveEntry[]): Promise<void> {
     if (!path.isAbsolute(archivePath)) {
       throw new ArchiveError(archivePath, 'archivePath must be absolute');
     }
@@ -53,24 +72,23 @@ export class SevenZipArchiver implements IArchiver {
       throw new ArchiveError(archivePath, 'no entries provided');
     }
     for (const entry of entries) {
-      if (!path.isAbsolute(entry.sourcePath)) {
-        throw new ArchiveError(
-          archivePath,
-          `entry.sourcePath must be absolute: ${entry.sourcePath}`,
-        );
-      }
-      try {
-        await stat(entry.sourcePath);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        throw new ArchiveError(archivePath, `source missing: ${entry.sourcePath} (${message})`);
-      }
+      await this.validateEntry(archivePath, entry);
     }
+  }
 
-    await mkdir(path.dirname(archivePath), { recursive: true });
-    const tmpPath = `${archivePath}.tmp`;
-    await this.safeUnlink(tmpPath);
+  private async validateEntry(archivePath: string, entry: ArchiveEntry): Promise<void> {
+    if (!path.isAbsolute(entry.sourcePath)) {
+      throw new ArchiveError(archivePath, `entry.sourcePath must be absolute: ${entry.sourcePath}`);
+    }
+    try {
+      await stat(entry.sourcePath);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new ArchiveError(archivePath, `source missing: ${entry.sourcePath} (${message})`);
+    }
+  }
 
+  private async seedTmpFromExisting(archivePath: string, tmpPath: string): Promise<void> {
     // If an archive already exists at the target, seed the tmp file with
     // its contents so `7za a` appends the new entries rather than building
     // a fresh archive from scratch. Missing target is fine — first run.
@@ -78,14 +96,18 @@ export class SevenZipArchiver implements IArchiver {
       await copyFile(archivePath, tmpPath);
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
-      if (code !== 'ENOENT') {
-        const message = err instanceof Error ? err.message : String(err);
-        throw new ArchiveError(archivePath, `failed to seed tmp archive: ${message}`);
-      }
+      if (code === 'ENOENT') return;
+      const message = err instanceof Error ? err.message : String(err);
+      throw new ArchiveError(archivePath, `failed to seed tmp archive: ${message}`);
     }
+  }
 
+  private async addToArchive(
+    archivePath: string,
+    tmpPath: string,
+    entries: ArchiveEntry[],
+  ): Promise<void> {
     const sourcePaths = entries.map((e) => e.sourcePath);
-
     try {
       await new Promise<void>((resolve, reject) => {
         const stream = add(tmpPath, sourcePaths, {
@@ -100,7 +122,9 @@ export class SevenZipArchiver implements IArchiver {
       const message = err instanceof Error ? err.message : String(err);
       throw new ArchiveError(archivePath, message);
     }
+  }
 
+  private async finalizeRename(archivePath: string, tmpPath: string): Promise<void> {
     try {
       await rename(tmpPath, archivePath);
     } catch (err) {
@@ -108,13 +132,6 @@ export class SevenZipArchiver implements IArchiver {
       const message = err instanceof Error ? err.message : String(err);
       throw new ArchiveError(archivePath, `rename failed: ${message}`);
     }
-
-    const info = await stat(archivePath);
-    return {
-      archivePath,
-      fileCount: entries.length,
-      bytes: info.size,
-    };
   }
 
   private async safeUnlink(target: string): Promise<void> {

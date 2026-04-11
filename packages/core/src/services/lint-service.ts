@@ -41,9 +41,7 @@ export interface LintRequest {
   phases?: LintPhaseName[];
 }
 
-export interface VerbatimStoreFactory {
-  (fileStore: IFileStore): IVerbatimStore;
-}
+export type VerbatimStoreFactory = (fileStore: IFileStore) => IVerbatimStore;
 
 export interface LintServiceDeps {
   mainRepoRoot: string;
@@ -77,52 +75,16 @@ export class LintService {
     const wtFileStore = this.deps.fileStoreFactory(worktree.path);
     const wtVerbatimStore = this.deps.verbatimStoreFactory(wtFileStore);
 
-    let report = LintReport.empty();
-    let consolidateResult: ConsolidateRunResult | null = null;
     const touchedPaths = new Set<string>();
-
+    let report: LintReport;
+    let consolidateResult: ConsolidateRunResult | null;
     try {
-      if (phaseSet.has('consolidate')) {
-        const phase = this.deps.makeConsolidatePhase(wtFileStore, wtVerbatimStore);
-        consolidateResult = await phase.run();
-        for (const p of consolidateResult.touchedPaths) touchedPaths.add(p);
-        touchedPaths.add('log');
-        report = report.merge(
-          LintReport.from({
-            consolidated: consolidateResult.consolidatedCount,
-            promoted: 0,
-            issues: [],
-            commitSha: null,
-          }),
-        );
-      }
-
-      if (phaseSet.has('promote')) {
-        const phase = this.deps.makePromotePhase(wtFileStore);
-        const result = await phase.run();
-        for (const p of result.touchedPaths) touchedPaths.add(p);
-        report = report.merge(
-          LintReport.from({
-            consolidated: 0,
-            promoted: result.promotedCount,
-            issues: [],
-            commitSha: null,
-          }),
-        );
-      }
-
-      if (phaseSet.has('health')) {
-        const phase = this.deps.makeHealthPhase(wtFileStore);
-        const result = await phase.run();
-        report = report.merge(
-          LintReport.from({
-            consolidated: 0,
-            promoted: 0,
-            issues: result.issues,
-            commitSha: null,
-          }),
-        );
-      }
+      ({ report, consolidateResult } = await this.runPhases(
+        phaseSet,
+        wtFileStore,
+        wtVerbatimStore,
+        touchedPaths,
+      ));
     } catch (err) {
       await this.safeRemoveWorktree(worktree.path, true);
       throw err;
@@ -132,51 +94,105 @@ export class LintService {
       touchedPaths.size > 0 &&
       ((consolidateResult?.consolidatedCount ?? 0) > 0 || report.promoted > 0);
 
-    let commitSha: string | null = null;
-    if (hasChanges) {
-      try {
-        await this.deps.versionControl.commitInWorktree(
-          worktree.path,
-          [...touchedPaths],
-          ':recycle: [lint] consolidate + promote',
-        );
-        await this.deps.versionControl.squashWorktree(
-          worktree.path,
-          ':recycle: [lint] consolidate + promote',
-        );
-        commitSha = await this.deps.versionControl.mergeWorktree(worktree.path);
-      } catch (err) {
-        if (err instanceof GitConflictError) throw err;
-        await this.safeRemoveWorktree(worktree.path, true);
-        throw err;
-      }
-    }
+    const commitSha = hasChanges ? await this.commitAndMerge(worktree.path, touchedPaths) : null;
 
     if (hasChanges) {
-      for (const p of touchedPaths) {
-        if (!p.startsWith('wiki/') && !p.startsWith('projects/')) continue;
-        const data = await this.deps.mainFileStore.readWikiPage(p);
-        if (!data) continue;
-        await this.deps.searchEngine.index({
-          path: p,
-          title: data.frontmatter.title,
-          content: data.content,
-          updated: data.frontmatter.updated,
-        });
-      }
+      await this.reindexTouched(touchedPaths);
     }
 
     await this.deps.stateStore.update({ last_lint: this.now().toISOString() });
     await this.safeRemoveWorktree(worktree.path);
 
-    if (consolidateResult?.archivedEntries && consolidateResult.archivedEntries.length > 0) {
-      const grouped = this.groupByMonthAndAgent(consolidateResult.archivedEntries);
-      for (const [archivePath, entries] of grouped) {
-        await this.deps.archiver.createArchive(archivePath, entries);
-      }
-    }
+    await this.runArchival(consolidateResult);
 
     return commitSha ? report.withCommit(commitSha) : report;
+  }
+
+  private async runPhases(
+    phaseSet: Set<LintPhaseName>,
+    wtFileStore: IFileStore,
+    wtVerbatimStore: IVerbatimStore,
+    touchedPaths: Set<string>,
+  ): Promise<{ report: LintReport; consolidateResult: ConsolidateRunResult | null }> {
+    let report = LintReport.empty();
+    let consolidateResult: ConsolidateRunResult | null = null;
+
+    if (phaseSet.has('consolidate')) {
+      consolidateResult = await this.deps.makeConsolidatePhase(wtFileStore, wtVerbatimStore).run();
+      for (const p of consolidateResult.touchedPaths) touchedPaths.add(p);
+      touchedPaths.add('log');
+      report = report.merge(
+        LintReport.from({
+          consolidated: consolidateResult.consolidatedCount,
+          promoted: 0,
+          issues: [],
+          commitSha: null,
+        }),
+      );
+    }
+
+    if (phaseSet.has('promote')) {
+      const result = await this.deps.makePromotePhase(wtFileStore).run();
+      for (const p of result.touchedPaths) touchedPaths.add(p);
+      report = report.merge(
+        LintReport.from({
+          consolidated: 0,
+          promoted: result.promotedCount,
+          issues: [],
+          commitSha: null,
+        }),
+      );
+    }
+
+    if (phaseSet.has('health')) {
+      const result = await this.deps.makeHealthPhase(wtFileStore).run();
+      report = report.merge(
+        LintReport.from({
+          consolidated: 0,
+          promoted: 0,
+          issues: result.issues,
+          commitSha: null,
+        }),
+      );
+    }
+
+    return { report, consolidateResult };
+  }
+
+  private async commitAndMerge(worktreePath: string, touchedPaths: Set<string>): Promise<string> {
+    const message = ':recycle: [lint] consolidate + promote';
+    try {
+      await this.deps.versionControl.commitInWorktree(worktreePath, [...touchedPaths], message);
+      await this.deps.versionControl.squashWorktree(worktreePath, message);
+      return await this.deps.versionControl.mergeWorktree(worktreePath);
+    } catch (err) {
+      if (err instanceof GitConflictError) throw err;
+      await this.safeRemoveWorktree(worktreePath, true);
+      throw err;
+    }
+  }
+
+  private async reindexTouched(touchedPaths: Set<string>): Promise<void> {
+    for (const p of touchedPaths) {
+      if (!p.startsWith('wiki/') && !p.startsWith('projects/')) continue;
+      const data = await this.deps.mainFileStore.readWikiPage(p);
+      if (!data) continue;
+      await this.deps.searchEngine.index({
+        path: p,
+        title: data.frontmatter.title,
+        content: data.content,
+        updated: data.frontmatter.updated,
+      });
+    }
+  }
+
+  private async runArchival(consolidateResult: ConsolidateRunResult | null): Promise<void> {
+    const archived = consolidateResult?.archivedEntries;
+    if (!archived || archived.length === 0) return;
+    const grouped = this.groupByMonthAndAgent(archived);
+    for (const [archivePath, entries] of grouped) {
+      await this.deps.archiver.createArchive(archivePath, entries);
+    }
   }
 
   private groupByMonthAndAgent(entries: ArchiveEntry[]): Map<string, ArchiveEntry[]> {
