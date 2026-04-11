@@ -24,4 +24,5 @@ export {
   SourceNotFoundError,
   SourceParseError,
   IngestPathViolationError,
+  ArchiveError,
 } from './errors.js';

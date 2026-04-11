@@ -114,3 +114,12 @@ export class IngestPathViolationError extends WikiError {
     );
   }
 }
+
+export class ArchiveError extends WikiError {
+  constructor(
+    public readonly target: string,
+    message: string,
+  ) {
+    super('ARCHIVE_ERROR', `Failed to archive ${target}: ${message}`);
+  }
+}
