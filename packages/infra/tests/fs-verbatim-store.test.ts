@@ -63,6 +63,25 @@ describe('FsVerbatimStore', () => {
     const count = await verbatimStore.countUnconsolidated();
     expect(count).toBe(2);
   });
+
+  it('test_listAgents_returnsAgentsWithEntries', async () => {
+    await fileStore.writeFile(
+      'log/claude-code/raw/2026-04-09-a-1111.md',
+      '---\nconsolidated: false\n---\nfact',
+    );
+    await fileStore.writeFile(
+      'log/cursor/raw/2026-04-09-b-2222.md',
+      '---\nconsolidated: true\n---\nfact',
+    );
+
+    const agents = await verbatimStore.listAgents();
+    expect(agents).toEqual(['claude-code', 'cursor']);
+  });
+
+  it('test_listAgents_returnsEmptyArrayWhenLogMissing', async () => {
+    const agents = await verbatimStore.listAgents();
+    expect(agents).toEqual([]);
+  });
 });
 
 describe('FsVerbatimStore.readEntry', () => {

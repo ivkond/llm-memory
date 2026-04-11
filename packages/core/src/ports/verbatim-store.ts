@@ -11,6 +11,13 @@ export interface IVerbatimStore {
   /** Count unconsolidated entries across all agents. */
   countUnconsolidated(): Promise<number>;
 
+  /**
+   * List agent identifiers that currently have at least one verbatim entry
+   * on disk. Returned in deterministic (sorted) order so callers can rely on
+   * stable iteration for batching. Empty array when no `log/` tree exists.
+   */
+  listAgents(): Promise<string[]>;
+
   /** Load a single entry by relative path. Returns null if missing. */
   readEntry(filePath: string): Promise<VerbatimEntry | null>;
 

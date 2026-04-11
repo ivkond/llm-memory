@@ -39,6 +39,16 @@ export class FsVerbatimStore implements IVerbatimStore {
   }
 
   async countUnconsolidated(): Promise<number> {
+    const agents = await this.listAgents();
+    let count = 0;
+    for (const agent of agents) {
+      const entries = await this.listUnconsolidated(agent);
+      count += entries.length;
+    }
+    return count;
+  }
+
+  async listAgents(): Promise<string[]> {
     const logEntries = await this.fileStore.listFiles('log');
     const agentNames = new Set<string>();
     for (const entry of logEntries) {
@@ -47,13 +57,7 @@ export class FsVerbatimStore implements IVerbatimStore {
         agentNames.add(parts[1]);
       }
     }
-
-    let count = 0;
-    for (const agent of agentNames) {
-      const entries = await this.listUnconsolidated(agent);
-      count += entries.length;
-    }
-    return count;
+    return [...agentNames].sort();
   }
 
   async readEntry(filePath: string): Promise<VerbatimEntry | null> {
