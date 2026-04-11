@@ -140,4 +140,16 @@ describe('VerbatimEntry', () => {
       ).toThrow(InvalidIdentifierError);
     });
   });
+
+  it('honours an explicit createdAt for both filename date and created field', () => {
+    const entry = VerbatimEntry.create({
+      content: 'x',
+      agent: 'claude-code',
+      sessionId: 'sess',
+      idGenerator: () => 'deadbeef',
+      createdAt: new Date('2025-11-30T08:15:30Z'),
+    });
+    expect(entry.filename).toBe('2025-11-30-sess-deadbeef.md');
+    expect(entry.created).toBe('2025-11-30T08:15:30.000Z');
+  });
 });

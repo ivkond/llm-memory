@@ -7,6 +7,12 @@ export interface CreateVerbatimEntryOptions {
   project?: string;
   tags?: string[];
   idGenerator?: () => string;
+  /**
+   * Override the entry's creation timestamp. ImportService uses this to
+   * derive deterministic filenames from the source file's mtime instead
+   * of the current wall clock — required for rerun idempotency.
+   */
+  createdAt?: Date;
 }
 
 export interface VerbatimEntryData {
@@ -48,7 +54,7 @@ export class VerbatimEntry {
     assertIdentifier('agent', opts.agent);
     assertIdentifier('sessionId', opts.sessionId);
 
-    const now = new Date();
+    const now = opts.createdAt ?? new Date();
     const date = now.toISOString().slice(0, 10);
     const genId = opts.idGenerator ?? (() => Math.random().toString(16).slice(2, 10));
     const uuid = genId();
