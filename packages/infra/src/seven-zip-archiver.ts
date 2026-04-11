@@ -1,6 +1,6 @@
 import { add } from 'node-7z';
 import sevenBin from '7zip-bin';
-import { stat, unlink, mkdir, rename } from 'node:fs/promises';
+import { stat, unlink, mkdir, rename, copyFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
   ArchiveError,
@@ -14,11 +14,21 @@ import {
  * the `7zip-bin` package. We drive it via `node-7z` which returns a stream
  * of progress events — we resolve on `end`, reject on `error`.
  *
- * Atomicity: we write to `<archivePath>.tmp` and rename on success. On any
- * failure the temp file is unlinked so the caller never sees a partial
- * archive at `archivePath`. node-7z refuses to add empty file lists, so
- * the pre-check below turns that into an `ArchiveError` before we touch
- * the filesystem.
+ * Atomicity + cumulative semantics: we first copy any existing archive at
+ * `archivePath` to `<archivePath>.tmp`, then let `7za a` add the new
+ * entries to the temp file, then rename on success. This gives us two
+ * guarantees at once:
+ *   - atomicity: on any failure we unlink the temp file so callers never
+ *     see a partial archive at `archivePath`;
+ *   - accumulation: a second call against the same `archivePath` does NOT
+ *     clobber the previous archive's contents. Under the wiki_lint
+ *     pipeline `archivePath` is stable for a whole calendar month per
+ *     agent (`YYYY-MM-<agent>.7z`), so two successful lint runs in the
+ *     same month must both contribute their verbatim batches to the
+ *     same backup file. Without the pre-copy, the second run would
+ *     replace the first run's snapshots — operational data loss.
+ * node-7z refuses to add empty file lists, so the pre-check below turns
+ * that into an `ArchiveError` before we touch the filesystem.
  *
  * The adapter rejects relative `archivePath` values up front — process
  * CWD is not a stable anchor across CLI, MCP server, and test runners,
@@ -60,6 +70,19 @@ export class SevenZipArchiver implements IArchiver {
     await mkdir(path.dirname(archivePath), { recursive: true });
     const tmpPath = `${archivePath}.tmp`;
     await this.safeUnlink(tmpPath);
+
+    // If an archive already exists at the target, seed the tmp file with
+    // its contents so `7za a` appends the new entries rather than building
+    // a fresh archive from scratch. Missing target is fine — first run.
+    try {
+      await copyFile(archivePath, tmpPath);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== 'ENOENT') {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new ArchiveError(archivePath, `failed to seed tmp archive: ${message}`);
+      }
+    }
 
     const sourcePaths = entries.map((e) => e.sourcePath);
 
