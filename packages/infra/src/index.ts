@@ -11,3 +11,4 @@ export { FsSourceReader } from './fs-source-reader.js';
 export { HttpSourceReader } from './http-source-reader.js';
 export { CompositeSourceReader } from './composite-source-reader.js';
 export { YamlStateStore } from './yaml-state-store.js';
+export { SevenZipArchiver } from './seven-zip-archiver.js';
