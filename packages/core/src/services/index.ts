@@ -15,3 +15,20 @@ export { IngestService, MAX_SOURCE_TOKENS } from './ingest-service.js';
 export type { IngestRequest, IngestResponse } from './ingest-service.js';
 export { WikiStatusService } from './status-service.js';
 export type { StatusResponse } from './status-service.js';
+export { LintService } from './lint-service.js';
+export type {
+  LintPhase,
+  LintPhaseName,
+  LintRequest,
+  LintServiceDeps,
+  ConsolidateRunResult,
+  PromoteRunResult,
+  HealthRunResult,
+  VerbatimStoreFactory,
+} from './lint-service.js';
+export { ConsolidatePhase, CONSOLIDATE_BATCH_LIMIT } from './lint/consolidate-phase.js';
+export type { ConsolidatePhaseResult } from './lint/consolidate-phase.js';
+export { PromotePhase } from './lint/promote-phase.js';
+export type { PromotePhaseResult } from './lint/promote-phase.js';
+export { HealthPhase } from './lint/health-phase.js';
+export type { HealthPhaseResult, HealthPhaseOptions } from './lint/health-phase.js';
