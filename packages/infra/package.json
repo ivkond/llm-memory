@@ -14,6 +14,7 @@
     "@ai-sdk/openai": "^1.3.24",
     "@llm-wiki/core": "workspace:*",
     "ai": "^5.0.172",
+    "globby": "^14.1.0",
     "gray-matter": "^4.0.3",
     "js-yaml": "^4.1.0",
     "minisearch": "^7.2.0",
