@@ -31,4 +31,6 @@ export {
   SourceParseError,
   IngestPathViolationError,
   ArchiveError,
+  ImportReaderNotRegisteredError,
+  LintPhaseError,
 } from './errors.js';

@@ -123,3 +123,18 @@ export class ArchiveError extends WikiError {
     super('ARCHIVE_ERROR', `Failed to archive ${target}: ${message}`);
   }
 }
+
+export class ImportReaderNotRegisteredError extends WikiError {
+  constructor(public readonly agent: string) {
+    super('IMPORT_READER_NOT_REGISTERED', `No IAgentMemoryReader registered for agent "${agent}"`);
+  }
+}
+
+export class LintPhaseError extends WikiError {
+  constructor(
+    public readonly phase: string,
+    message: string,
+  ) {
+    super('LINT_PHASE_ERROR', `Lint phase "${phase}" failed: ${message}`);
+  }
+}
