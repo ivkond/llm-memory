@@ -1,6 +1,6 @@
 import matter from 'gray-matter';
+import { VerbatimEntry } from '@llm-wiki/core';
 import type { IVerbatimStore, IFileStore, FileInfo } from '@llm-wiki/core';
-import type { VerbatimEntry } from '@llm-wiki/core';
 
 export class FsVerbatimStore implements IVerbatimStore {
   constructor(private readonly fileStore: IFileStore) {}
@@ -54,5 +54,33 @@ export class FsVerbatimStore implements IVerbatimStore {
       count += entries.length;
     }
     return count;
+  }
+
+  async readEntry(filePath: string): Promise<VerbatimEntry | null> {
+    const raw = await this.fileStore.readFile(filePath);
+    if (raw === null) return null;
+    const parsed = matter(raw);
+    const filename = filePath.split('/').pop() ?? filePath;
+    return VerbatimEntry.fromParsedData(filename, {
+      session: String(parsed.data.session ?? ''),
+      agent: String(parsed.data.agent ?? ''),
+      project: parsed.data.project ? String(parsed.data.project) : undefined,
+      tags: Array.isArray(parsed.data.tags) ? parsed.data.tags.map(String) : undefined,
+      consolidated: parsed.data.consolidated === true,
+      created: String(parsed.data.created ?? ''),
+      content: parsed.content,
+    });
+  }
+
+  async markConsolidated(filePath: string): Promise<void> {
+    const raw = await this.fileStore.readFile(filePath);
+    if (raw === null) {
+      throw new Error(`Cannot mark consolidated — file not found: ${filePath}`);
+    }
+    const parsed = matter(raw);
+    if (parsed.data.consolidated === true) return;
+    const nextFm = { ...parsed.data, consolidated: true };
+    const rewritten = matter.stringify(parsed.content, nextFm);
+    await this.fileStore.writeFile(filePath, rewritten);
   }
 }

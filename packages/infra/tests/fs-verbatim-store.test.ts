@@ -64,3 +64,93 @@ describe('FsVerbatimStore', () => {
     expect(count).toBe(2);
   });
 });
+
+describe('FsVerbatimStore.readEntry', () => {
+  it('returns null for a missing file', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'vs-read-'));
+    try {
+      const store = new FsVerbatimStore(new FsFileStore(root));
+      const result = await store.readEntry('log/claude-code/raw/missing.md');
+      expect(result).toBeNull();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('parses a stored entry back into a VerbatimEntry', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'vs-read-'));
+    try {
+      const store = new FsVerbatimStore(new FsFileStore(root));
+      const entry = VerbatimEntry.create({
+        content: 'pgx MaxConns rule',
+        agent: 'claude-code',
+        sessionId: 'sess1',
+        project: 'cli-relay',
+        idGenerator: () => 'uuid1',
+      });
+      await store.writeEntry(entry);
+      const roundtrip = await store.readEntry(entry.filePath);
+      expect(roundtrip).not.toBeNull();
+      expect(roundtrip!.agent).toBe('claude-code');
+      expect(roundtrip!.sessionId).toBe('sess1');
+      expect(roundtrip!.project).toBe('cli-relay');
+      expect(roundtrip!.consolidated).toBe(false);
+      expect(roundtrip!.content).toContain('pgx MaxConns rule');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('FsVerbatimStore.markConsolidated', () => {
+  it('flips consolidated: false → true on disk', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'vs-mark-'));
+    try {
+      const store = new FsVerbatimStore(new FsFileStore(root));
+      const entry = VerbatimEntry.create({
+        content: 'fact',
+        agent: 'claude-code',
+        sessionId: 'sess',
+        idGenerator: () => 'uuid2',
+      });
+      await store.writeEntry(entry);
+      await store.markConsolidated(entry.filePath);
+      const reloaded = await store.readEntry(entry.filePath);
+      expect(reloaded!.consolidated).toBe(true);
+      const unconsolidated = await store.listUnconsolidated('claude-code');
+      expect(unconsolidated).toHaveLength(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('is idempotent when already consolidated', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'vs-mark-'));
+    try {
+      const store = new FsVerbatimStore(new FsFileStore(root));
+      const entry = VerbatimEntry.create({
+        content: 'x',
+        agent: 'claude-code',
+        sessionId: 's',
+        idGenerator: () => 'uuid3',
+      });
+      await store.writeEntry(entry);
+      await store.markConsolidated(entry.filePath);
+      await expect(store.markConsolidated(entry.filePath)).resolves.toBeUndefined();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('throws on missing file', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'vs-mark-'));
+    try {
+      const store = new FsVerbatimStore(new FsFileStore(root));
+      await expect(
+        store.markConsolidated('log/claude-code/raw/does-not-exist.md'),
+      ).rejects.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});

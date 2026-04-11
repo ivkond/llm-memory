@@ -10,4 +10,14 @@ export interface IVerbatimStore {
 
   /** Count unconsolidated entries across all agents. */
   countUnconsolidated(): Promise<number>;
+
+  /** Load a single entry by relative path. Returns null if missing. */
+  readEntry(filePath: string): Promise<VerbatimEntry | null>;
+
+  /**
+   * Flip the `consolidated` flag to `true` for the entry at `filePath`.
+   * Idempotent: a no-op if already consolidated. Throws if the file does
+   * not exist.
+   */
+  markConsolidated(filePath: string): Promise<void>;
 }
