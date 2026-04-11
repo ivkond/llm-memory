@@ -2,6 +2,7 @@ import { LintPhaseError, LlmUnavailableError } from '../../domain/errors.js';
 import type { IFileStore } from '../../ports/file-store.js';
 import type { IVerbatimStore } from '../../ports/verbatim-store.js';
 import type { ILlmClient } from '../../ports/llm-client.js';
+import type { ArchiveEntry } from '../../ports/archiver.js';
 import type { VerbatimEntry } from '../../domain/verbatim-entry.js';
 
 export const CONSOLIDATE_BATCH_LIMIT = 50;
@@ -9,6 +10,7 @@ export const CONSOLIDATE_BATCH_LIMIT = 50;
 export interface ConsolidatePhaseResult {
   consolidatedCount: number;
   touchedPaths: string[];
+  archivedEntries?: ArchiveEntry[];
 }
 
 interface ProposedPage {
@@ -46,6 +48,7 @@ export class ConsolidatePhase {
     private readonly worktreeFileStore: IFileStore,
     private readonly worktreeVerbatimStore: IVerbatimStore,
     private readonly llmClient: ILlmClient,
+    private readonly mainRepoRoot?: string,
   ) {}
 
   async run(): Promise<ConsolidatePhaseResult> {
@@ -78,7 +81,13 @@ export class ConsolidatePhase {
       await this.worktreeVerbatimStore.markConsolidated(entry.filePath);
     }
 
-    return { consolidatedCount: batch.length, touchedPaths };
+    const archivedEntries: ArchiveEntry[] | undefined = this.mainRepoRoot
+      ? batch.map((entry) => ({
+          sourcePath: `${this.mainRepoRoot}/${entry.filePath}`,
+        }))
+      : undefined;
+
+    return { consolidatedCount: batch.length, touchedPaths, archivedEntries };
   }
 
   private async collectBatch(): Promise<VerbatimEntry[]> {

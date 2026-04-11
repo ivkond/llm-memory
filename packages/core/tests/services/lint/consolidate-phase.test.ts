@@ -185,4 +185,33 @@ describe('ConsolidatePhase', () => {
     await expect(phase.run()).rejects.toThrow();
     expect(verbatimStore.marked).toHaveLength(0);
   });
+
+  it('returns archivedEntries with absolute source paths when mainRoot is provided', async () => {
+    await seed(2);
+    llm.response = {
+      pages: [
+        {
+          path: 'wiki/a.md',
+          title: 'A',
+          content: 'x',
+          source_entries: [...verbatimStore.entries.keys()],
+        },
+      ],
+    };
+    const phase = new ConsolidatePhase(fileStore, verbatimStore, llm, '/abs/repo');
+    const result = await phase.run();
+    expect(result.archivedEntries).toBeDefined();
+    expect(result.archivedEntries).toHaveLength(2);
+    for (const entry of result.archivedEntries!) {
+      expect(entry.sourcePath.startsWith('/abs/repo/log/')).toBe(true);
+    }
+  });
+
+  it('omits archivedEntries when no mainRepoRoot is provided', async () => {
+    await seed(1);
+    llm.response = { pages: [] };
+    const phase = new ConsolidatePhase(fileStore, verbatimStore, llm);
+    const result = await phase.run();
+    expect(result.archivedEntries).toBeUndefined();
+  });
 });
