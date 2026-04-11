@@ -32,3 +32,11 @@ export { PromotePhase } from './lint/promote-phase.js';
 export type { PromotePhaseResult } from './lint/promote-phase.js';
 export { HealthPhase } from './lint/health-phase.js';
 export type { HealthPhaseResult, HealthPhaseOptions } from './lint/health-phase.js';
+export { ImportService } from './import-service.js';
+export type {
+  ImportRequest,
+  ImportResponse,
+  ImportServiceDeps,
+  AgentImportResult,
+  AgentConfig,
+} from './import-service.js';
