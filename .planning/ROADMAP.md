@@ -28,10 +28,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. Single composition root instantiates all adapters (config, search, git, LLM, sanitizer) and injects them into services via constructor
   2. Configuration loads from shared config, local overrides, and environment variables in correct precedence
   3. MCP server starts on a configured HTTP port and responds to `tools/list` with the expected 7 tool names
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: TBD
+- [ ] 01-01-PLAN.md — @llm-wiki/common composition root + ConfigLoader mcp.* extension (WIRE-01, WIRE-02)
+- [ ] 01-02-PLAN.md — @llm-wiki/mcp-server Streamable HTTP transport + 7 stub tools + graceful shutdown (MCP-01)
 
 ### Phase 2: MCP Read Tools
 **Goal**: Agent can query wiki, recall context, and check status through MCP without modifying any data
