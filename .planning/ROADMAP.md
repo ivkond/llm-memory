@@ -31,7 +31,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — @llm-wiki/common composition root + ConfigLoader mcp.* extension (WIRE-01, WIRE-02)
+- [x] 01-01-PLAN.md — @llm-wiki/common composition root + ConfigLoader mcp.* extension (WIRE-01, WIRE-02) — completed 2026-04-12
 - [ ] 01-02-PLAN.md — @llm-wiki/mcp-server Streamable HTTP transport + 7 stub tools + graceful shutdown (MCP-01)
 
 ### Phase 2: MCP Read Tools
@@ -99,7 +99,7 @@ Note: Phase 4 depends only on Phase 1, so it could execute in parallel with Phas
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Composition Root and MCP Bootstrap | 0/0 | Not started | - |
+| 1. Composition Root and MCP Bootstrap | 1/2 | In progress | - |
 | 2. MCP Read Tools | 0/0 | Not started | - |
 | 3. MCP Write Tools | 0/0 | Not started | - |
 | 4. CLI | 0/0 | Not started | - |
