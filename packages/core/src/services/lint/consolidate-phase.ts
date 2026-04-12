@@ -4,6 +4,7 @@ import type { IVerbatimStore } from '../../ports/verbatim-store.js';
 import type { ILlmClient } from '../../ports/llm-client.js';
 import type { ArchiveEntry } from '../../ports/archiver.js';
 import type { VerbatimEntry } from '../../domain/verbatim-entry.js';
+import { stripCodeFence } from './strip-code-fence.js';
 
 export const CONSOLIDATE_BATCH_LIMIT = 50;
 
@@ -127,7 +128,7 @@ export class ConsolidatePhase {
       temperature: 0.1,
     });
 
-    const trimmed = this.stripCodeFence(response.content);
+    const trimmed = stripCodeFence(response.content);
     let parsed: unknown;
     try {
       parsed = JSON.parse(trimmed);
@@ -205,12 +206,6 @@ export class ConsolidatePhase {
       '',
     ].join('\n');
     return `${fm}\n${page.content.trim()}\n`;
-  }
-
-  private stripCodeFence(content: string): string {
-    const trimmed = content.trim();
-    const match = /^```(?:json)?\s*([\s\S]*?)\s*```$/.exec(trimmed);
-    return match ? match[1] : trimmed;
   }
 
   private yamlString(value: string): string {

@@ -1,6 +1,7 @@
 import { LintPhaseError, LlmUnavailableError } from '../../domain/errors.js';
 import type { IFileStore, FileInfo } from '../../ports/file-store.js';
 import type { ILlmClient } from '../../ports/llm-client.js';
+import { stripCodeFence } from './strip-code-fence.js';
 
 export interface PromotePhaseResult {
   promotedCount: number;
@@ -121,7 +122,7 @@ export class PromotePhase {
 
     let parsed: unknown;
     try {
-      parsed = JSON.parse(this.stripCodeFence(response.content));
+      parsed = JSON.parse(stripCodeFence(response.content));
     } catch (err) {
       throw new LlmUnavailableError(
         `model returned non-JSON: ${err instanceof Error ? err.message : String(err)}`,
@@ -206,12 +207,6 @@ export class PromotePhase {
     const toSegments = toFile.split('/');
     const up = '../'.repeat(fromSegments.length);
     return `${up}${toSegments.join('/')}`;
-  }
-
-  private stripCodeFence(content: string): string {
-    const trimmed = content.trim();
-    const match = /^```(?:json)?\s*([\s\S]*?)\s*```$/.exec(trimmed);
-    return match ? match[1] : trimmed;
   }
 
   private yamlString(value: string): string {

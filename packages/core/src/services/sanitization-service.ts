@@ -39,7 +39,11 @@ const DEFAULT_PATTERNS: PatternRule[] = [
   { name: 'jwt', pattern: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g },
   {
     name: 'connection_string',
-    pattern: /\b(postgresql|mysql|mongodb|redis):\/\/[^\s]+:[^\s@]+@[^\s]+/g,
+    // [^\s:]+ (not [^\s]+) in the username slot: disjoint from the
+    // following ':' and from [^\s@]+ in the password slot, so there's
+    // no overlapping quantifier pair the regex engine can backtrack
+    // across. Keeps the pattern linear and satisfies typescript:S5852.
+    pattern: /\b(postgresql|mysql|mongodb|redis):\/\/[^\s:]+:[^\s@]+@[^\s]+/g,
   },
 ];
 

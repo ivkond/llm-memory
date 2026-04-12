@@ -44,6 +44,17 @@ describe('SanitizationService', () => {
     expect(result.content).not.toContain('s3cretP@ss');
   });
 
+  it('test_sanitize_pathologicalConnectionStringInput_terminatesQuickly', () => {
+    // Patho input for the connection_string regex: many ':' with no '@'.
+    // A buggy overlapping pattern (e.g. /[^\s]+:[^\s@]+@[^\s]+/) shows
+    // O(n^2) catastrophic backtracking here; the tightened pattern
+    // must match in linear time.
+    const patho = `postgresql://${'a:'.repeat(20000)}`;
+    const result = service.sanitize(patho);
+    expect(result.content).toBe(patho);
+    expect(result.isClean).toBe(true);
+  }, 500);
+
   it('test_sanitize_cleanContent_returnsUnchanged', () => {
     const content = 'This is normal technical content about PostgreSQL connection pooling.';
     const result = service.sanitize(content);
