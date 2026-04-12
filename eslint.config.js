@@ -49,6 +49,8 @@ export default tseslint.config(
             './packages/core/tests/tsconfig.json',
             './packages/infra/tsconfig.json',
             './packages/infra/tests/tsconfig.json',
+            './packages/common/tsconfig.json',
+            './packages/common/tests/tsconfig.json',
           ],
         },
         node: true,
