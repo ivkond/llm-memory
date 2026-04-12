@@ -7,7 +7,7 @@
 
 Requirements for Solo MVP. Each maps to roadmap phases.
 
-### Transport — MCP Server
+### Transport -- MCP Server
 
 - [ ] **MCP-01**: MCP server starts via HTTP transport (Streamable HTTP) and responds to tool list request
 - [ ] **MCP-02**: `wiki_query` tool available via MCP with full search + LLM synthesis
@@ -18,7 +18,7 @@ Requirements for Solo MVP. Each maps to roadmap phases.
 - [ ] **MCP-07**: `wiki_lint` tool available via MCP with phase selection
 - [ ] **MCP-08**: `wiki_status` tool available via MCP (read-only diagnostic)
 
-### Transport — CLI
+### Transport -- CLI
 
 - [ ] **CLI-01**: `llm-wiki init` creates wiki directory structure with git + default configs
 - [ ] **CLI-02**: `llm-wiki ingest <source>` ingests file/URL into wiki
@@ -27,13 +27,13 @@ Requirements for Solo MVP. Each maps to roadmap phases.
 - [ ] **CLI-05**: `llm-wiki search <query>` performs hybrid search and displays results
 - [ ] **CLI-06**: `llm-wiki status` displays wiki health/stats
 
-### Integration — Claude Code
+### Integration -- Claude Code
 
 - [ ] **HOOK-01**: SessionStart hook calls `wiki_recall` and injects context
 - [ ] **HOOK-02**: Stop hook calls `wiki_remember_session` with session summary
 - [ ] **SKILL-01**: `/wiki` guide skill explains available MCP tools and workflow
 
-### Wiring — Composition Root
+### Wiring -- Composition Root
 
 - [ ] **WIRE-01**: Single composition root instantiates all adapters and injects into services
 - [ ] **WIRE-02**: Configuration loaded via ConfigLoader (shared + local + env overrides)
@@ -73,31 +73,31 @@ Deferred to future release. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MCP-01 | Phase 1 | Pending |
-| MCP-02 | Phase 1 | Pending |
-| MCP-03 | Phase 1 | Pending |
-| MCP-04 | Phase 1 | Pending |
-| MCP-05 | Phase 1 | Pending |
-| MCP-06 | Phase 1 | Pending |
-| MCP-07 | Phase 1 | Pending |
-| MCP-08 | Phase 1 | Pending |
 | WIRE-01 | Phase 1 | Pending |
 | WIRE-02 | Phase 1 | Pending |
-| CLI-01 | Phase 2 | Pending |
-| CLI-02 | Phase 2 | Pending |
-| CLI-03 | Phase 2 | Pending |
-| CLI-04 | Phase 2 | Pending |
-| CLI-05 | Phase 2 | Pending |
-| CLI-06 | Phase 2 | Pending |
-| HOOK-01 | Phase 3 | Pending |
-| HOOK-02 | Phase 3 | Pending |
-| SKILL-01 | Phase 3 | Pending |
+| MCP-01 | Phase 1 | Pending |
+| MCP-02 | Phase 2 | Pending |
+| MCP-03 | Phase 2 | Pending |
+| MCP-08 | Phase 2 | Pending |
+| MCP-04 | Phase 3 | Pending |
+| MCP-05 | Phase 3 | Pending |
+| MCP-06 | Phase 3 | Pending |
+| MCP-07 | Phase 3 | Pending |
+| CLI-01 | Phase 4 | Pending |
+| CLI-02 | Phase 4 | Pending |
+| CLI-03 | Phase 4 | Pending |
+| CLI-04 | Phase 4 | Pending |
+| CLI-05 | Phase 4 | Pending |
+| CLI-06 | Phase 4 | Pending |
+| HOOK-01 | Phase 5 | Pending |
+| HOOK-02 | Phase 5 | Pending |
+| SKILL-01 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 19 total
 - Mapped to phases: 19
-- Unmapped: 0 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-12*
-*Last updated: 2026-04-12 after initialization*
+*Last updated: 2026-04-12 after roadmap creation*
