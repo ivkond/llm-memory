@@ -53,20 +53,26 @@ export class PromotePhase {
       this.validateTarget(prop.target);
     }
 
+    const allowedSources = new Set(payload.map((p) => p.path));
     const touchedPaths: string[] = [];
     for (const prop of proposals) {
-      await this.applyProposal(prop, touchedPaths);
+      await this.applyProposal(prop, touchedPaths, allowedSources);
     }
 
     return { promotedCount: proposals.length, touchedPaths };
   }
 
-  private async applyProposal(prop: PromoteProposal, touchedPaths: string[]): Promise<void> {
+  private async applyProposal(
+    prop: PromoteProposal,
+    touchedPaths: string[],
+    allowedSources: Set<string>,
+  ): Promise<void> {
     const body = this.renderPage(prop);
     await this.worktreeFileStore.writeFile(prop.target, body);
     touchedPaths.push(prop.target);
 
     for (const sourcePath of prop.sources) {
+      if (!allowedSources.has(sourcePath)) continue;
       await this.rewriteSource(sourcePath, prop, touchedPaths);
     }
   }

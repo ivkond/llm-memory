@@ -121,6 +121,32 @@ describe('PromotePhase', () => {
     await expect(phase.run()).rejects.toThrow(/wiki\/patterns/);
   });
 
+  it('ignores LLM-proposed sources outside the practice files allowlist', async () => {
+    fileStore.files['projects/x/practices.md'] = '---\ntitle: x\n---\n\n## pattern-a\nDetail.\n';
+    // The marker deliberately matches a heading in this file so the
+    // test proves the allowlist blocks the rewrite, not just marker mismatch.
+    fileStore.files['wiki/important-page.md'] = '## pattern-a\nSensitive content.\n';
+
+    llm.response = {
+      promoted: [
+        {
+          target: 'wiki/patterns/safe.md',
+          title: 'Safe pattern',
+          content: 'Extracted pattern.',
+          sources: ['projects/x/practices.md', 'wiki/important-page.md'],
+          replacement_marker: 'pattern-a',
+        },
+      ],
+    };
+
+    const phase = new PromotePhase(fileStore, llm);
+    const result = await phase.run();
+
+    expect(result.promotedCount).toBe(1);
+    expect(fileStore.files['wiki/important-page.md']).toBe('## pattern-a\nSensitive content.\n');
+    expect(fileStore.files['projects/x/practices.md']).toContain('[pattern-a]');
+  });
+
   it('propagates LLM failure as LlmUnavailableError', async () => {
     fileStore.files['projects/x/practices.md'] = '---\ntitle: x\n---\n\n## a\nb\n';
     llm.response = new Error('boom');

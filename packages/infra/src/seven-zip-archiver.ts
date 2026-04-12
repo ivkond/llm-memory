@@ -1,6 +1,6 @@
 import { add } from 'node-7z';
 import sevenBin from '7zip-bin';
-import { stat, unlink, mkdir, rename, copyFile } from 'node:fs/promises';
+import { stat, unlink, mkdir, rename, copyFile, chmod } from 'node:fs/promises';
 import path from 'node:path';
 import {
   ArchiveError,
@@ -40,12 +40,14 @@ import {
  */
 export class SevenZipArchiver implements IArchiver {
   private readonly binaryPath: string;
+  private binaryChecked = false;
 
   constructor(binaryPath: string = sevenBin.path7za) {
     this.binaryPath = binaryPath;
   }
 
   async createArchive(archivePath: string, entries: ArchiveEntry[]): Promise<ArchiveResult> {
+    await this.ensureBinaryExecutable();
     await this.validateInputs(archivePath, entries);
 
     await mkdir(path.dirname(archivePath), { recursive: true });
@@ -132,6 +134,19 @@ export class SevenZipArchiver implements IArchiver {
       const message = err instanceof Error ? err.message : String(err);
       throw new ArchiveError(archivePath, `rename failed: ${message}`);
     }
+  }
+
+  // 7zip-bin ships the 7za binary, but some Linux CI environments that
+  // copy node_modules without preserving mode bits leave it non-executable.
+  private async ensureBinaryExecutable(): Promise<void> {
+    if (this.binaryChecked) return;
+    try {
+      await chmod(this.binaryPath, 0o755);
+    } catch {
+      // ENOENT (missing binary) or EPERM (Windows/readonly FS) — let the
+      // actual spawn fail later with a more descriptive error.
+    }
+    this.binaryChecked = true;
   }
 
   private async safeUnlink(target: string): Promise<void> {
