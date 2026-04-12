@@ -32,7 +32,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 Plans:
 - [x] 01-01-PLAN.md — @llm-wiki/common composition root + ConfigLoader mcp.* extension (WIRE-01, WIRE-02) — completed 2026-04-12
-- [ ] 01-02-PLAN.md — @llm-wiki/mcp-server Streamable HTTP transport + 7 stub tools + graceful shutdown (MCP-01)
+- [x] 01-02-PLAN.md — @llm-wiki/mcp-server Streamable HTTP transport + 7 stub tools + graceful shutdown (MCP-01)
 
 ### Phase 2: MCP Read Tools
 **Goal**: Agent can query wiki, recall context, and check status through MCP without modifying any data

@@ -9,7 +9,7 @@ Requirements for Solo MVP. Each maps to roadmap phases.
 
 ### Transport -- MCP Server
 
-- [ ] **MCP-01**: MCP server starts via HTTP transport (Streamable HTTP) and responds to tool list request
+- [x] **MCP-01**: MCP server starts via HTTP transport (Streamable HTTP) and responds to tool list request
 - [ ] **MCP-02**: `wiki_query` tool available via MCP with full search + LLM synthesis
 - [ ] **MCP-03**: `wiki_recall` tool available via MCP with deterministic context loading
 - [ ] **MCP-04**: `wiki_remember_fact` tool available via MCP with sanitization
@@ -75,7 +75,7 @@ Deferred to future release. Tracked but not in current roadmap.
 |-------------|-------|--------|
 | WIRE-01 | Phase 1 | Pending |
 | WIRE-02 | Phase 1 | Pending |
-| MCP-01 | Phase 1 | Pending |
+| MCP-01 | Phase 1 | Complete |
 | MCP-02 | Phase 2 | Pending |
 | MCP-03 | Phase 2 | Pending |
 | MCP-08 | Phase 2 | Pending |
