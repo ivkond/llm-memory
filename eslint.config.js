@@ -51,6 +51,8 @@ export default tseslint.config(
             './packages/infra/tests/tsconfig.json',
             './packages/common/tsconfig.json',
             './packages/common/tests/tsconfig.json',
+            './packages/mcp-server/tsconfig.json',
+            './packages/mcp-server/tests/tsconfig.json',
           ],
         },
         node: true,
