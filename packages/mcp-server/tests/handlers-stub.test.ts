@@ -76,12 +76,12 @@ describe('tools/call (integration)', () => {
     expect(typeof payload.success).toBe('boolean');
   });
 
-  // Remaining stub tools still return not_implemented
+  // Write tools now wired to services (Phase 3)
   it.each(
     ['wiki_remember_fact', 'wiki_remember_session', 'wiki_ingest', 'wiki_lint'].map(
       (name) => [name] as const,
     ),
-  )('test_toolCall_%s_returnsNotImplementedError', async (name) => {
+  )('test_toolCall_%s_returnsEnvelope', async (name) => {
     const args = MINIMAL_TOOL_ARGS[name];
     expect(args).toBeDefined();
 
@@ -97,11 +97,12 @@ describe('tools/call (integration)', () => {
     expect(body.error).toBeUndefined();
     const result = body.result as ToolCallResult;
 
-    expect(result.isError).toBe(true);
+    // Now returns envelope { success: true/false } instead of not_implemented error
     expect(Array.isArray(result.content)).toBe(true);
     expect(result.content.length).toBeGreaterThan(0);
-    expect(typeof result.content[0]?.text).toBe('string');
-    expect(result.content[0]?.text).toContain('not_implemented');
+    const payload = JSON.parse(result.content[0]?.text ?? '{}');
+    expect(payload).toHaveProperty('success');
+    expect(typeof payload.success).toBe('boolean');
   });
 
   it('test_toolCall_invalidArgs_returnsValidationError', async () => {

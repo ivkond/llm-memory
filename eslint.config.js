@@ -76,6 +76,8 @@ export default tseslint.config(
         { prefer: 'type-imports', fixStyle: 'inline-type-imports' },
       ],
       '@typescript-eslint/no-import-type-side-effects': 'error',
+      // Stringifying unknown-typed values from MCP params is common and intentional
+      '@typescript-eslint/no-base-to-string': 'warn',
 
       // ── Nag without blocking (warn) ────────────────────────────────────────
       '@typescript-eslint/no-non-null-assertion': 'warn',
@@ -143,6 +145,7 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-return': 'off',
       '@typescript-eslint/require-await': 'off',
       '@typescript-eslint/no-empty-function': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
       // Vitest's `expect(fake.method)` pattern is standard for assertion on mocks
       // and does not actually cause `this` rebinding issues — rule is too noisy
       // for mock-heavy tests.

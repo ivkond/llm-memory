@@ -1,11 +1,74 @@
-import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import type { AppServices } from '@llm-wiki/common';
 
 /**
- * Stub handler for `wiki_remember_session`. Phase 3 wires the real RememberService call.
+ * Handler for `wiki_remember_session` — wires to RememberService.
+ *
+ * Per D-04: Uses APPEND mode — allow duplicate session_id entries each time.
+ * Per D-06: Success returns `{ success: true, data: { entry_id, session_id, created_at } }`.
+ * Failure returns `{ success: false, error: string, code?: string }`.
  */
-export function createWikiRememberSessionHandler(_services: AppServices) {
-  return async (): Promise<never> => {
-    throw new McpError(ErrorCode.InternalError, 'wiki_remember_session: not_implemented (Phase 3)');
+export function createWikiRememberSessionHandler(services: AppServices) {
+  return async (params: Record<string, unknown>) => {
+    try {
+      const { remember: rememberService } = services;
+      if (!rememberService) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: 'RememberService not available',
+                code: 'InternalError',
+              }),
+            },
+          ],
+        };
+      }
+
+      const summary = params.summary != null ? String(params.summary) : '';
+      const agent = params.agent != null ? String(params.agent) : '';
+      const sessionId = params.sessionId != null ? String(params.sessionId) : '';
+      const project = params.project != null ? String(params.project) : undefined;
+
+      const result = await rememberService.rememberSession({
+        summary,
+        agent,
+        sessionId,
+        project,
+      });
+
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: true,
+              data: {
+                entry_id: result.file,
+                session_id: sessionId,
+                created_at: new Date().toISOString(),
+              },
+            }),
+          },
+        ],
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const code = message.includes('summary') ? 'InvalidParams' : 'InternalError';
+
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: message,
+              code,
+            }),
+          },
+        ],
+      };
+    }
   };
 }
