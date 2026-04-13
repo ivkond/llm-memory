@@ -8,7 +8,6 @@ dist
 conversation.txt
 sonar_issues.*
 
-# Claude config — ignore local settings, keep skills
-.claude/settings.json
+# Claude config — ignore local settings, keep skills and hooks
 .claude/settings.local.json
 .claude/projects/
