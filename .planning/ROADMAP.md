@@ -42,10 +42,10 @@ Plans:
   1. Agent calling `wiki_query` with a natural-language question receives search results with LLM-synthesized answer (or raw citations on LLM failure)
   2. Agent calling `wiki_recall` with a project scope receives deterministic context sorted by recency within the token budget
   3. Agent calling `wiki_status` receives wiki health metrics (page counts, index health, project list)
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 02-01: TBD
+- [x] 02-01: Wire read-only MCP tools (wiki_query, wiki_recall, wiki_status) — MCP-02, MCP-03, MCP-08
 
 ### Phase 3: MCP Write Tools
 **Goal**: Agent can store facts, record sessions, ingest sources, and run lint through MCP with full safety guarantees
@@ -100,7 +100,7 @@ Note: Phase 4 depends only on Phase 1, so it could execute in parallel with Phas
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Composition Root and MCP Bootstrap | 1/2 | In progress | - |
-| 2. MCP Read Tools | 0/0 | Not started | - |
+| 2. MCP Read Tools | 1/1 | Planned | - |
 | 3. MCP Write Tools | 0/0 | Not started | - |
 | 4. CLI | 0/0 | Not started | - |
 | 5. Claude Code Integration | 0/0 | Not started | - |
