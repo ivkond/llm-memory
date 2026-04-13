@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 1: Composition Root and MCP Bootstrap** - Wire all adapters via DI and start MCP server with Streamable HTTP transport
 - [ ] **Phase 2: MCP Read Tools** - Expose query, recall, and status as read-only MCP tools
 - [ ] **Phase 3: MCP Write Tools** - Expose remember, ingest, and lint as mutating MCP tools
-- [ ] **Phase 4: CLI** - Command-line interface for all wiki operations
+- [x] **Phase 4: CLI** - Command-line interface for all wiki operations (completed 2026-04-13)
 - [ ] **Phase 5: Claude Code Integration** - Session hooks and guide skill for Claude Code
 
 ## Phase Details
@@ -72,10 +72,11 @@ Plans:
   4. Running `llm-wiki import` sweeps configured agent memory stores and displays count of imported entries
   5. Running `llm-wiki search <query>` displays ranked search results with snippets
   6. Running `llm-wiki status` displays wiki health summary (page counts, index health)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: TBD
+- [x] 04-01: CLI package setup + command structure (package, tsconfig, commands stubs)
+- [x] 04-02: Implement all 6 commands (init, ingest, lint, import, search, status)
 
 ### Phase 5: Claude Code Integration
 **Goal**: Claude Code sessions automatically load wiki context on start and persist learnings on stop
@@ -102,5 +103,5 @@ Note: Phase 4 depends only on Phase 1, so it could execute in parallel with Phas
 | 1. Composition Root and MCP Bootstrap | 1/2 | In progress | - |
 | 2. MCP Read Tools | 1/1 | Planned | - |
 | 3. MCP Write Tools | 1/1 | Not started | - |
-| 4. CLI | 0/0 | Not started | - |
+| 4. CLI | 2/2 | Complete    | 2026-04-13 |
 | 5. Claude Code Integration | 0/0 | Not started | - |
