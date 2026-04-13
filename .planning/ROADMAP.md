@@ -86,11 +86,10 @@ Plans:
   1. On SessionStart, the hook calls `wiki_recall` for the current project and injects the returned context into the session
   2. On Stop, the hook calls `wiki_remember_session` with a summary of the session
   3. Running `/wiki` in Claude Code displays a guide explaining available MCP tools and recommended workflow
-**Plans**: TBD
-**UI hint**: yes
+**Plans**: 1 plan
 
 Plans:
-- [ ] 05-01: TBD
+- [ ] 05-01: Claude Code hooks (SessionStart/Stop) + /wiki skill — HOOK-01, HOOK-02, SKILL-01
 
 ## Progress
 
@@ -104,4 +103,4 @@ Note: Phase 4 depends only on Phase 1, so it could execute in parallel with Phas
 | 2. MCP Read Tools | 1/1 | Planned | - |
 | 3. MCP Write Tools | 1/1 | Not started | - |
 | 4. CLI | 2/2 | Complete    | 2026-04-13 |
-| 5. Claude Code Integration | 0/0 | Not started | - |
+| 5. Claude Code Integration | 1/1 | Planned | - |
