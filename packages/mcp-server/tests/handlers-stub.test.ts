@@ -8,7 +8,7 @@ import {
   type ToolCallResult,
 } from './_helpers.js';
 
-describe('tools/call stubs (integration)', () => {
+describe('tools/call (integration)', () => {
   let handle: ServerHandle;
 
   beforeEach(async () => {
@@ -19,31 +19,90 @@ describe('tools/call stubs (integration)', () => {
     await handle.close();
   });
 
-  it.each(TOOL_NAMES.map((name) => [name] as const))(
-    'test_toolCall_%s_returnsNotImplementedError',
-    async (name) => {
-      const args = MINIMAL_TOOL_ARGS[name];
-      expect(args).toBeDefined();
+  it('test_toolCall_wiki_query_returnsEnvelope', async () => {
+    const res = await postMcp(handle.url, {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'wiki_query', arguments: { question: 'test?' } },
+    });
+    expect(res.status).toBe(200);
 
-      const res = await postMcp(handle.url, {
-        jsonrpc: '2.0',
-        id: 42,
-        method: 'tools/call',
-        params: { name, arguments: args },
-      });
-      expect(res.status).toBe(200);
+    const body = await readJsonRpc(res);
+    expect(body.error).toBeUndefined();
+    const result = body.result as ToolCallResult;
 
-      const body = await readJsonRpc(res);
-      expect(body.error).toBeUndefined();
-      const result = body.result as ToolCallResult;
+    // Per D-04: returns { success: true/false, data/error } envelope in content
+    expect(Array.isArray(result.content)).toBe(true);
+    expect(result.content.length).toBeGreaterThan(0);
+    const payload = JSON.parse(result.content[0]?.text ?? '{}');
+    expect(payload).toHaveProperty('success');
+    expect(typeof payload.success).toBe('boolean');
+  });
 
-      expect(result.isError).toBe(true);
-      expect(Array.isArray(result.content)).toBe(true);
-      expect(result.content.length).toBeGreaterThan(0);
-      expect(typeof result.content[0]?.text).toBe('string');
-      expect(result.content[0]?.text).toContain('not_implemented');
-    },
-  );
+  it('test_toolCall_wiki_recall_returnsEnvelope', async () => {
+    const res = await postMcp(handle.url, {
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: { name: 'wiki_recall', arguments: { cwd: '/test' } },
+    });
+    expect(res.status).toBe(200);
+
+    const body = await readJsonRpc(res);
+    expect(body.error).toBeUndefined();
+    const result = body.result as ToolCallResult;
+
+    const payload = JSON.parse(result.content[0]?.text ?? '{}');
+    expect(payload).toHaveProperty('success');
+    expect(typeof payload.success).toBe('boolean');
+  });
+
+  it('test_toolCall_wiki_status_returnsEnvelope', async () => {
+    const res = await postMcp(handle.url, {
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/call',
+      params: { name: 'wiki_status', arguments: {} },
+    });
+    expect(res.status).toBe(200);
+
+    const body = await readJsonRpc(res);
+    expect(body.error).toBeUndefined();
+    const result = body.result as ToolCallResult;
+
+    const payload = JSON.parse(result.content[0]?.text ?? '{}');
+    expect(payload).toHaveProperty('success');
+    expect(typeof payload.success).toBe('boolean');
+  });
+
+  // Remaining stub tools still return not_implemented
+  it.each(
+    ['wiki_remember_fact', 'wiki_remember_session', 'wiki_ingest', 'wiki_lint'].map(
+      (name) => [name] as const,
+    ),
+  )('test_toolCall_%s_returnsNotImplementedError', async (name) => {
+    const args = MINIMAL_TOOL_ARGS[name];
+    expect(args).toBeDefined();
+
+    const res = await postMcp(handle.url, {
+      jsonrpc: '2.0',
+      id: 42,
+      method: 'tools/call',
+      params: { name, arguments: args },
+    });
+    expect(res.status).toBe(200);
+
+    const body = await readJsonRpc(res);
+    expect(body.error).toBeUndefined();
+    const result = body.result as ToolCallResult;
+
+    expect(result.isError).toBe(true);
+    expect(Array.isArray(result.content)).toBe(true);
+    expect(result.content.length).toBeGreaterThan(0);
+    expect(typeof result.content[0]?.text).toBe('string');
+    expect(result.content[0]?.text).toContain('not_implemented');
+  });
 
   it('test_toolCall_invalidArgs_returnsValidationError', async () => {
     // wiki_query requires `question` — send empty args to trip Zod validation.
