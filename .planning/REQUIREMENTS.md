@@ -29,9 +29,9 @@ Requirements for Solo MVP. Each maps to roadmap phases.
 
 ### Integration -- Claude Code
 
-- [ ] **HOOK-01**: SessionStart hook calls `wiki_recall` and injects context
-- [ ] **HOOK-02**: Stop hook calls `wiki_remember_session` with session summary
-- [ ] **SKILL-01**: `/wiki` guide skill explains available MCP tools and workflow
+- [x] **HOOK-01**: SessionStart hook calls `wiki_recall` and injects context
+- [x] **HOOK-02**: Stop hook calls `wiki_remember_session` with session summary
+- [x] **SKILL-01**: `/wiki` guide skill explains available MCP tools and workflow
 
 ### Wiring -- Composition Root
 
@@ -89,9 +89,9 @@ Deferred to future release. Tracked but not in current roadmap.
 | CLI-04 | Phase 4 | Pending |
 | CLI-05 | Phase 4 | Pending |
 | CLI-06 | Phase 4 | Pending |
-| HOOK-01 | Phase 5 | Pending |
-| HOOK-02 | Phase 5 | Pending |
-| SKILL-01 | Phase 5 | Pending |
+| HOOK-01 | Phase 5 | Complete |
+| HOOK-02 | Phase 5 | Complete |
+| SKILL-01 | Phase 5 | Complete |
 
 **Coverage:**
 - v1 requirements: 19 total
@@ -100,4 +100,4 @@ Deferred to future release. Tracked but not in current roadmap.
 
 ---
 *Requirements defined: 2026-04-12*
-*Last updated: 2026-04-12 after roadmap creation*
+*Last updated: 2026-04-13 after Phase 05 plan 01 completion*
