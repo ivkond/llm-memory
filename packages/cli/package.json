@@ -20,7 +20,8 @@
   "dependencies": {
     "@llm-wiki/common": "workspace:*",
     "@llm-wiki/infra": "workspace:*",
-    "commander": "^12.1.0"
+    "commander": "^12.1.0",
+    "simple-git": "^3.27.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

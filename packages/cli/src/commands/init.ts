@@ -6,37 +6,71 @@
  * - projects/ (for project-scoped notes)
  * - .local/ (state, search index)
  * - .config/ (shared settings)
+ *
+ * Also initializes git repo and creates default config.
  */
 import { Command } from 'commander';
 import path from 'node:path';
 import { homedir } from 'node:os';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { access, constants } from 'node:fs/promises';
+import { FsFileStore } from '@llm-wiki/infra';
+import { simpleGit, type SimpleGit } from 'simple-git';
+
+async function dirExists(p: string): Promise<boolean> {
+  try {
+    await access(p, constants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function checkWikiExists(wikiPath: string): Promise<boolean> {
+  const configDir = path.join(wikiPath, '.config');
+  const localDir = path.join(wikiPath, '.local');
+  return (await dirExists(configDir)) || (await dirExists(localDir));
+}
+
+async function initGitRepo(repoRoot: string): Promise<void> {
+  const git: SimpleGit = simpleGit(repoRoot);
+  await git.init();
+  // Create initial commit if needed
+  const status = await git.status();
+  if (!status.isClean()) {
+    await git.add('.');
+    await git.commit('Initial commit');
+  }
+}
 
 export const initCommand = new Command()
   .name('init')
   .description('Initialize a new wiki directory')
   .option('-f, --force', 'Overwrite existing wiki directory', false)
   .argument('[directory]', 'Wiki directory path (default: ~/.llm-wiki)')
-  .action(async (directory: string | undefined, _options: { force?: boolean }) => {
+  .action(async (directory: string | undefined, options: { force?: boolean }) => {
     const wikiPath = directory ? path.resolve(directory) : path.join(homedir(), '.llm-wiki');
-    // Note: --force option available for future use (overwrite behavior)
+    const force = options.force ?? false;
+
+    // Check if wiki already exists
+    if (!force && (await checkWikiExists(wikiPath))) {
+      console.error(`Wiki already exists at ${wikiPath}`);
+      console.error('Use --force to overwrite, or choose a different directory');
+      process.exit(1);
+    }
 
     console.log(`Initializing wiki at: ${wikiPath}`);
 
     try {
-      // Create directory structure
-      const dirs = [
-        path.join(wikiPath),
-        path.join(wikiPath, 'wiki'),
-        path.join(wikiPath, 'projects'),
-        path.join(wikiPath, '.local'),
-        path.join(wikiPath, '.local', 'search.db'),
-        path.join(wikiPath, '.config'),
-      ];
+      // Use FsFileStore for file operations (with root = wikiPath)
+      const fileStore = new FsFileStore(wikiPath);
 
-      for (const dir of dirs) {
-        await mkdir(dir, { recursive: true });
-      }
+      // Create directory structure through writeFile (creates parent dirs)
+      await fileStore.writeFile('wiki/.gitkeep', '');
+      await fileStore.writeFile('projects/.gitkeep', '');
+
+      // Ensure .local and .config directories exist by writing placeholder files
+      // The fileStore.writeFile will create parent directories automatically
+      await fileStore.writeFile('.local/.gitkeep', '');
 
       // Create default config
       const configContent = `# LLM Wiki Configuration
@@ -81,15 +115,26 @@ mcp:
   port: 7849
 `;
 
-      await writeFile(path.join(wikiPath, '.config', 'settings.shared.yaml'), configContent);
+      await fileStore.writeFile('.config/settings.shared.yaml', configContent);
 
-      console.log('Wiki initialized successfully!');
+      // Initialize git repository
+      await initGitRepo(wikiPath);
+
+      console.log('\x1b[32m%s\x1b[0m', '✓ Wiki initialized successfully!');
       console.log(`  - Wiki root: ${wikiPath}`);
       console.log(`  - Pages: ${path.join(wikiPath, 'wiki')}`);
       console.log(`  - Projects: ${path.join(wikiPath, 'projects')}`);
       console.log(`  - Config: ${path.join(wikiPath, '.config', 'settings.shared.yaml')}`);
+      console.log(`  - Git repository: ${wikiPath}`);
+
+      console.log('\nTo configure, edit:');
+      console.log(`  ${path.join(wikiPath, '.config', 'settings.shared.yaml')}`);
+      console.log('\nOr set environment variables:');
+      console.log('  LLM_WIKI_LLM_API_KEY=your-key-here');
+      console.log('  LLM_WIKI_EMBEDDING_API_KEY=your-key-here');
     } catch (error) {
-      console.error(`Failed to initialize wiki: ${error}`);
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`\x1b[31m%s\x1b[0m`, `Failed to initialize wiki: ${message}`);
       process.exit(1);
     }
   })
