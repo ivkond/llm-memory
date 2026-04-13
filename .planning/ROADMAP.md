@@ -59,7 +59,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 03-01: Wire mutating MCP tools (wiki_remember_fact, wiki_remember_session, wiki_ingest, wiki_lint) — MCP-04, MCP-05, MCP-06, MCP-07
+- [x] 03-01: Wire mutating MCP tools (wiki_remember_fact, wiki_remember_session, wiki_ingest, wiki_lint) — MCP-04, MCP-05, MCP-06, MCP-07
 
 ### Phase 4: CLI
 **Goal**: Developer can perform all wiki operations from the terminal without needing MCP
