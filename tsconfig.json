@@ -4,6 +4,7 @@
     { "path": "packages/core" },
     { "path": "packages/infra" },
     { "path": "packages/common" },
-    { "path": "packages/mcp-server" }
+    { "path": "packages/mcp-server" },
+    { "path": "packages/cli" }
   ]
 }

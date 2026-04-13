@@ -5,4 +5,5 @@ export default defineWorkspace([
   'packages/infra',
   'packages/common',
   'packages/mcp-server',
+  'packages/cli',
 ]);

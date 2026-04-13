@@ -1,0 +1,32 @@
+{
+  "name": "@llm-wiki/cli",
+  "version": "0.1.0",
+  "description": "CLI for LLM Wiki operations",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "llm-wiki": "./dist/index.js"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./commands": "./dist/commands/index.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run",
+    "lint": "tsc -b"
+  },
+  "dependencies": {
+    "@llm-wiki/common": "workspace:*",
+    "@llm-wiki/infra": "workspace:*",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
