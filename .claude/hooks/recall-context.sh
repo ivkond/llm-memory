@@ -5,55 +5,72 @@
 
 set -e
 
-# Configuration
 MCP_PORT="${LLM_WIKI_MCP_PORT:-7849}"
 MAX_CHARS=800
-
-# Get current working directory (project detection)
 CWD="${CLAUDE_CWD:-$(pwd)}"
 
-# Build JSON-RPC request
-RPC_REQUEST=$(
-  cat <<EOF
-{
-  "jsonrpc": "2.0",
-  "method": "tools/call",
-  "params": {
-    "name": "wiki_recall",
-    "arguments": {
-      "cwd": "$CWD",
-      "max_tokens": 200
-    }
+RPC_REQUEST=$(node -e '
+const cwd = process.argv[1];
+const payload = {
+  jsonrpc: "2.0",
+  method: "tools/call",
+  params: {
+    name: "wiki_recall",
+    arguments: {
+      cwd,
+      max_tokens: 200,
+    },
   },
-  "id": 1
-}
-EOF
-)
+  id: 1,
+};
+process.stdout.write(JSON.stringify(payload));
+' "$CWD")
 
-# Call MCP server
 RESPONSE=$(curl -s -X POST "http://localhost:${MCP_PORT}/mcp" \
   -H "Content-Type: application/json" \
-  -d "$RPC_REQUEST" 2>/dev/null) || {
-  # MCP server not running - exit silently
-  exit 0
-}
+  -d "$RPC_REQUEST" 2>/dev/null) || exit 0
 
-# Extract result from JSON-RPC response
-# Response format: { "result": { "content": [{ "type": "text", "text": "..." }] } }
-TEXT=$(echo "$RESPONSE" | grep -o '"text"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/"text"[[:space:]]*:[[:space:]]*"\(.*\)"/\1/' | sed 's/\\"/"/g') || {
-  exit 0
-}
+TEXT=$(printf '%s' "$RESPONSE" | node -e '
+let raw = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => { raw += chunk; });
+process.stdin.on("end", () => {
+  try {
+    const parsed = JSON.parse(raw);
+    const text = parsed?.result?.content?.find((item) => item?.type === "text")?.text;
+    if (typeof text === "string") process.stdout.write(text);
+  } catch {
+    // Invalid JSON response: hook should fail silently.
+  }
+});
+')
 
-# Parse inner JSON (wiki_recall returns { success: true, data: {...} })
-INNER=$(echo "$TEXT" | grep -o '{[^}]*}' | head -1) || INNER="$TEXT"
+[ -z "$TEXT" ] && exit 0
 
-# Format as markdown context
-if [ -n "$INNER" ] && [ "$INNER" != "{}" ]; then
-  # Truncate to token budget
-  if [ ${#INNER} -gt $MAX_CHARS ]; then
-    INNER="${INNER:0:$MAX_CHARS}..."
-  fi
-  
-  echo "## Wiki Context"
-  echo "$INNER"
+INNER=$(printf '%s' "$TEXT" | node -e '
+let raw = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => { raw += chunk; });
+process.stdin.on("end", () => {
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      process.stdout.write(JSON.stringify(parsed));
+      return;
+    }
+  } catch {
+    // Not JSON, return as-is.
+  }
+  process.stdout.write(raw);
+});
+')
+
+[ -z "$INNER" ] && exit 0
+[ "$INNER" = "{}" ] && exit 0
+
+if [ ${#INNER} -gt $MAX_CHARS ]; then
+  INNER="${INNER:0:$MAX_CHARS}..."
 fi
+
+echo "## Wiki Context"
+echo "$INNER"
