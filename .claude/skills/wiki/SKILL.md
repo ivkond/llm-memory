@@ -15,10 +15,11 @@ You are a guide to the LLM Wiki personal knowledge base. Explain the available t
 ### wiki_query
 Ask natural-language questions against the wiki knowledge base.
 - **When to use**: User wants to find information, ask questions, or search for facts
-- **Parameters**: 
+- **Parameters**:
   - `question` (required): Natural-language question
   - `scope` (optional): Limit to specific project or wiki area
   - `project` (optional): Override project detection
+  - `cwd` (optional): Working directory used for project detection when `project` is omitted
   - `maxResults` (optional): 1-50 results
 
 ### wiki_recall
@@ -79,6 +80,6 @@ Get wiki status (pages, projects, storage).
 
 ## Notes
 
-- All tools return `{ success: true, data: {...} }` on success
+- Tools return `{ success: true, data: {...} }` on success
 - On failure, inspect the `error` field in the response
 - Token budget for context injection: ~200 tokens recommended
