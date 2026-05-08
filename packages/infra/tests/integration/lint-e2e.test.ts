@@ -69,6 +69,7 @@ describe('Lint E2E', () => {
           agent: 'claude-code',
           sessionId: `sess${i}`,
           idGenerator: () => `uuid${i}`,
+          createdAt: new Date(`2026-04-10T12:00:0${i}Z`),
         }),
       );
     }
