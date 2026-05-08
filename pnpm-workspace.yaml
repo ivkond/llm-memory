@@ -1,5 +1,13 @@
 packages:
-  - 'packages/*'
+  - packages/*
+
 allowBuilds:
   esbuild: true
+  msw: true
   re2: true
+
+onlyBuiltDependencies:
+  - esbuild
+  - msw
+  - re2
+  - unrs-resolver
