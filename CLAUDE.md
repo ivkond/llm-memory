@@ -52,12 +52,12 @@ bd close <id>         # Complete work
 
 ## Build & Test
 
-_Add your build and test commands here_
-
 ```bash
-# Example:
-# npm install
-# npm test
+pnpm i
+pnpm build
+pnpm typecheck
+pnpm lint
+pnpm test
 ```
 
 ## Architecture Overview
@@ -99,7 +99,7 @@ A personal knowledge base for AI agents implementing Andrej Karpathy's LLM Wiki 
 - Lockfile: `pnpm-lock.yaml` (lockfile v9.0), committed.
 - `allowBuilds` allowlist in `pnpm-workspace.yaml`: `esbuild`, `re2` — only these native builds are permitted during install.
 ## Frameworks
-- None. The project is a library monorepo (no web framework, no HTTP server framework, no CLI framework yet). Per `docs/superpowers/specs/2026-04-10-llm-wiki-design.md`, transport layers (`@llm-wiki/mcp-server`, `@llm-wiki/cli`, `@llm-wiki/claude-code`) are deferred to Milestone 4 and not yet present on disk.
+- The project is a TypeScript monorepo with executable transport packages present on disk: `@llm-wiki/cli`, `@llm-wiki/mcp-server`, and `@llm-wiki/common` wiring. There is no web framework dependency.
 - Vitest `^3.1.0` (resolved `3.2.4`) — runner, assertion library, and mocking framework. Workspace mode via `vitest.workspace.ts` (references `packages/core` and `packages/infra`). Each package has its own `vitest.config.ts` with `globals: true` and `include: ['tests/**/*.test.ts']`. `packages/infra/vitest.config.ts` aliases `@llm-wiki/core` and `@llm-wiki/infra` to their `src/index.ts` so tests run against unbuilt source.
 - MSW `^2.13.2` (resolved `2.13.2`) — HTTP mocking for `HttpSourceReader` tests (dev dep of `@llm-wiki/infra` only).
 - TypeScript project references (`tsc -b`) — root `tsconfig.json` references `packages/core` and `packages/infra`; `packages/infra/tsconfig.json` references `../core`. Both package tsconfigs set `composite: true`, `outDir: dist`, `rootDir: src`. Root `npm run build` = `tsc -b`; root `npm run lint` is currently aliased to `tsc -b` as well (pure type-check; no ESLint/Prettier configured yet).
@@ -258,7 +258,7 @@ A personal knowledge base for AI agents implementing Andrej Karpathy's LLM Wiki 
 - Location: `packages/core/src/services/`
 - Contains: `IngestService` (`ingest-service.ts`), `QueryService` (`query-service.ts`), `RememberService` (`remember-service.ts`), `RecallService` (`recall-service.ts`), `WikiStatusService` (`status-service.ts`), `SanitizationService` (`sanitization-service.ts`).
 - Depends on: Domain types + port interfaces. Never imports from `@llm-wiki/infra`.
-- Used by: Wiring code (future CLI / MCP server) - not yet present in this repo.
+- Used by: Wiring code in `@llm-wiki/common`, `@llm-wiki/cli`, and `@llm-wiki/mcp-server`.
 - Purpose: Concrete adapters implementing each port with real I/O. Each adapter is a single class file named `<tech>-<port>.ts`.
 - Location: `packages/infra/src/`
 - Contains:
