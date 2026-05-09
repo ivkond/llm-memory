@@ -102,7 +102,7 @@ A personal knowledge base for AI agents implementing Andrej Karpathy's LLM Wiki 
 - The project is a TypeScript monorepo with executable transport packages present on disk: `@llm-wiki/cli`, `@llm-wiki/mcp-server`, and `@llm-wiki/common` wiring. There is no web framework dependency.
 - Vitest `^3.1.0` (resolved `3.2.4`) — runner, assertion library, and mocking framework. Workspace mode via `vitest.workspace.ts` (references `packages/core` and `packages/infra`). Each package has its own `vitest.config.ts` with `globals: true` and `include: ['tests/**/*.test.ts']`. `packages/infra/vitest.config.ts` aliases `@llm-wiki/core` and `@llm-wiki/infra` to their `src/index.ts` so tests run against unbuilt source.
 - MSW `^2.13.2` (resolved `2.13.2`) — HTTP mocking for `HttpSourceReader` tests (dev dep of `@llm-wiki/infra` only).
-- TypeScript project references (`tsc -b`) — root `tsconfig.json` references `packages/core` and `packages/infra`; `packages/infra/tsconfig.json` references `../core`. Both package tsconfigs set `composite: true`, `outDir: dist`, `rootDir: src`. Root `npm run build` = `tsc -b`; root `npm run lint` is currently aliased to `tsc -b` as well (pure type-check; no ESLint/Prettier configured yet).
+- TypeScript project references (`tsc -b`) — root `tsconfig.json` references `packages/core`, `packages/infra`, `packages/common`, `packages/cli`, and `packages/mcp-server`. Package tsconfigs set `composite: true`, `outDir: dist`, `rootDir: src`. Root `pnpm build` and `pnpm typecheck` run `tsc -b`; root `pnpm lint` runs ESLint.
 ## Key Dependencies
 ### `@llm-wiki/core` (`packages/core/package.json`)
 - `re2` `^1.24.0` (resolved `1.24.0`) — Google RE2 regex engine bindings. Used by the domain sanitization layer to guarantee linear-time pattern matching on untrusted input (avoids ReDoS on custom patterns from config).
@@ -128,10 +128,10 @@ A personal knowledge base for AI agents implementing Andrej Karpathy's LLM Wiki 
 - `packages/core/tsconfig.json`, `packages/infra/tsconfig.json` — per-package composite builds.
 - `vitest.workspace.ts` at repo root.
 - `packages/core/vitest.config.ts`, `packages/infra/vitest.config.ts` — per-package configs. Infra adds source-path aliases for `@llm-wiki/core` and `@llm-wiki/infra` so tests hit TypeScript source, not `dist/`.
-- **Type checking:** `tsc -b` (via `pnpm lint` and `pnpm build`). Strict TypeScript is the only enforced static analysis today.
-- **ESLint:** not configured. No `.eslintrc*` / `eslint.config.*` present.
-- **Prettier:** not configured. No `.prettierrc*` present.
-- **Biome / other:** not configured.
+- **Type checking:** `tsc -b` (via `pnpm build` and `pnpm typecheck`).
+- **ESLint:** configured via root `eslint.config.js` and run with `pnpm lint`.
+- **Prettier:** configured via `.prettierrc.json` and run with `pnpm format` / `pnpm format:check`.
+- **Biome / other:** none used in this repository.
 - **Pre-commit hook:** not present. The project-level guideline in `CLAUDE.md` / `RULES.md` calls for one, but `.githooks/` does not exist yet and `git config core.hooksPath` is unset.
 ## Platform Requirements
 - Node.js 20+ (22 recommended — matches `@types/node`).
@@ -139,21 +139,21 @@ A personal knowledge base for AI agents implementing Andrej Karpathy's LLM Wiki 
 - Git CLI on `PATH` — `GitVersionControl` and `GitProjectResolver` both shell out to `git`. `git worktree add -b` / `worktree remove` / `merge --ff-only` must all be available.
 - A supported native platform for `ruvector` prebuilt binaries: darwin-arm64, darwin-x64, linux-arm64-gnu, linux-x64-gnu, or win32-x64-msvc. Musl-libc Linux is not in the `rvf-node` prebuild set.
 - A supported native platform for `re2` prebuilds (same four-plus-Windows matrix typical for N-API modules).
-- Library package only — no deployment target yet. Milestone 4 (per `docs/superpowers/plans/2026-04-10-milestone-3-lint-import-archive.md`) will add `@llm-wiki/mcp-server` (stdio + HTTP MCP transport) and `@llm-wiki/cli`, at which point the runtime targets are "local workstation" (CLI + MCP over stdio for Claude Code) rather than a server host.
+- Runtime target is local workstation use: CLI and MCP transport packages are already present (`@llm-wiki/cli`, `@llm-wiki/mcp-server`) and wired via `@llm-wiki/common`.
 ## Milestone Status
 - **M1** (complete): domain + ports + adapters (`FsFileStore`, `FsVerbatimStore`, `GitProjectResolver`, `ConfigLoader`, `RememberService`, `RecallService`, `SanitizationService`).
 - **M2** (complete): hybrid search, query, ingest, status (`RuVectorSearchEngine`, `AiSdkLlmClient`, `AiSdkEmbeddingClient`, `GitVersionControl`, `FsSourceReader`, `HttpSourceReader`, `CompositeSourceReader`, `YamlStateStore`, `IngestService`, `QueryService`, `StatusService`).
-- **M3** (current branch `claude/milestone-3-lint-import-archiver`): Lint / Import / Archive services. The plan (`docs/superpowers/plans/2026-04-10-milestone-3-lint-import-archive.md`) calls for three additional infra deps not yet in `package.json`:
+- Milestone plans are historical artifacts under `docs/superpowers/plans/`; this branch includes the integrated v1 CLI/MCP/runtime artifacts validated for HAR-33/HAR-50.
 <!-- GSD:stack-end -->
 
 <!-- GSD:conventions-start source:CONVENTIONS.md -->
 ## Conventions
 
 ## Monorepo Layout
-- pnpm workspace with two packages declared in `pnpm-workspace.yaml`:
+- pnpm workspace with five packages declared in `pnpm-workspace.yaml`:
 - Root `package.json` exposes:
 - Node `>=20` required (`package.json` `engines`).
-- Each package is `"type": "module"` and uses TypeScript project references (`tsconfig.json` has `"references": [{ "path": "packages/core" }, { "path": "packages/infra" }]`).
+- Each package is `"type": "module"` and uses TypeScript project references from root `tsconfig.json` (`core`, `infra`, `common`, `cli`, `mcp-server`).
 ## TypeScript Compiler Options
 | Option | Value | Effect |
 |--------|-------|--------|
