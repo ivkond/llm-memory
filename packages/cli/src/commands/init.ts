@@ -42,6 +42,40 @@ async function initGitRepo(repoRoot: string): Promise<void> {
   }
 }
 
+function hasGitIdentityEnv(): boolean {
+  const authorName = process.env.GIT_AUTHOR_NAME?.trim();
+  const authorEmail = process.env.GIT_AUTHOR_EMAIL?.trim();
+  const committerName = process.env.GIT_COMMITTER_NAME?.trim();
+  const committerEmail = process.env.GIT_COMMITTER_EMAIL?.trim();
+  return Boolean(
+    (authorName && authorEmail) ||
+      (committerName && committerEmail) ||
+      (authorName && committerEmail) ||
+      (committerName && authorEmail),
+  );
+}
+
+async function ensureGitIdentity(repoRoot: string): Promise<void> {
+  if (hasGitIdentityEnv()) return;
+
+  const git: SimpleGit = simpleGit(repoRoot);
+  const [name, email] = await Promise.all([
+    git.raw(['config', '--get', 'user.name']),
+    git.raw(['config', '--get', 'user.email']),
+  ]);
+  const configuredName = name.trim();
+  const configuredEmail = email.trim();
+
+  if (configuredName && configuredEmail) return;
+
+  throw new Error(
+    'Git author identity is not configured. Set it with:\n' +
+      '  git config --global user.name "Your Name"\n' +
+      '  git config --global user.email "you@example.com"\n' +
+      'Or set GIT_AUTHOR_* / GIT_COMMITTER_* environment variables for automation.',
+  );
+}
+
 export const initCommand = new Command()
   .name('init')
   .description('Initialize a new wiki directory')
@@ -116,6 +150,8 @@ mcp:
 `;
 
       await fileStore.writeFile('.config/settings.shared.yaml', configContent);
+
+      await ensureGitIdentity(wikiPath);
 
       // Initialize git repository
       await initGitRepo(wikiPath);

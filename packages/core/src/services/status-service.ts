@@ -41,7 +41,12 @@ export class WikiStatusService {
     const wikiFiles = await this.fileStore.listFiles('wiki');
     const projectFiles = await this.fileStore.listFiles('projects');
 
-    if (wikiFiles.length === 0 && projectFiles.length === 0) {
+    const hasWikiMarkers =
+      (await this.fileStore.exists('.config/settings.shared.yaml')) &&
+      (await this.fileStore.exists('wiki')) &&
+      (await this.fileStore.exists('projects'));
+
+    if (!hasWikiMarkers && wikiFiles.length === 0 && projectFiles.length === 0) {
       throw new WikiNotInitializedError('<root>');
     }
 

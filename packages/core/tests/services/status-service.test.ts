@@ -17,6 +17,7 @@ import type { SearchResult } from '../../src/domain/search-result.js';
 
 class FakeFileStore implements IFileStore {
   public files: Record<string, { info: FileInfo; page: WikiPageData }> = {};
+  public existingPaths = new Set<string>();
   async readFile(): Promise<string | null> {
     return null;
   }
@@ -27,8 +28,8 @@ class FakeFileStore implements IFileStore {
       .map((f) => f.info)
       .filter((info) => info.path === dir || info.path.startsWith(`${dir}/`));
   }
-  async exists(): Promise<boolean> {
-    return true;
+  async exists(relativePath: string): Promise<boolean> {
+    return this.existingPaths.has(relativePath);
   }
   async readWikiPage(p: string): Promise<WikiPageData | null> {
     return this.files[p]?.page ?? null;
@@ -117,6 +118,18 @@ describe('WikiStatusService', () => {
 
   it('test_status_emptyWiki_throwsWikiNotInitialized', async () => {
     await expect(service.status()).rejects.toBeInstanceOf(WikiNotInitializedError);
+  });
+
+  it('test_status_initializedButEmptyWiki_returnsZeroPages', async () => {
+    fileStore.existingPaths.add('.config/settings.shared.yaml');
+    fileStore.existingPaths.add('wiki');
+    fileStore.existingPaths.add('projects');
+    searchEngine.healthValue = 'missing';
+
+    const response = await service.status();
+    expect(response.total_pages).toBe(0);
+    expect(response.projects).toEqual([]);
+    expect(response.index_health).toBe('missing');
   });
 
   it('test_status_nonEmptyWiki_returnsTotalPagesAndProjects', async () => {

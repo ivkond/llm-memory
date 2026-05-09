@@ -14,6 +14,8 @@ Local-first personal knowledge base for AI agents. Markdown files in git are the
 ### Install
 
 ```bash
+corepack enable
+corepack prepare pnpm@10.12.4 --activate
 pnpm install
 ```
 
@@ -25,6 +27,19 @@ pnpm typecheck
 pnpm lint
 pnpm test
 ```
+
+### First Run Smoke Check
+
+```bash
+pnpm --filter @llm-wiki/cli build
+node packages/cli/dist/index.js init ~/.llm-wiki
+node packages/cli/dist/index.js status --wiki ~/.llm-wiki --verbose
+```
+
+Expected result on a fresh wiki:
+- `init` succeeds and creates `.config`, `.local`, `wiki/`, and `projects/`.
+- `status` succeeds with `Total pages: 0`.
+- `Index health` can be `missing` until content is ingested/indexed.
 
 ## CLI Usage
 
@@ -116,3 +131,18 @@ Repository skills are in `.claude/skills/`.
 ## Scope
 
 This project targets local workstation use only. There is no server deployment target in this repository.
+
+## Troubleshooting
+
+- `pnpm: command not found`:
+  run `corepack enable && corepack prepare pnpm@10.12.4 --activate` and re-open your shell.
+- `Git author identity is not configured` during `init`:
+  configure git once with:
+  `git config --global user.name "Your Name"`
+  `git config --global user.email "you@example.com"`
+- `Error: No wiki found`:
+  initialize a wiki with `node packages/cli/dist/index.js init` or pass `--wiki <path>`.
+- `Invalid LLM_WIKI_MCP_PORT`:
+  set `LLM_WIKI_MCP_PORT` to an integer in `1..65535`.
+- Missing LLM/embedding API keys:
+  set `LLM_WIKI_LLM_API_KEY` and `LLM_WIKI_EMBEDDING_API_KEY` before commands that call providers.
