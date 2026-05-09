@@ -88,7 +88,7 @@ describe('tools/call (integration)', () => {
     });
   });
 
-  it('test_toolCall_wiki_ingest_projectUnsupported_returnsInvalidParams', async () => {
+  it('test_toolCall_wiki_ingest_projectUnsupported_returnsProjectScopeUnsupported', async () => {
     const ingest = vi.fn().mockResolvedValue({ pages_created: ['wiki/x.md'], pages_updated: [], commit_sha: 'abc' });
     handle = await startServer(makeServices({ ingest: { ingest } }), { host: '127.0.0.1', port: 0 });
 
@@ -97,11 +97,11 @@ describe('tools/call (integration)', () => {
     expect(parsePayload(body.result as ToolCallResult)).toEqual({
       success: false,
       error: 'project-scoped ingest is not supported yet',
-      code: 'InvalidParams',
+      code: 'PROJECT_SCOPE_UNSUPPORTED',
     });
   });
 
-  it('test_toolCall_wiki_lint_projectUnsupported_returnsInvalidParams', async () => {
+  it('test_toolCall_wiki_lint_projectUnsupported_returnsProjectScopeUnsupported', async () => {
     const lint = vi.fn().mockResolvedValue({ consolidated: 0, promoted: 0, issues: [], commitSha: null });
     handle = await startServer(makeServices({ lint: { lint } }), { host: '127.0.0.1', port: 0 });
 
@@ -110,7 +110,7 @@ describe('tools/call (integration)', () => {
     expect(parsePayload(body.result as ToolCallResult)).toEqual({
       success: false,
       error: 'project-scoped lint is not supported yet',
-      code: 'InvalidParams',
+      code: 'PROJECT_SCOPE_UNSUPPORTED',
     });
   });
 
