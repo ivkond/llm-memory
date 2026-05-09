@@ -33,7 +33,7 @@ export function createWikiIngestHandler(services: AppServices) {
         const hint = params.hint != null ? String(params.hint) : undefined;
         const project = params.project != null ? String(params.project) : undefined;
 
-        const result = await ingestService.ingest({ source, hint });
+        const result = await ingestService.ingest({ source, hint, project });
 
         return {
           content: [

@@ -64,6 +64,10 @@ export const wikiIngestShape = {
     .string()
     .optional()
     .describe('Optional hint to guide LLM placement (e.g. target project / section)'),
+  project: z
+    .string()
+    .optional()
+    .describe('Optional project name used to scope ingest behavior'),
 };
 
 export const wikiLintShape = {
@@ -71,6 +75,10 @@ export const wikiLintShape = {
     .array(z.enum(['consolidate', 'promote', 'health']))
     .optional()
     .describe('Subset of lint phases to run; default is all three in order'),
+  project: z
+    .string()
+    .optional()
+    .describe('Optional project name used to scope lint behavior'),
 };
 
 export const wikiStatusShape = {};

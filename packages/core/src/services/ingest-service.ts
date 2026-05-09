@@ -21,6 +21,7 @@ const PROJECT_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 export interface IngestRequest {
   source: string;
   hint?: string;
+  project?: string;
 }
 
 export interface IngestResponse {
@@ -77,6 +78,7 @@ export class IngestService {
   ) {}
 
   async ingest(req: IngestRequest): Promise<IngestResponse> {
+    void req.project;
     // -- Pre-worktree checks --------------------------------------------------
     const source = await this.sourceReader.read(req.source); // may throw SourceNotFoundError / SourceParseError
     if (source.estimatedTokens > MAX_SOURCE_TOKENS) {
