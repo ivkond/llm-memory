@@ -67,7 +67,9 @@ export const wikiIngestShape = {
   project: z
     .string()
     .optional()
-    .describe('Optional project name used to scope ingest behavior'),
+    .describe(
+      'Deprecated/unsupported for now: project-scoped ingest is not implemented and passing this field returns PROJECT_SCOPE_UNSUPPORTED',
+    ),
 };
 
 export const wikiLintShape = {
@@ -78,7 +80,9 @@ export const wikiLintShape = {
   project: z
     .string()
     .optional()
-    .describe('Optional project name used to scope lint behavior'),
+    .describe(
+      'Deprecated/unsupported for now: project-scoped lint is not implemented and passing this field returns PROJECT_SCOPE_UNSUPPORTED',
+    ),
 };
 
 export const wikiStatusShape = {};
