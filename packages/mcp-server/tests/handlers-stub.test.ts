@@ -6,6 +6,7 @@ import { FsFileStore, FsVerbatimStore } from '@llm-wiki/infra';
 import { RememberService, SanitizationService } from '@llm-wiki/core';
 import type { AppServices } from '@llm-wiki/common';
 import { startServer, type ServerHandle } from '../src/index.js';
+import { createWikiIngestHandler } from '../src/tools/wiki-ingest.js';
 import { postMcp, readJsonRpc, type ToolCallResult } from './_helpers.js';
 
 function parsePayload(result: ToolCallResult): Record<string, unknown> {
@@ -170,6 +171,34 @@ describe('tools/call (integration)', () => {
 
     expect(payload.success).toBe(false);
     expect(payload.code).toBe('InvalidParams');
+  });
+});
+
+describe('wiki_ingest handler (direct)', () => {
+  it('test_handler_wiki_ingest_invalidRetriesString_returnsInvalidParams', async () => {
+    const ingest = vi.fn().mockResolvedValue({ pages_created: ['wiki/x.md'], pages_updated: [], commit_sha: 'abc' });
+    const handler = createWikiIngestHandler(makeServices({ ingest: { ingest } }));
+
+    const result = await handler({ source: '/tmp/s.md', retries: 'abc' });
+    expect(ingest).not.toHaveBeenCalled();
+    expect(parsePayload(result as ToolCallResult)).toEqual({
+      success: false,
+      error: 'retries must be a finite number',
+      code: 'InvalidParams',
+    });
+  });
+
+  it('test_handler_wiki_ingest_invalidRetriesInfinity_returnsInvalidParams', async () => {
+    const ingest = vi.fn().mockResolvedValue({ pages_created: ['wiki/x.md'], pages_updated: [], commit_sha: 'abc' });
+    const handler = createWikiIngestHandler(makeServices({ ingest: { ingest } }));
+
+    const result = await handler({ source: '/tmp/s.md', retries: Number.POSITIVE_INFINITY });
+    expect(ingest).not.toHaveBeenCalled();
+    expect(parsePayload(result as ToolCallResult)).toEqual({
+      success: false,
+      error: 'retries must be a finite number',
+      code: 'InvalidParams',
+    });
   });
 });
 

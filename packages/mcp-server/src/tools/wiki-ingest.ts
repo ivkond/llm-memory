@@ -10,6 +10,20 @@ import type { AppServices } from '@llm-wiki/common';
 export function createWikiIngestHandler(services: AppServices) {
   return async (params: Record<string, unknown>) => {
     const maxRetries = parseRetryCount(params.retries);
+    if (maxRetries === null) {
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: 'retries must be a finite number',
+              code: 'InvalidParams',
+            }),
+          },
+        ],
+      };
+    }
     const project = params.project != null ? String(params.project) : undefined;
     if (project) {
       return {
@@ -107,10 +121,10 @@ export function createWikiIngestHandler(services: AppServices) {
   };
 }
 
-function parseRetryCount(raw: unknown): number {
+function parseRetryCount(raw: unknown): number | null {
   if (raw == null) return 1;
   const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || Number.isNaN(parsed)) return 1;
+  if (!Number.isFinite(parsed) || Number.isNaN(parsed)) return null;
   // Bound retries to prevent untrusted inputs from causing excessive loops.
   return Math.max(1, Math.min(5, Math.trunc(parsed)));
 }
