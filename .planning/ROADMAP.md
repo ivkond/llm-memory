@@ -89,7 +89,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 05-01: Claude Code hooks (SessionStart/Stop) + /wiki skill — HOOK-01, HOOK-02, SKILL-01
+- [x] 05-01: Claude Code hooks (SessionStart/Stop) + /wiki skill — HOOK-01, HOOK-02, SKILL-01 (verified 2026-05-09)
 
 ## Progress
 
