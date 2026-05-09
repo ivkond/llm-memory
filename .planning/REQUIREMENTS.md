@@ -10,22 +10,22 @@ Requirements for Solo MVP. Each maps to roadmap phases.
 ### Transport -- MCP Server
 
 - [x] **MCP-01**: MCP server starts via HTTP transport (Streamable HTTP) and responds to tool list request
-- [ ] **MCP-02**: `wiki_query` tool available via MCP with full search + LLM synthesis
-- [ ] **MCP-03**: `wiki_recall` tool available via MCP with deterministic context loading
-- [ ] **MCP-04**: `wiki_remember_fact` tool available via MCP with sanitization
-- [ ] **MCP-05**: `wiki_remember_session` tool available via MCP with deduplication
-- [ ] **MCP-06**: `wiki_ingest` tool available via MCP with worktree isolation
-- [ ] **MCP-07**: `wiki_lint` tool available via MCP with phase selection
-- [ ] **MCP-08**: `wiki_status` tool available via MCP (read-only diagnostic)
+- [x] **MCP-02**: `wiki_query` tool available via MCP with full search + LLM synthesis
+- [x] **MCP-03**: `wiki_recall` tool available via MCP with deterministic context loading
+- [x] **MCP-04**: `wiki_remember_fact` tool available via MCP with sanitization
+- [x] **MCP-05**: `wiki_remember_session` tool available via MCP with deduplication
+- [x] **MCP-06**: `wiki_ingest` tool available via MCP with worktree isolation
+- [x] **MCP-07**: `wiki_lint` tool available via MCP with phase selection
+- [x] **MCP-08**: `wiki_status` tool available via MCP (read-only diagnostic)
 
 ### Transport -- CLI
 
-- [ ] **CLI-01**: `llm-wiki init` creates wiki directory structure with git + default configs
-- [ ] **CLI-02**: `llm-wiki ingest <source>` ingests file/URL into wiki
-- [ ] **CLI-03**: `llm-wiki lint [--phases]` runs consolidation/promote/health
-- [ ] **CLI-04**: `llm-wiki import` sweeps configured agent memory stores
-- [ ] **CLI-05**: `llm-wiki search <query>` performs hybrid search and displays results
-- [ ] **CLI-06**: `llm-wiki status` displays wiki health/stats
+- [x] **CLI-01**: `llm-wiki init` creates wiki directory structure with git + default configs
+- [x] **CLI-02**: `llm-wiki ingest <source>` ingests file/URL into wiki
+- [x] **CLI-03**: `llm-wiki lint [--phases]` runs consolidation/promote/health
+- [x] **CLI-04**: `llm-wiki import` sweeps configured agent memory stores
+- [x] **CLI-05**: `llm-wiki search <query>` performs hybrid search and displays results
+- [x] **CLI-06**: `llm-wiki status` displays wiki health/stats
 
 ### Integration -- Claude Code
 
@@ -35,8 +35,8 @@ Requirements for Solo MVP. Each maps to roadmap phases.
 
 ### Wiring -- Composition Root
 
-- [ ] **WIRE-01**: Single composition root instantiates all adapters and injects into services
-- [ ] **WIRE-02**: Configuration loaded via ConfigLoader (shared + local + env overrides)
+- [x] **WIRE-01**: Single composition root instantiates all adapters and injects into services
+- [x] **WIRE-02**: Configuration loaded via ConfigLoader (shared + local + env overrides)
 
 ## v2 Requirements
 
@@ -73,22 +73,22 @@ Deferred to future release. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| WIRE-01 | Phase 1 | Pending |
-| WIRE-02 | Phase 1 | Pending |
+| WIRE-01 | Phase 1 | Complete |
+| WIRE-02 | Phase 1 | Complete |
 | MCP-01 | Phase 1 | Complete |
-| MCP-02 | Phase 2 | Pending |
-| MCP-03 | Phase 2 | Pending |
-| MCP-08 | Phase 2 | Pending |
-| MCP-04 | Phase 3 | Pending |
-| MCP-05 | Phase 3 | Pending |
-| MCP-06 | Phase 3 | Pending |
-| MCP-07 | Phase 3 | Pending |
-| CLI-01 | Phase 4 | Pending |
-| CLI-02 | Phase 4 | Pending |
-| CLI-03 | Phase 4 | Pending |
-| CLI-04 | Phase 4 | Pending |
-| CLI-05 | Phase 4 | Pending |
-| CLI-06 | Phase 4 | Pending |
+| MCP-02 | Phase 2 | Complete |
+| MCP-03 | Phase 2 | Complete |
+| MCP-08 | Phase 2 | Complete |
+| MCP-04 | Phase 3 | Complete |
+| MCP-05 | Phase 3 | Complete |
+| MCP-06 | Phase 3 | Complete |
+| MCP-07 | Phase 3 | Complete |
+| CLI-01 | Phase 4 | Complete |
+| CLI-02 | Phase 4 | Complete |
+| CLI-03 | Phase 4 | Complete |
+| CLI-04 | Phase 4 | Complete |
+| CLI-05 | Phase 4 | Complete |
+| CLI-06 | Phase 4 | Complete |
 | HOOK-01 | Phase 5 | Complete |
 | HOOK-02 | Phase 5 | Complete |
 | SKILL-01 | Phase 5 | Complete |
@@ -98,6 +98,16 @@ Deferred to future release. Tracked but not in current roadmap.
 - Mapped to phases: 19
 - Unmapped: 0
 
+## Evidence Basis (2026-05-09 Reconciliation)
+
+- Baseline traceability matrix approved and QA-accepted: HAR-40.
+- Baseline gate evidence captured and accepted: HAR-35.
+- Infra/archive + toolchain blocker fixed and validated via patch/commit artifact chain: HAR-41.
+- MCP-02..08 contract and smoke verification completed/reviewed/validated: HAR-37.
+- CLI-01..06 command coverage completed/reviewed/validated: HAR-36.
+- HOOK-01/02 and SKILL-01 hook/skill validation completed on published branch `agent/coder/fdc252b5` at `5648953`, with Sentinel + Probe acceptance and Harbor readiness: HAR-38.
+- Release-process caveat remains separate from requirement completion: some child issues note PR/branch publishability process risk even when functional validation passed.
+
 ---
 *Requirements defined: 2026-04-12*
-*Last updated: 2026-04-13 after Phase 05 plan 01 completion*
+*Last updated: 2026-05-09 after HAR-39 evidence-chain reconciliation*
