@@ -88,37 +88,29 @@ describe('tools/call (integration)', () => {
     });
   });
 
-  it('test_toolCall_wiki_ingest_forwardsProjectToService', async () => {
+  it('test_toolCall_wiki_ingest_projectUnsupported_returnsInvalidParams', async () => {
     const ingest = vi.fn().mockResolvedValue({ pages_created: ['wiki/x.md'], pages_updated: [], commit_sha: 'abc' });
     handle = await startServer(makeServices({ ingest: { ingest } }), { host: '127.0.0.1', port: 0 });
 
     const body = await callTool(handle.url, 'wiki_ingest', { source: '/tmp/s.md', hint: 'h', project: 'proj' });
-    expect(ingest).toHaveBeenCalledWith({ source: '/tmp/s.md', hint: 'h', project: 'proj' });
+    expect(ingest).not.toHaveBeenCalled();
     expect(parsePayload(body.result as ToolCallResult)).toEqual({
-      success: true,
-      data: { page_path: 'wiki/x.md', project: 'proj', worktree_cleaned: true },
+      success: false,
+      error: 'project-scoped ingest is not supported yet',
+      code: 'InvalidParams',
     });
   });
 
-  it('test_toolCall_wiki_lint_forwardsProjectToService', async () => {
+  it('test_toolCall_wiki_lint_projectUnsupported_returnsInvalidParams', async () => {
     const lint = vi.fn().mockResolvedValue({ consolidated: 0, promoted: 0, issues: [], commitSha: null });
     handle = await startServer(makeServices({ lint: { lint } }), { host: '127.0.0.1', port: 0 });
 
     const body = await callTool(handle.url, 'wiki_lint', { phases: ['health'], project: 'proj' });
-    expect(lint).toHaveBeenCalledWith({ phases: ['health'], project: 'proj' });
+    expect(lint).not.toHaveBeenCalled();
     expect(parsePayload(body.result as ToolCallResult)).toEqual({
-      success: true,
-      data: {
-        phases_run: ['health'],
-        report: {
-          consolidated: 0,
-          promoted: 0,
-          issues_count: 0,
-          commit_sha: null,
-        },
-        entries_consolidated: 0,
-        entries_promoted: 0,
-      },
+      success: false,
+      error: 'project-scoped lint is not supported yet',
+      code: 'InvalidParams',
     });
   });
 
