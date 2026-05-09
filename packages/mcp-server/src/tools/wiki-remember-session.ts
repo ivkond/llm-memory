@@ -38,6 +38,7 @@ export function createWikiRememberSessionHandler(services: AppServices) {
         sessionId,
         project,
       });
+      const entryId = basename(result.file);
 
       return {
         content: [
@@ -46,8 +47,9 @@ export function createWikiRememberSessionHandler(services: AppServices) {
             text: JSON.stringify({
               success: true,
               data: {
-                entry_id: basename(result.file),
+                entry_id: entryId,
                 session_id: sessionId,
+                created_at: inferCreatedAtFromEntryId(entryId),
                 facts_count: result.facts_count,
               },
             }),
@@ -72,4 +74,10 @@ export function createWikiRememberSessionHandler(services: AppServices) {
       };
     }
   };
+}
+
+function inferCreatedAtFromEntryId(entryId: string): string | null {
+  const match = /^(\d{4}-\d{2}-\d{2})/.exec(entryId);
+  if (!match) return null;
+  return `${match[1]}T00:00:00.000Z`;
 }

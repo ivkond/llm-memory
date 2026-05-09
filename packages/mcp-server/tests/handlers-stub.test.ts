@@ -80,7 +80,12 @@ describe('tools/call (integration)', () => {
     expect(rememberSession).toHaveBeenCalledWith({ summary: 'sum', agent: 'claude', sessionId: 's1', project: 'proj' });
     const payload = parsePayload(body.result as ToolCallResult);
     expect(payload.success).toBe(true);
-    expect(payload.data).toEqual({ entry_id: '2026-05-08_s1.md', session_id: 's1', facts_count: 2 });
+    expect(payload.data).toEqual({
+      entry_id: '2026-05-08_s1.md',
+      session_id: 's1',
+      created_at: '2026-05-08T00:00:00.000Z',
+      facts_count: 2,
+    });
   });
 
   it('test_toolCall_wiki_ingest_forwardsProjectToService', async () => {
