@@ -9,7 +9,22 @@ import type { AppServices } from '@llm-wiki/common';
  */
 export function createWikiIngestHandler(services: AppServices) {
   return async (params: Record<string, unknown>) => {
-    const maxRetries = params.retries != null ? Math.max(1, Number(params.retries)) : 1;
+    const maxRetries = parseRetryCount(params.retries);
+    const project = params.project != null ? String(params.project) : undefined;
+    if (project) {
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({
+              success: false,
+              error: 'project-scoped ingest is not supported yet',
+              code: 'InvalidParams',
+            }),
+          },
+        ],
+      };
+    }
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -31,9 +46,8 @@ export function createWikiIngestHandler(services: AppServices) {
 
         const source = params.source != null ? String(params.source) : '';
         const hint = params.hint != null ? String(params.hint) : undefined;
-        const project = params.project != null ? String(params.project) : undefined;
 
-        const result = await ingestService.ingest({ source, hint, project });
+        const result = await ingestService.ingest({ source, hint });
 
         return {
           content: [
@@ -43,7 +57,7 @@ export function createWikiIngestHandler(services: AppServices) {
                 success: true,
                 data: {
                   page_path: result.pages_created[0] ?? result.pages_updated[0] ?? '',
-                  project: project ?? 'default',
+                  project: 'default',
                   worktree_cleaned: true,
                 },
               }),
@@ -91,4 +105,12 @@ export function createWikiIngestHandler(services: AppServices) {
       ],
     };
   };
+}
+
+function parseRetryCount(raw: unknown): number {
+  if (raw == null) return 1;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || Number.isNaN(parsed)) return 1;
+  // Bound retries to prevent untrusted inputs from causing excessive loops.
+  return Math.max(1, Math.min(5, Math.trunc(parsed)));
 }

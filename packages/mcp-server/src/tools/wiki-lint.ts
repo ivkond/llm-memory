@@ -45,8 +45,22 @@ export function createWikiLintHandler(services: AppServices) {
       }
 
       const project = params.project != null ? String(params.project) : undefined;
+      if (project) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                error: 'project-scoped lint is not supported yet',
+                code: 'InvalidParams',
+              }),
+            },
+          ],
+        };
+      }
 
-      const report = await lintService.lint({ phases, project });
+      const report = await lintService.lint({ phases });
 
       return {
         content: [
