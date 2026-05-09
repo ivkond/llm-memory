@@ -1,132 +1,254 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { startServer, type ServerHandle, TOOL_NAMES } from '../src/index.js';
-import {
-  makeFakeAppServices,
-  postMcp,
-  readJsonRpc,
-  MINIMAL_TOOL_ARGS,
-  type ToolCallResult,
-} from './_helpers.js';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { basename } from 'node:path';
+import { tmpdir } from 'node:os';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { FsFileStore, FsVerbatimStore } from '@llm-wiki/infra';
+import { RememberService, SanitizationService } from '@llm-wiki/core';
+import type { AppServices } from '@llm-wiki/common';
+import { startServer, type ServerHandle } from '../src/index.js';
+import { postMcp, readJsonRpc, type ToolCallResult } from './_helpers.js';
+
+function parsePayload(result: ToolCallResult): Record<string, unknown> {
+  return JSON.parse(result.content[0]?.text ?? '{}') as Record<string, unknown>;
+}
 
 describe('tools/call (integration)', () => {
   let handle: ServerHandle;
 
-  beforeEach(async () => {
-    handle = await startServer(makeFakeAppServices(), { host: '127.0.0.1', port: 0 });
-  });
-
   afterEach(async () => {
-    await handle.close();
+    await handle?.close();
   });
 
-  it('test_toolCall_wiki_query_returnsEnvelope', async () => {
+  it('test_toolCall_wiki_query_callsServiceWithMappedParams', async () => {
+    const queryResult = {
+      answer: 'ok',
+      citations: [{ page: 'wiki/p.md', title: 'P', excerpt: 'E', score: 0.9 }],
+      scope_used: 'wiki/',
+      project_used: 'proj',
+    };
+    const query = vi.fn().mockResolvedValue(queryResult);
+    handle = await startServer(makeServices({ query: { query } }), { host: '127.0.0.1', port: 0 });
+
     const res = await postMcp(handle.url, {
       jsonrpc: '2.0',
       id: 1,
       method: 'tools/call',
-      params: { name: 'wiki_query', arguments: { question: 'test?' } },
+      params: { name: 'wiki_query', arguments: { question: 'q', scope: 'wiki/', project: 'proj', cwd: '/w', maxResults: 7 } },
     });
-    expect(res.status).toBe(200);
 
     const body = await readJsonRpc(res);
-    expect(body.error).toBeUndefined();
-    const result = body.result as ToolCallResult;
-
-    // Per D-04: returns { success: true/false, data/error } envelope in content
-    expect(Array.isArray(result.content)).toBe(true);
-    expect(result.content.length).toBeGreaterThan(0);
-    const payload = JSON.parse(result.content[0]?.text ?? '{}');
-    expect(payload).toHaveProperty('success');
-    expect(typeof payload.success).toBe('boolean');
+    expect(query).toHaveBeenCalledWith({ question: 'q', scope: 'wiki/', project: 'proj', cwd: '/w', maxResults: 7, maxTokens: undefined });
+    const payload = parsePayload(body.result as ToolCallResult);
+    expect(payload).toEqual({ success: true, data: queryResult });
   });
 
-  it('test_toolCall_wiki_recall_returnsEnvelope', async () => {
-    const res = await postMcp(handle.url, {
-      jsonrpc: '2.0',
-      id: 2,
-      method: 'tools/call',
-      params: { name: 'wiki_recall', arguments: { cwd: '/test' } },
+  it('test_toolCall_wiki_recall_callsServiceWithMappedParams', async () => {
+    const recall = vi.fn().mockResolvedValue({ project: null, pages: [], unconsolidated_count: 0, total_pages: 0 });
+    handle = await startServer(makeServices({ recall: { recall } }), { host: '127.0.0.1', port: 0 });
+
+    const body = await callTool(handle.url, 'wiki_recall', { cwd: '/repo', max_tokens: 123 });
+    expect(recall).toHaveBeenCalledWith({ cwd: '/repo', max_tokens: 123 });
+    expect(parsePayload(body.result as ToolCallResult)).toEqual({
+      success: true,
+      data: { project: null, pages: [], unconsolidated_count: 0, total_pages: 0 },
     });
-    expect(res.status).toBe(200);
-
-    const body = await readJsonRpc(res);
-    expect(body.error).toBeUndefined();
-    const result = body.result as ToolCallResult;
-
-    const payload = JSON.parse(result.content[0]?.text ?? '{}');
-    expect(payload).toHaveProperty('success');
-    expect(typeof payload.success).toBe('boolean');
   });
 
-  it('test_toolCall_wiki_status_returnsEnvelope', async () => {
-    const res = await postMcp(handle.url, {
-      jsonrpc: '2.0',
-      id: 3,
-      method: 'tools/call',
-      params: { name: 'wiki_status', arguments: {} },
+  it('test_toolCall_wiki_remember_fact_callsServiceWithMappedParams', async () => {
+    const rememberFact = vi.fn().mockResolvedValue({ ok: true, file: 'log/a/raw/fact.md', entry_id: 'fact.md' });
+    handle = await startServer(makeServices({ remember: { rememberFact, rememberSession: vi.fn() } }), { host: '127.0.0.1', port: 0 });
+
+    const body = await callTool(handle.url, 'wiki_remember_fact', {
+      content: 'fact', agent: 'claude', sessionId: 's1', project: 'proj', tags: ['a', 'b'],
     });
-    expect(res.status).toBe(200);
 
-    const body = await readJsonRpc(res);
-    expect(body.error).toBeUndefined();
-    const result = body.result as ToolCallResult;
-
-    const payload = JSON.parse(result.content[0]?.text ?? '{}');
-    expect(payload).toHaveProperty('success');
-    expect(typeof payload.success).toBe('boolean');
+    expect(rememberFact).toHaveBeenCalledWith({ content: 'fact', agent: 'claude', sessionId: 's1', project: 'proj', tags: ['a', 'b'] });
+    expect(parsePayload(body.result as ToolCallResult)).toEqual({
+      success: true,
+      data: { entry_id: 'fact.md', project: 'proj', path: 'log/a/raw/fact.md' },
+    });
   });
 
-  // Write tools now wired to services (Phase 3)
-  it.each(
-    ['wiki_remember_fact', 'wiki_remember_session', 'wiki_ingest', 'wiki_lint'].map(
-      (name) => [name] as const,
-    ),
-  )('test_toolCall_%s_returnsEnvelope', async (name) => {
-    const args = MINIMAL_TOOL_ARGS[name];
-    expect(args).toBeDefined();
+  it('test_toolCall_wiki_remember_session_dedupUsesServiceResult', async () => {
+    const rememberSession = vi.fn().mockResolvedValue({ ok: true, file: 'log/a/raw/2026-05-08_s1.md', facts_count: 2 });
+    handle = await startServer(makeServices({ remember: { rememberFact: vi.fn(), rememberSession } }), { host: '127.0.0.1', port: 0 });
 
-    const res = await postMcp(handle.url, {
-      jsonrpc: '2.0',
-      id: 42,
-      method: 'tools/call',
-      params: { name, arguments: args },
+    const body = await callTool(handle.url, 'wiki_remember_session', {
+      summary: 'sum', agent: 'claude', sessionId: 's1', project: 'proj',
     });
-    expect(res.status).toBe(200);
 
-    const body = await readJsonRpc(res);
-    expect(body.error).toBeUndefined();
-    const result = body.result as ToolCallResult;
-
-    // Now returns envelope { success: true/false } instead of not_implemented error
-    expect(Array.isArray(result.content)).toBe(true);
-    expect(result.content.length).toBeGreaterThan(0);
-    const payload = JSON.parse(result.content[0]?.text ?? '{}');
-    expect(payload).toHaveProperty('success');
-    expect(typeof payload.success).toBe('boolean');
+    expect(rememberSession).toHaveBeenCalledWith({ summary: 'sum', agent: 'claude', sessionId: 's1', project: 'proj' });
+    const payload = parsePayload(body.result as ToolCallResult);
+    expect(payload.success).toBe(true);
+    expect(payload.data).toEqual({ entry_id: '2026-05-08_s1.md', session_id: 's1', facts_count: 2 });
   });
 
-  it('test_toolCall_invalidArgs_returnsValidationError', async () => {
-    // wiki_query requires `question` — send empty args to trip Zod validation.
-    const res = await postMcp(handle.url, {
-      jsonrpc: '2.0',
-      id: 99,
-      method: 'tools/call',
-      params: { name: 'wiki_query', arguments: {} },
-    });
-    expect(res.status).toBe(200);
+  it('test_toolCall_wiki_ingest_forwardsProjectToService', async () => {
+    const ingest = vi.fn().mockResolvedValue({ pages_created: ['wiki/x.md'], pages_updated: [], commit_sha: 'abc' });
+    handle = await startServer(makeServices({ ingest: { ingest } }), { host: '127.0.0.1', port: 0 });
 
+    const body = await callTool(handle.url, 'wiki_ingest', { source: '/tmp/s.md', hint: 'h', project: 'proj' });
+    expect(ingest).toHaveBeenCalledWith({ source: '/tmp/s.md', hint: 'h', project: 'proj' });
+    expect(parsePayload(body.result as ToolCallResult)).toEqual({
+      success: true,
+      data: { page_path: 'wiki/x.md', project: 'proj', worktree_cleaned: true },
+    });
+  });
+
+  it('test_toolCall_wiki_lint_forwardsProjectToService', async () => {
+    const lint = vi.fn().mockResolvedValue({ consolidated: 0, promoted: 0, issues: [], commitSha: null });
+    handle = await startServer(makeServices({ lint: { lint } }), { host: '127.0.0.1', port: 0 });
+
+    const body = await callTool(handle.url, 'wiki_lint', { phases: ['health'], project: 'proj' });
+    expect(lint).toHaveBeenCalledWith({ phases: ['health'], project: 'proj' });
+    expect(parsePayload(body.result as ToolCallResult)).toEqual({
+      success: true,
+      data: {
+        phases_run: ['health'],
+        report: {
+          consolidated: 0,
+          promoted: 0,
+          issues_count: 0,
+          commit_sha: null,
+        },
+        entries_consolidated: 0,
+        entries_promoted: 0,
+      },
+    });
+  });
+
+  it('test_toolCall_wiki_status_callsServiceWithoutArgs', async () => {
+    const status = vi.fn().mockResolvedValue({ total_pages: 1, projects: ['p'], unconsolidated: 0, last_lint: null, last_ingest: null, index_health: 'ok' });
+    handle = await startServer(makeServices({ status: { status } }), { host: '127.0.0.1', port: 0 });
+
+    const body = await callTool(handle.url, 'wiki_status', {});
+    expect(status).toHaveBeenCalledTimes(1);
+    expect(parsePayload(body.result as ToolCallResult)).toEqual({
+      success: true,
+      data: {
+        total_pages: 1,
+        projects: ['p'],
+        unconsolidated: 0,
+        last_lint: null,
+        last_ingest: null,
+        index_health: 'ok',
+      },
+    });
+  });
+
+  it('test_toolCall_validationError_returnsInvalidParams', async () => {
+    const ingest = vi.fn().mockResolvedValue({ pages_created: [], pages_updated: [], commit_sha: 'sha' });
+    handle = await startServer(makeServices({ ingest: { ingest } }), { host: '127.0.0.1', port: 0 });
+
+    const res = await postMcp(handle.url, {
+      jsonrpc: '2.0', id: 20, method: 'tools/call', params: { name: 'wiki_ingest', arguments: {} },
+    });
     const body = await readJsonRpc(res);
 
-    // The SDK surfaces Zod validation failures either as a top-level JSON-RPC
-    // error (code InvalidParams = -32602) or as a tool-result with isError=true
-    // whose text does NOT contain `not_implemented`. Either is acceptable; what
-    // matters is that the stub handler was never reached.
-    if (body.error !== undefined) {
+    if (body.error) {
       expect(body.error.code).toBe(-32602);
-    } else {
-      const result = body.result as ToolCallResult;
-      expect(result.isError).toBe(true);
-      expect(result.content[0]?.text ?? '').not.toContain('not_implemented');
+      expect(ingest).not.toHaveBeenCalled();
+      return;
     }
+
+    const result = body.result as ToolCallResult;
+    const text = result.content[0]?.text ?? '';
+    if (text.startsWith('{')) {
+      const payload = parsePayload(result);
+      expect(payload.success).toBe(false);
+      expect(String(payload.error ?? '')).toContain('Invalid arguments');
+      expect(ingest).not.toHaveBeenCalled();
+      return;
+    }
+    expect(text).toContain('Invalid arguments');
+    expect(ingest).not.toHaveBeenCalled();
+  });
+
+  it('test_toolCall_handlerError_mapsToInvalidParams', async () => {
+    const rememberFact = vi.fn().mockRejectedValue(new Error('content must not be empty'));
+    handle = await startServer(makeServices({ remember: { rememberFact, rememberSession: vi.fn() } }), { host: '127.0.0.1', port: 0 });
+
+    const body = await callTool(handle.url, 'wiki_remember_fact', { content: 'x', agent: 'a', sessionId: 's' });
+    const payload = parsePayload(body.result as ToolCallResult);
+
+    expect(payload.success).toBe(false);
+    expect(payload.code).toBe('InvalidParams');
   });
 });
+
+describe('tools/call smoke (real temp wiki)', () => {
+  let root = '';
+  let handle: ServerHandle;
+
+  beforeEach(async () => {
+    root = await mkdtemp(`${tmpdir()}/llm-wiki-mcp-`);
+  });
+
+  afterEach(async () => {
+    await handle?.close();
+    if (root) await rm(root, { recursive: true, force: true });
+  });
+
+  it('test_toolCall_wiki_remember_session_dedupsOnSecondCall', async () => {
+    const fileStore = new FsFileStore(root);
+    const verbatimStore = new FsVerbatimStore(fileStore);
+    const sanitizer = new SanitizationService({ enabled: false, mode: 'off' });
+    const remember = new RememberService(fileStore, verbatimStore, sanitizer);
+
+    handle = await startServer(makeServices({ remember }), { host: '127.0.0.1', port: 0 });
+
+    const first = await callTool(handle.url, 'wiki_remember_session', { summary: '- one', agent: 'claude', sessionId: 's-dedup' });
+    const second = await callTool(handle.url, 'wiki_remember_session', { summary: '- two', agent: 'claude', sessionId: 's-dedup' });
+
+    const firstData = (parsePayload(first.result as ToolCallResult).data ?? {}) as Record<string, unknown>;
+    const secondData = (parsePayload(second.result as ToolCallResult).data ?? {}) as Record<string, unknown>;
+    expect(secondData.entry_id).toBe(firstData.entry_id);
+
+    const saved = await readFile(`${root}/log/claude/raw/${String(firstData.entry_id)}`, 'utf8');
+    expect(saved).toContain('- one');
+    expect(saved).not.toContain('- two');
+  });
+});
+
+async function callTool(baseUrl: string, name: string, args: Record<string, unknown>) {
+  const res = await postMcp(baseUrl, {
+    jsonrpc: '2.0',
+    id: 9,
+    method: 'tools/call',
+    params: { name, arguments: args },
+  });
+  expect(res.status).toBe(200);
+  return readJsonRpc(res);
+}
+
+function makeServices(overrides: Partial<AppServices> = {}): AppServices {
+  const defaults = {
+    remember: {
+      rememberFact: vi.fn().mockResolvedValue({ ok: true, file: 'log/a/raw/f.md', entry_id: 'f.md' }),
+      rememberSession: vi.fn().mockResolvedValue({ ok: true, file: 'log/a/raw/s.md', facts_count: 1 }),
+    },
+    recall: {
+      recall: vi.fn().mockResolvedValue({ project: null, pages: [], unconsolidated_count: 0, total_pages: 0 }),
+    },
+    query: {
+      query: vi.fn().mockResolvedValue({ answer: '', citations: [], scope_used: 'all', project_used: null }),
+    },
+    ingest: {
+      ingest: vi.fn().mockResolvedValue({ pages_created: [], pages_updated: [], commit_sha: 'sha' }),
+    },
+    status: {
+      status: vi.fn().mockResolvedValue({ total_pages: 1, projects: [], unconsolidated: 0, last_lint: null, last_ingest: null, index_health: 'ok' }),
+    },
+    lint: {
+      lint: vi.fn().mockResolvedValue({ consolidated: 0, promoted: 0, issues: [], commitSha: null }),
+    },
+    import_: {
+      importFromAgent: vi.fn().mockResolvedValue({ imported: 0, skipped: 0 }),
+    },
+  };
+
+  return {
+    ...defaults,
+    ...overrides,
+  } as unknown as AppServices;
+}

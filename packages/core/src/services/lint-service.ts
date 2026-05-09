@@ -39,6 +39,7 @@ export interface LintPhase<N extends LintPhaseName> {
 
 export interface LintRequest {
   phases?: LintPhaseName[];
+  project?: string;
 }
 
 export type VerbatimStoreFactory = (fileStore: IFileStore) => IVerbatimStore;
@@ -69,6 +70,7 @@ export class LintService {
   }
 
   async lint(req: LintRequest = {}): Promise<LintReport> {
+    void req.project;
     const phaseSet = new Set<LintPhaseName>(req.phases ?? ALL_PHASES);
 
     const worktree = await this.deps.versionControl.createWorktree('lint');

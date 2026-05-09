@@ -1,9 +1,10 @@
+import { basename } from 'node:path';
 import type { AppServices } from '@llm-wiki/common';
 
 /**
  * Handler for `wiki_remember_session` — wires to RememberService.
  *
- * Per D-04: Uses APPEND mode — allow duplicate session_id entries each time.
+ * Per D-04: Uses dedup-by-session behavior from RememberService.
  * Per D-06: Success returns `{ success: true, data: { entry_id, session_id, created_at } }`.
  * Failure returns `{ success: false, error: string, code?: string }`.
  */
@@ -45,9 +46,9 @@ export function createWikiRememberSessionHandler(services: AppServices) {
             text: JSON.stringify({
               success: true,
               data: {
-                entry_id: result.file,
+                entry_id: basename(result.file),
                 session_id: sessionId,
-                created_at: new Date().toISOString(),
+                facts_count: result.facts_count,
               },
             }),
           },

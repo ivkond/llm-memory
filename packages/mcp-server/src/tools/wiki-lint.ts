@@ -44,10 +44,9 @@ export function createWikiLintHandler(services: AppServices) {
         }
       }
 
-      // project parameter reserved for future use
-      void params.project;
+      const project = params.project != null ? String(params.project) : undefined;
 
-      const report = await lintService.lint({ phases });
+      const report = await lintService.lint({ phases, project });
 
       return {
         content: [
