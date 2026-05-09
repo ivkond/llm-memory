@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { LintService, type LintPhase } from '../../src/services/lint-service.js';
 import { HealthIssue, HealthIssueType } from '../../src/domain/health-issue.js';
-import { GitConflictError, LlmUnavailableError } from '../../src/domain/errors.js';
+import {
+  GitConflictError,
+  LlmUnavailableError,
+  ProjectScopeUnsupportedError,
+} from '../../src/domain/errors.js';
 import { EMPTY_RUNTIME_STATE, type WikiRuntimeState } from '../../src/domain/runtime-state.js';
 import type {
   IFileStore,
@@ -318,6 +322,30 @@ describe('LintService', () => {
     expect(consolidateSpy).not.toHaveBeenCalled();
     expect(promoteSpy).not.toHaveBeenCalled();
     expect(report.issues).toHaveLength(1);
+  });
+
+  it('rejects unsupported project scope before side effects', async () => {
+    const service = new LintService({
+      mainRepoRoot: '/main',
+      mainFileStore: mainFs,
+      mainVerbatimStore: vs,
+      versionControl: vc,
+      searchEngine,
+      fileStoreFactory: fsFactory,
+      verbatimStoreFactory: () => vs,
+      stateStore: state,
+      archiver,
+      makeConsolidatePhase: () => stubConsolidate(),
+      makePromotePhase: () => stubPromote(),
+      makeHealthPhase: () => stubHealth(),
+      now: () => new Date(),
+    });
+
+    await expect(service.lint({ project: 'acme' })).rejects.toBeInstanceOf(
+      ProjectScopeUnsupportedError,
+    );
+    expect(vc.createdWorktree).toBeNull();
+    expect(state.saved).toEqual([]);
   });
 
   it('invokes archiver for every consolidated verbatim path when consolidate produces edits', async () => {

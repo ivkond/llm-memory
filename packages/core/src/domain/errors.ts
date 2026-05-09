@@ -138,3 +138,15 @@ export class LintPhaseError extends WikiError {
     super('LINT_PHASE_ERROR', `Lint phase "${phase}" failed: ${message}`);
   }
 }
+
+export class ProjectScopeUnsupportedError extends WikiError {
+  constructor(
+    public readonly operation: 'ingest' | 'lint',
+    public readonly project: string,
+  ) {
+    super(
+      'PROJECT_SCOPE_UNSUPPORTED',
+      `Operation "${operation}" does not support project-scoped execution yet: ${JSON.stringify(project)}`,
+    );
+  }
+}

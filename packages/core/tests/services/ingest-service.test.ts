@@ -6,6 +6,7 @@ import {
   SourceParseError,
   GitConflictError,
   IngestPathViolationError,
+  ProjectScopeUnsupportedError,
 } from '../../src/domain/errors.js';
 import { EMPTY_RUNTIME_STATE, type WikiRuntimeState } from '../../src/domain/runtime-state.js';
 import type {
@@ -260,6 +261,14 @@ describe('IngestService', () => {
     await expect(service.ingest({ source: '/tmp/huge.md' })).rejects.toBeInstanceOf(
       SourceParseError,
     );
+    expect(vcs.createSpy).not.toHaveBeenCalled();
+  });
+
+  it('test_ingest_projectScopeProvided_throwsProjectScopeUnsupported', async () => {
+    await expect(service.ingest({ source: '/tmp/src.md', project: 'acme' })).rejects.toBeInstanceOf(
+      ProjectScopeUnsupportedError,
+    );
+    expect(sourceReader.readSpy).not.toHaveBeenCalled();
     expect(vcs.createSpy).not.toHaveBeenCalled();
   });
 
