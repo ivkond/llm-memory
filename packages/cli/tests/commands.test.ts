@@ -100,7 +100,9 @@ describe('CLI command coverage', () => {
       status: vi.fn().mockResolvedValue({ isClean: () => false }),
       add: vi.fn().mockResolvedValue(undefined),
       commit: vi.fn().mockResolvedValue(undefined),
+      raw: vi.fn().mockResolvedValue('Test User'),
     };
+    git.raw.mockResolvedValueOnce('Test User').mockResolvedValueOnce('test@example.com');
 
     vi.doMock('simple-git', () => ({ simpleGit: () => git }));
 
@@ -122,6 +124,48 @@ describe('CLI command coverage', () => {
     expect(config).toContain(`path: ${wikiPath}`);
     expect(config).toContain('model: gpt-4o-mini');
     expect(tap.stdout.join('\n')).toContain('Wiki initialized successfully');
+  });
+
+  it('init: exits with actionable message when git identity is missing', async () => {
+    const git = {
+      init: vi.fn().mockResolvedValue(undefined),
+      status: vi.fn().mockResolvedValue({ isClean: () => false }),
+      add: vi.fn().mockResolvedValue(undefined),
+      commit: vi.fn().mockResolvedValue(undefined),
+      raw: vi.fn().mockResolvedValue(''),
+    };
+    vi.doMock('simple-git', () => ({ simpleGit: () => git }));
+
+    const tap = tapConsole();
+    const restoreExit = mockExit();
+    const wikiPath = path.join(cwd, 'wiki-no-identity');
+    const oldAuthorName = process.env.GIT_AUTHOR_NAME;
+    const oldAuthorEmail = process.env.GIT_AUTHOR_EMAIL;
+    const oldCommitterName = process.env.GIT_COMMITTER_NAME;
+    const oldCommitterEmail = process.env.GIT_COMMITTER_EMAIL;
+    delete process.env.GIT_AUTHOR_NAME;
+    delete process.env.GIT_AUTHOR_EMAIL;
+    delete process.env.GIT_COMMITTER_NAME;
+    delete process.env.GIT_COMMITTER_EMAIL;
+
+    try {
+      await expect(
+        runCommand('../src/commands/init.ts', 'initCommand', [wikiPath]),
+      ).rejects.toMatchObject({ code: 1 });
+    } finally {
+      process.env.GIT_AUTHOR_NAME = oldAuthorName;
+      process.env.GIT_AUTHOR_EMAIL = oldAuthorEmail;
+      process.env.GIT_COMMITTER_NAME = oldCommitterName;
+      process.env.GIT_COMMITTER_EMAIL = oldCommitterEmail;
+      restoreExit();
+      tap.restore();
+    }
+
+    const err = tap.stderr.join('\n');
+    expect(err).toContain('Git author identity is not configured');
+    expect(err).toContain('git config --global user.name');
+    expect(err).toContain('git config --global user.email');
+    expect(git.init).not.toHaveBeenCalled();
   });
 
   it('init: exits when wiki already exists and --force is not used', async () => {
