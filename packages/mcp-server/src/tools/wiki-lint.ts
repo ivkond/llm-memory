@@ -51,12 +51,12 @@ export function createWikiLintHandler(services: AppServices) {
             {
               type: 'text' as const,
               text: JSON.stringify({
-                success: false,
-                error: 'project-scoped lint is not supported yet',
-                code: 'InvalidParams',
-              }),
-            },
-          ],
+              success: false,
+              error: 'project-scoped lint is not supported yet',
+              code: 'PROJECT_SCOPE_UNSUPPORTED',
+            }),
+          },
+        ],
         };
       }
 

@@ -19,7 +19,7 @@ export function createWikiIngestHandler(services: AppServices) {
             text: JSON.stringify({
               success: false,
               error: 'project-scoped ingest is not supported yet',
-              code: 'InvalidParams',
+              code: 'PROJECT_SCOPE_UNSUPPORTED',
             }),
           },
         ],
