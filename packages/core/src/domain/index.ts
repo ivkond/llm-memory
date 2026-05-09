@@ -33,4 +33,5 @@ export {
   ArchiveError,
   ImportReaderNotRegisteredError,
   LintPhaseError,
+  ProjectScopeUnsupportedError,
 } from './errors.js';

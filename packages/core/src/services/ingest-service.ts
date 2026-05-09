@@ -3,6 +3,7 @@ import {
   SourceParseError,
   GitConflictError,
   IngestPathViolationError,
+  ProjectScopeUnsupportedError,
   WikiError,
 } from '../domain/errors.js';
 import type { ISourceReader } from '../ports/source-reader.js';
@@ -78,7 +79,9 @@ export class IngestService {
   ) {}
 
   async ingest(req: IngestRequest): Promise<IngestResponse> {
-    void req.project;
+    if (req.project) {
+      throw new ProjectScopeUnsupportedError('ingest', req.project);
+    }
     // -- Pre-worktree checks --------------------------------------------------
     const source = await this.sourceReader.read(req.source); // may throw SourceNotFoundError / SourceParseError
     if (source.estimatedTokens > MAX_SOURCE_TOKENS) {

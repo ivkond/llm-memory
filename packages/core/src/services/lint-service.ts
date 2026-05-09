@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { GitConflictError } from '../domain/errors.js';
+import { GitConflictError, ProjectScopeUnsupportedError } from '../domain/errors.js';
 import { LintReport } from '../domain/lint-report.js';
 import type { IFileStore, FileStoreFactory } from '../ports/file-store.js';
 import type { IVerbatimStore } from '../ports/verbatim-store.js';
@@ -70,7 +70,9 @@ export class LintService {
   }
 
   async lint(req: LintRequest = {}): Promise<LintReport> {
-    void req.project;
+    if (req.project) {
+      throw new ProjectScopeUnsupportedError('lint', req.project);
+    }
     const phaseSet = new Set<LintPhaseName>(req.phases ?? ALL_PHASES);
 
     const worktree = await this.deps.versionControl.createWorktree('lint');
