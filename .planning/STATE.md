@@ -35,11 +35,13 @@ Progress: [██████████] 100%
 
 ## Performance Metrics
 
+Historical note: this section is a legacy execution snapshot from initial phase delivery and is not recalculated during HAR-39 traceability reconciliation.
+
 **Velocity:**
 
-- Total plans completed: 6
-- Average duration: ~40min
-- Total execution time: ~1.3 hours
+- Total plans completed (authoritative): 7
+- Average duration (historical estimate): ~40min
+- Total execution time: historical implementation metric retained from pre-reconciliation snapshot
 
 **By Phase:**
 
@@ -50,8 +52,8 @@ Progress: [██████████] 100%
 
 **Recent Trend:**
 
-- Last 5 plans: 01-01 (~45min), 01-02 (~35min)
-- Trend: baseline
+- Snapshot values above are historical and informational only.
+- Canonical completion state is tracked in frontmatter progress (7/7 plans, 100%).
 
 *Updated after each plan completion*
 
