@@ -12,11 +12,11 @@ Milestones 1-3 built the complete domain and infrastructure layers (store, recal
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Composition Root and MCP Bootstrap** - Wire all adapters via DI and start MCP server with Streamable HTTP transport
-- [ ] **Phase 2: MCP Read Tools** - Expose query, recall, and status as read-only MCP tools
-- [ ] **Phase 3: MCP Write Tools** - Expose remember, ingest, and lint as mutating MCP tools
+- [x] **Phase 1: Composition Root and MCP Bootstrap** - Wire all adapters via DI and start MCP server with Streamable HTTP transport (verified 2026-05-09)
+- [x] **Phase 2: MCP Read Tools** - Expose query, recall, and status as read-only MCP tools (verified 2026-05-09)
+- [x] **Phase 3: MCP Write Tools** - Expose remember, ingest, and lint as mutating MCP tools (verified 2026-05-09)
 - [x] **Phase 4: CLI** - Command-line interface for all wiki operations (completed 2026-04-13)
-- [ ] **Phase 5: Claude Code Integration** - Session hooks and guide skill for Claude Code
+- [x] **Phase 5: Claude Code Integration** - Session hooks and guide skill for Claude Code (verified 2026-05-09)
 
 ## Phase Details
 
@@ -99,8 +99,17 @@ Note: Phase 4 depends only on Phase 1, so it could execute in parallel with Phas
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Composition Root and MCP Bootstrap | 1/2 | In progress | - |
-| 2. MCP Read Tools | 1/1 | Planned | - |
-| 3. MCP Write Tools | 1/1 | Not started | - |
+| 1. Composition Root and MCP Bootstrap | 2/2 | Complete | 2026-05-09 |
+| 2. MCP Read Tools | 1/1 | Complete | 2026-05-09 |
+| 3. MCP Write Tools | 1/1 | Complete | 2026-05-09 |
 | 4. CLI | 2/2 | Complete    | 2026-04-13 |
-| 5. Claude Code Integration | 1/1 | Planned | - |
+| 5. Claude Code Integration | 1/1 | Complete | 2026-05-09 |
+
+## Verification Reconciliation Notes (2026-05-09)
+
+- Traceability basis: HAR-40 evidence matrix, with Sentinel approval and Probe acceptance.
+- Baseline gate basis: HAR-35 plus HAR-41 follow-up that cleared the infra archive/toolchain blocker chain.
+- MCP completion evidence: HAR-37 (tests + smoke + review + validation).
+- CLI completion evidence: HAR-36 (command coverage + review + validation).
+- Claude hooks/skill completion evidence: HAR-38, finalized on published branch `agent/coder/fdc252b5` commit `5648953` with Sentinel and Probe acceptance.
+- Remaining risk is process/release artifact traceability in some child issues, not functional phase scope coverage.
