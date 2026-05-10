@@ -1,0 +1,13 @@
+{
+  "name": "@llm-wiki/skill-llm-memory",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "LLM Memory skill package for Multica agent runtime",
+  "license": "UNLICENSED",
+  "files": [
+    "SKILL.md",
+    "README.md",
+    "templates/"
+  ]
+}
