@@ -49,11 +49,14 @@ jobs:
           fetch-depth: 0
           ref: ${{ steps.vars.outputs.tag }}
 
-      - name: Setup Node 22
+      - name: Setup Node 24
         uses: actions/setup-node@v4
         with:
-          node-version: 22.14.0
-          registry-url: https://registry.npmjs.org
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Use npm with trusted publishing support
+        run: npm install -g npm@11.5.1
 
       - name: Enable Corepack and pnpm
         shell: bash
@@ -174,8 +177,11 @@ jobs:
       - name: Publish npm packages
         env:
           COREPACK_ENABLE_PROJECT_SPEC: 0
+          NODE_AUTH_TOKEN: ''
         shell: bash
         run: |
+          unset NODE_AUTH_TOKEN
+          npm config delete //registry.npmjs.org/:_authToken || true
           (cd packages/cli && npm publish --access public)
           (cd packages/mcp-server && npm publish --access public)
 
