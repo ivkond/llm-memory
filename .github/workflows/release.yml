@@ -82,7 +82,7 @@ jobs:
       - name: Run tests
         run: pnpm test
 
-      - name: Pack dry-run and ensure no workspace protocol in tarballs
+      - name: Pack dry-run and validate packed runtime dependencies
         shell: bash
         run: |
           rm -rf .release-pack
@@ -92,9 +92,33 @@ jobs:
             pack_path=$(pnpm --dir "${pkg_dir}" pack --pack-destination ../../.release-pack | tail -n 1)
             pack_file=$(basename "${pack_path}")
             tar -xOf ".release-pack/${pack_file}" package/package.json > ".release-pack/${pkg}.package.json"
+            tar -tf ".release-pack/${pack_file}" > ".release-pack/${pkg}.files.txt"
             if grep -q 'workspace:\*' ".release-pack/${pkg}.package.json"; then
               echo "workspace:* dependency found in packed ${pkg}" >&2
               exit 1
+            fi
+
+            if [[ "${pkg}" == "cli" || "${pkg}" == "mcp-server" ]]; then
+              if node -e "const fs=require('node:fs');const p=JSON.parse(fs.readFileSync('.release-pack/${pkg}.package.json','utf8'));const deps={...(p.dependencies||{}),...(p.optionalDependencies||{}),...(p.peerDependencies||{})};if(Object.keys(deps).some((name)=>/^@llm-wiki\/(core|infra|common)$/.test(name))){process.exit(1)}"; then
+                :
+              else
+                echo "internal @llm-wiki runtime dependency found in packed ${pkg}" >&2
+                exit 1
+              fi
+
+              if node -e "const fs=require('node:fs');const manifest=JSON.parse(fs.readFileSync('.release-pack/${pkg}.package.json','utf8'));const tarFiles=new Set(fs.readFileSync('.release-pack/${pkg}.files.txt','utf8').trim().split(/\r?\n/).filter(Boolean));const typeTargets=[];if(typeof manifest.types==='string')typeTargets.push(manifest.types);const collect=(value)=>{if(!value)return;if(typeof value==='string')return;if(Array.isArray(value)){for(const item of value)collect(item);return;}if(typeof value==='object'){if(typeof value.types==='string')typeTargets.push(value.types);for(const child of Object.values(value))collect(child);}};collect(manifest.exports);const missing=[...new Set(typeTargets)].map((p)=>p.replace(/^\\.\\//,'')).filter(Boolean).map((p)=>`package/${p}`).filter((p)=>!tarFiles.has(p));if(missing.length){console.error(`missing packed declaration targets for ${manifest.name}: ${missing.join(', ')}`);process.exit(1)}"; then
+                :
+              else
+                exit 1
+              fi
+
+              while IFS= read -r dts_path; do
+                [[ "${dts_path}" == package/*.d.ts ]] || continue
+                if tar -xOf ".release-pack/${pack_file}" "${dts_path}" | grep -qE '@llm-wiki/(core|infra|common)'; then
+                  echo "internal @llm-wiki type import found in packed ${pkg} declaration: ${dts_path}" >&2
+                  exit 1
+                fi
+              done < ".release-pack/${pkg}.files.txt"
             fi
           done
 
