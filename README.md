@@ -132,6 +132,28 @@ Repository skills are in `.claude/skills/`.
 
 This project targets local workstation use only. There is no server deployment target in this repository.
 
+## Release Automation
+
+Release workflow: `.github/workflows/release.yml`
+
+- Primary trigger: push semver tag `vX.Y.Z`.
+- Manual retry trigger: `workflow_dispatch` with required `tag` input pointing to an existing semver tag.
+- Validation before publish: `pnpm install --frozen-lockfile`, version/tag guard, `pnpm typecheck`, `pnpm build`, `pnpm test`, npm pack checks for workspace dependencies, Docker build + smoke start.
+- npm publish order: `@llm-wiki/core` -> `@llm-wiki/infra` -> `@llm-wiki/common` -> `@llm-wiki/cli` -> `@llm-wiki/mcp-server`.
+- GHCR publish target: `ghcr.io/ivkond/llm-wiki` with tags `${version}`, `v${version}`, and `latest`.
+
+Required GitHub secrets and permissions:
+
+- `NPM_TOKEN`: npm automation token for publishing `@llm-wiki/*` packages.
+- `GITHUB_TOKEN`: built-in token with `packages: write` permission to publish to GHCR.
+- Workflow permissions are set to `contents: read` and `packages: write`.
+
+Rerun behavior:
+
+- npm versions are immutable; retrying a successful npm publish for the same version fails (expected).
+- GHCR tags may be repushed on retry, so image digest for the same tag can change.
+- Recommended retry path is `workflow_dispatch` with the same tag after fixing the failing step.
+
 ## Troubleshooting
 
 - `pnpm: command not found`:
