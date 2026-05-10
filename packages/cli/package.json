@@ -20,18 +20,20 @@
     "./commands": "./dist/commands/index.js"
   },
   "scripts": {
-    "build": "tsc -b",
+    "build": "tsup --config tsup.config.ts && tsc -b tsconfig.json --emitDeclarationOnly --force",
+    "prepack": "pnpm run build",
     "test": "vitest run",
     "lint": "tsc -b"
   },
   "dependencies": {
-    "@llm-wiki/common": "workspace:*",
-    "@llm-wiki/infra": "workspace:*",
     "commander": "^12.1.0",
     "simple-git": "^3.27.0"
   },
   "devDependencies": {
+    "@llm-wiki/common": "workspace:*",
+    "@llm-wiki/infra": "workspace:*",
     "@types/node": "^22.0.0",
+    "tsup": "^8.5.0",
     "typescript": "^5.8.0"
   },
   "engines": {

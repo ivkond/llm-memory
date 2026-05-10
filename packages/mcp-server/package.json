@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./dist/main.d.ts",
   "files": [
     "dist"
   ],
@@ -15,22 +15,24 @@
   },
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./dist/main.d.ts",
       "import": "./dist/index.js"
     }
   },
   "scripts": {
-    "build": "tsc -b",
+    "build": "tsup --config tsup.config.ts && node -e \"require('node:fs').writeFileSync('dist/main.d.ts','export {};\\n')\"",
+    "prepack": "pnpm run build",
     "test": "vitest run"
   },
   "dependencies": {
-    "@llm-wiki/common": "workspace:*",
-    "@llm-wiki/infra": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@llm-wiki/common": "workspace:*",
+    "@llm-wiki/infra": "workspace:*",
     "@types/node": "^22.0.0",
+    "tsup": "^8.5.0",
     "typescript": "^5.8.0",
     "vitest": "^3.1.0"
   }
