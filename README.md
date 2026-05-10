@@ -164,7 +164,7 @@ Required GitHub permissions:
 
 Rerun behavior:
 
-- npm versions are immutable; retrying a successful npm publish for the same version fails (expected).
+- npm versions are immutable; the workflow skips package versions already present in npm so partial retries can continue.
 - GHCR tags may be repushed on retry, so image digest for the same tag can change.
 - Recommended retry path is `workflow_dispatch` with the same tag after fixing the failing step.
 
