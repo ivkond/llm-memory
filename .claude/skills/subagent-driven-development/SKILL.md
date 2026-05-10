@@ -53,9 +53,10 @@ digraph process {
         "Spec reviewer subagent confirms code matches spec?" [shape=diamond];
         "Implementer subagent fixes spec gaps" [shape=box];
         "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)" [shape=box];
-        "Code quality reviewer subagent approves?" [shape=diamond];
+        "Code quality reviewer subagent creates PR, checks CI?" [shape=diamond];
         "Implementer subagent fixes quality issues" [shape=box];
         "Mark task complete in TodoWrite" [shape=box];
+        "PR is green and ready to merge" [shape=box];
     }
 
     "Read plan, extract all tasks with full text, note context, create TodoWrite" [shape=box];
@@ -73,10 +74,11 @@ digraph process {
     "Spec reviewer subagent confirms code matches spec?" -> "Implementer subagent fixes spec gaps" [label="no"];
     "Implementer subagent fixes spec gaps" -> "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)" [label="re-review"];
     "Spec reviewer subagent confirms code matches spec?" -> "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)" [label="yes"];
-    "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)" -> "Code quality reviewer subagent approves?";
-    "Code quality reviewer subagent approves?" -> "Implementer subagent fixes quality issues" [label="no"];
-    "Implementer subagent fixes quality issues" -> "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)" [label="re-review"];
-    "Code quality reviewer subagent approves?" -> "Mark task complete in TodoWrite" [label="yes"];
+"Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)" -> "Code quality reviewer subagent creates PR, checks CI?";
+        "Code quality reviewer subagent creates PR, checks CI?" -> "Implementer subagent fixes quality issues" [label="no"];
+        "Implementer subagent fixes quality issues" -> "Code quality reviewer subagent creates PR, checks CI?" [label="re-review"];
+        "Code quality reviewer subagent creates PR, checks CI?" -> "PR is green and ready to merge" [label="yes"];
+        "PR is green and ready to merge" -> "Mark task complete in TodoWrite";
     "Mark task complete in TodoWrite" -> "More tasks remain?";
     "More tasks remain?" -> "Dispatch implementer subagent (./implementer-prompt.md)" [label="yes"];
     "More tasks remain?" -> "Dispatch final code reviewer subagent for entire implementation" [label="no"];
@@ -152,7 +154,9 @@ Implementer: "Got it. Implementing now..."
 Spec reviewer: ✅ Spec compliant - all requirements met, nothing extra
 
 [Get git SHAs, dispatch code quality reviewer]
-Code reviewer: Strengths: Good test coverage, clean. Issues: None. Approved.
+Code reviewer: Created PR https://github.com/.../pull/42
+Checks: All green ✅
+Status: READY_TO_MERGE
 
 [Mark Task 1 complete]
 
@@ -180,13 +184,9 @@ Implementer: Removed --json flag, added progress reporting
 Spec reviewer: ✅ Spec compliant now
 
 [Dispatch code quality reviewer]
-Code reviewer: Strengths: Solid. Issues (Important): Magic number (100)
-
-[Implementer fixes]
-Implementer: Extracted PROGRESS_INTERVAL constant
-
-[Code reviewer reviews again]
-Code reviewer: ✅ Approved
+Code reviewer: Created PR, checks running...
+After fixes applied: All checks green ✅
+Status: READY_TO_MERGE
 
 [Mark Task 2 complete]
 
