@@ -11,7 +11,7 @@
     "access": "public"
   },
   "bin": {
-    "llm-wiki-mcp": "./dist/main.js"
+    "llm-wiki-mcp": "dist/main.js"
   },
   "exports": {
     ".": {
