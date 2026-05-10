@@ -10,7 +10,7 @@ import {
   AiSdkLlmClient,
   AiSdkEmbeddingClient,
 } from '../../src/index.js';
-import { QueryService } from '@llm-wiki/core';
+import { QueryService } from '@ivkond-llm-wiki/core';
 
 // v2-spec mock doGenerate helper. See Task 3 for the full shape.
 function okGen(text: string, input = 10, output = 5) {

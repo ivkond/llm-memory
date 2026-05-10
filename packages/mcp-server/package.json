@@ -1,5 +1,5 @@
 {
-  "name": "@llm-wiki/mcp-server",
+  "name": "@ivkond-llm-wiki/mcp-server",
   "version": "0.1.0",
   "type": "module",
   "repository": {
@@ -45,8 +45,8 @@
     "zod": "^3.25.0"
   },
   "devDependencies": {
-    "@llm-wiki/common": "workspace:*",
-    "@llm-wiki/infra": "workspace:*",
+    "@ivkond-llm-wiki/common": "workspace:*",
+    "@ivkond-llm-wiki/infra": "workspace:*",
     "@types/node": "^22.0.0",
     "tsup": "^8.5.0",
     "typescript": "^5.8.0",

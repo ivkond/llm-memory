@@ -4,7 +4,7 @@ import {
   type DnsLookupFn,
   type ResolvedAddress,
 } from '../src/http-source-reader.js';
-import { SourceNotFoundError, SourceParseError, estimateTokens } from '@llm-wiki/core';
+import { SourceNotFoundError, SourceParseError, estimateTokens } from '@ivkond-llm-wiki/core';
 
 /**
  * Helper: a DNS stub that maps hostnames to a fixed list of addresses.

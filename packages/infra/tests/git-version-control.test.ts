@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { GitVersionControl } from '../src/git-version-control.js';
-import { GitConflictError } from '@llm-wiki/core';
+import { GitConflictError } from '@ivkond-llm-wiki/core';
 
 /**
  * Real git repos in mkdtemp directories. Initial commit is seeded in

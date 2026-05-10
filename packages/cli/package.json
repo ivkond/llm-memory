@@ -1,5 +1,5 @@
 {
-  "name": "@llm-wiki/cli",
+  "name": "@ivkond-llm-wiki/cli",
   "version": "0.1.0",
   "description": "CLI for LLM Wiki operations",
   "type": "module",
@@ -45,8 +45,8 @@
     "simple-git": "^3.27.0"
   },
   "devDependencies": {
-    "@llm-wiki/common": "workspace:*",
-    "@llm-wiki/infra": "workspace:*",
+    "@ivkond-llm-wiki/common": "workspace:*",
+    "@ivkond-llm-wiki/infra": "workspace:*",
     "@types/node": "^22.0.0",
     "tsup": "^8.5.0",
     "typescript": "^5.8.0"

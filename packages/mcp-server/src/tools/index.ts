@@ -1,5 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { AppServices } from '@llm-wiki/common';
+import type { AppServices } from '@ivkond-llm-wiki/common';
 import {
   wikiQueryShape,
   wikiRecallShape,

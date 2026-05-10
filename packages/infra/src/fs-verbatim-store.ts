@@ -1,6 +1,6 @@
 import matter from 'gray-matter';
-import { VerbatimEntry } from '@llm-wiki/core';
-import type { IVerbatimStore, IFileStore, FileInfo } from '@llm-wiki/core';
+import { VerbatimEntry } from '@ivkond-llm-wiki/core';
+import type { IVerbatimStore, IFileStore, FileInfo } from '@ivkond-llm-wiki/core';
 
 export class FsVerbatimStore implements IVerbatimStore {
   constructor(private readonly fileStore: IFileStore) {}

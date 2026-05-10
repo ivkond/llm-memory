@@ -6,7 +6,7 @@ import {
   AgentMemoryItem,
   type IAgentMemoryReader,
   type AgentMemoryDiscoveryOptions,
-} from '@llm-wiki/core';
+} from '@ivkond-llm-wiki/core';
 
 const IDENTIFIER_SAFE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 

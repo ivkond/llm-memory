@@ -10,8 +10,8 @@ import {
   WikiStatusService,
   LintService,
   ImportService,
-} from '@llm-wiki/core';
-import type { WikiConfig } from '@llm-wiki/infra';
+} from '@ivkond-llm-wiki/core';
+import type { WikiConfig } from '@ivkond-llm-wiki/infra';
 import { buildContainer } from '../src/build-container.js';
 
 function makeTestConfig(tmpDir: string): WikiConfig {

@@ -4,7 +4,7 @@ import {
   type IFileStore,
   type IStateStore,
   type WikiRuntimeState,
-} from '@llm-wiki/core';
+} from '@ivkond-llm-wiki/core';
 
 const STATE_PATH = '.local/state.yaml';
 

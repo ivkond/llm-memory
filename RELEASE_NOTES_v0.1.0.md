@@ -3,10 +3,10 @@
 ## Summary
 
 This release publishes only two public npm runtime packages:
-- `@llm-wiki/cli`
-- `@llm-wiki/mcp-server`
+- `@ivkond-llm-wiki/cli`
+- `@ivkond-llm-wiki/mcp-server`
 
-Internal workspace packages `@llm-wiki/core`, `@llm-wiki/infra`, and `@llm-wiki/common` are not published as separate npm packages.
+Internal workspace packages `@ivkond-llm-wiki/core`, `@ivkond-llm-wiki/infra`, and `@ivkond-llm-wiki/common` are not published as separate npm packages.
 
 ## Packaging strategy (Strategy B)
 
@@ -16,8 +16,8 @@ Internal workspace packages `@llm-wiki/core`, `@llm-wiki/infra`, and `@llm-wiki/
 
 ## Published package entrypoints
 
-- `@llm-wiki/cli` bins: `llm-wiki`, `multica`
-- `@llm-wiki/mcp-server` bin: `llm-wiki-mcp`
+- `@ivkond-llm-wiki/cli` bins: `llm-wiki`, `multica`
+- `@ivkond-llm-wiki/mcp-server` bin: `llm-wiki-mcp`
 
 ## Release validation
 
@@ -25,5 +25,5 @@ Internal workspace packages `@llm-wiki/core`, `@llm-wiki/infra`, and `@llm-wiki/
 - Typecheck, build, tests.
 - Pack dry-run with guardrails:
   - no `workspace:*` protocols in packed manifests
-  - no internal `@llm-wiki/{core,infra,common}` runtime deps in packed CLI/MCP manifests
+  - no internal `@ivkond-llm-wiki/{core,infra,common}` runtime deps in packed CLI/MCP manifests
 - Docker image build + smoke startup for MCP server.

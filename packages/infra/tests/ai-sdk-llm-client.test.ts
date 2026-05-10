@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { MockLanguageModelV2 } from 'ai/test';
 import { AiSdkLlmClient } from '../src/ai-sdk-llm-client.js';
-import { LlmUnavailableError } from '@llm-wiki/core';
+import { LlmUnavailableError } from '@ivkond-llm-wiki/core';
 
 /**
  * Build a v2-spec `doGenerate` result with a single text content block.

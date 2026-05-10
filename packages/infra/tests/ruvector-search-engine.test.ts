@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { IEmbeddingClient, IndexEntry } from '@llm-wiki/core';
+import type { IEmbeddingClient, IndexEntry } from '@ivkond-llm-wiki/core';
 import { RuVectorSearchEngine } from '../src/ruvector-search-engine.js';
 
 /**

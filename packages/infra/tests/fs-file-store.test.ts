@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile, mkdir, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { FsFileStore } from '../src/fs-file-store.js';
-import { PathEscapeError } from '@llm-wiki/core';
+import { PathEscapeError } from '@ivkond-llm-wiki/core';
 
 describe('FsFileStore', () => {
   let tempDir: string;

@@ -7,7 +7,7 @@ import {
   type IArchiver,
   type ArchiveEntry,
   type ArchiveResult,
-} from '@llm-wiki/core';
+} from '@ivkond-llm-wiki/core';
 
 /**
  * IArchiver adapter backed by the statically-linked 7-Zip binary shipped by

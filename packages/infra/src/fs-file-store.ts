@@ -1,9 +1,9 @@
 import { readFile, writeFile, readdir, stat, mkdir, access, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import matter from 'gray-matter';
-import type { IFileStore, FileInfo } from '@llm-wiki/core';
-import type { WikiPageData } from '@llm-wiki/core';
-import { PathEscapeError } from '@llm-wiki/core';
+import type { IFileStore, FileInfo } from '@ivkond-llm-wiki/core';
+import type { WikiPageData } from '@ivkond-llm-wiki/core';
+import { PathEscapeError } from '@ivkond-llm-wiki/core';
 
 export class FsFileStore implements IFileStore {
   private readonly normalizedRoot: string;

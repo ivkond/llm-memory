@@ -8,9 +8,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@llm-wiki/core': path.resolve(__dirname, '../core/src/index.ts'),
-      '@llm-wiki/infra': path.resolve(__dirname, '../infra/src/index.ts'),
-      '@llm-wiki/common': path.resolve(__dirname, './src/index.ts'),
+      '@ivkond-llm-wiki/core': path.resolve(__dirname, '../core/src/index.ts'),
+      '@ivkond-llm-wiki/infra': path.resolve(__dirname, '../infra/src/index.ts'),
+      '@ivkond-llm-wiki/common': path.resolve(__dirname, './src/index.ts'),
     },
   },
 });

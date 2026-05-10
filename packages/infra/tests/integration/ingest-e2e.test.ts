@@ -13,7 +13,7 @@ import {
   FsSourceReader,
   YamlStateStore,
 } from '../../src/index.js';
-import { IngestService } from '@llm-wiki/core';
+import { IngestService } from '@ivkond-llm-wiki/core';
 
 // v2-spec mock doGenerate helper.
 function okGen(text: string, input = 10, output = 20) {

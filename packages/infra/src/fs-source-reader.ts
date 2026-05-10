@@ -7,7 +7,7 @@ import {
   SourceParseError,
   type ISourceReader,
   type SourceContent,
-} from '@llm-wiki/core';
+} from '@ivkond-llm-wiki/core';
 
 /**
  * Reads local filesystem sources for `wiki_ingest`.

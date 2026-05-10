@@ -1,5 +1,5 @@
 {
-  "name": "@llm-wiki/common",
+  "name": "@ivkond-llm-wiki/common",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -21,8 +21,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@llm-wiki/core": "workspace:*",
-    "@llm-wiki/infra": "workspace:*",
+    "@ivkond-llm-wiki/core": "workspace:*",
+    "@ivkond-llm-wiki/infra": "workspace:*",
     "@ai-sdk/openai": "^2.0.0"
   },
   "devDependencies": {

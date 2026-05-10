@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { VerbatimEntry } from '@llm-wiki/core';
+import { VerbatimEntry } from '@ivkond-llm-wiki/core';
 import { FsFileStore } from '../src/fs-file-store.js';
 import { FsVerbatimStore } from '../src/fs-verbatim-store.js';
 

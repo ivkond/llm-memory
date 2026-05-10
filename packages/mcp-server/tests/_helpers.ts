@@ -1,4 +1,4 @@
-import type { AppServices } from '@llm-wiki/common';
+import type { AppServices } from '@ivkond-llm-wiki/common';
 
 /**
  * Phase 1 handlers never touch the service container (they all throw

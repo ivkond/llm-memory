@@ -1,4 +1,4 @@
-# @llm-wiki/skill-llm-memory
+# @ivkond-llm-wiki/skill-llm-memory
 
 Local-only LLM Memory skill package for Multica-compatible agent runtimes.
 

@@ -1,6 +1,10 @@
 import { generateText, type LanguageModel } from 'ai';
-import type { ILlmClient, LlmCompletionRequest, LlmCompletionResponse } from '@llm-wiki/core';
-import { LlmUnavailableError } from '@llm-wiki/core';
+import type {
+  ILlmClient,
+  LlmCompletionRequest,
+  LlmCompletionResponse,
+} from '@ivkond-llm-wiki/core';
+import { LlmUnavailableError } from '@ivkond-llm-wiki/core';
 
 /**
  * Thin adapter from the domain's `ILlmClient` port to the Vercel AI SDK's

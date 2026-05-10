@@ -2,9 +2,9 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FsFileStore, FsVerbatimStore } from '@llm-wiki/infra';
-import { RememberService, SanitizationService } from '@llm-wiki/core';
-import type { AppServices } from '@llm-wiki/common';
+import { FsFileStore, FsVerbatimStore } from '@ivkond-llm-wiki/infra';
+import { RememberService, SanitizationService } from '@ivkond-llm-wiki/core';
+import type { AppServices } from '@ivkond-llm-wiki/common';
 import { startServer, type ServerHandle } from '../src/index.js';
 import { createWikiIngestHandler } from '../src/tools/wiki-ingest.js';
 import { postMcp, readJsonRpc, type ToolCallResult } from './_helpers.js';
@@ -34,18 +34,33 @@ describe('tools/call (integration)', () => {
       jsonrpc: '2.0',
       id: 1,
       method: 'tools/call',
-      params: { name: 'wiki_query', arguments: { question: 'q', scope: 'wiki/', project: 'proj', cwd: '/w', maxResults: 7 } },
+      params: {
+        name: 'wiki_query',
+        arguments: { question: 'q', scope: 'wiki/', project: 'proj', cwd: '/w', maxResults: 7 },
+      },
     });
 
     const body = await readJsonRpc(res);
-    expect(query).toHaveBeenCalledWith({ question: 'q', scope: 'wiki/', project: 'proj', cwd: '/w', maxResults: 7, maxTokens: undefined });
+    expect(query).toHaveBeenCalledWith({
+      question: 'q',
+      scope: 'wiki/',
+      project: 'proj',
+      cwd: '/w',
+      maxResults: 7,
+      maxTokens: undefined,
+    });
     const payload = parsePayload(body.result as ToolCallResult);
     expect(payload).toEqual({ success: true, data: queryResult });
   });
 
   it('test_toolCall_wiki_recall_callsServiceWithMappedParams', async () => {
-    const recall = vi.fn().mockResolvedValue({ project: null, pages: [], unconsolidated_count: 0, total_pages: 0 });
-    handle = await startServer(makeServices({ recall: { recall } }), { host: '127.0.0.1', port: 0 });
+    const recall = vi
+      .fn()
+      .mockResolvedValue({ project: null, pages: [], unconsolidated_count: 0, total_pages: 0 });
+    handle = await startServer(makeServices({ recall: { recall } }), {
+      host: '127.0.0.1',
+      port: 0,
+    });
 
     const body = await callTool(handle.url, 'wiki_recall', { cwd: '/repo', max_tokens: 123 });
     expect(recall).toHaveBeenCalledWith({ cwd: '/repo', max_tokens: 123 });
@@ -56,14 +71,29 @@ describe('tools/call (integration)', () => {
   });
 
   it('test_toolCall_wiki_remember_fact_callsServiceWithMappedParams', async () => {
-    const rememberFact = vi.fn().mockResolvedValue({ ok: true, file: 'log/a/raw/fact.md', entry_id: 'fact.md' });
-    handle = await startServer(makeServices({ remember: { rememberFact, rememberSession: vi.fn() } }), { host: '127.0.0.1', port: 0 });
+    const rememberFact = vi
+      .fn()
+      .mockResolvedValue({ ok: true, file: 'log/a/raw/fact.md', entry_id: 'fact.md' });
+    handle = await startServer(
+      makeServices({ remember: { rememberFact, rememberSession: vi.fn() } }),
+      { host: '127.0.0.1', port: 0 },
+    );
 
     const body = await callTool(handle.url, 'wiki_remember_fact', {
-      content: 'fact', agent: 'claude', sessionId: 's1', project: 'proj', tags: ['a', 'b'],
+      content: 'fact',
+      agent: 'claude',
+      sessionId: 's1',
+      project: 'proj',
+      tags: ['a', 'b'],
     });
 
-    expect(rememberFact).toHaveBeenCalledWith({ content: 'fact', agent: 'claude', sessionId: 's1', project: 'proj', tags: ['a', 'b'] });
+    expect(rememberFact).toHaveBeenCalledWith({
+      content: 'fact',
+      agent: 'claude',
+      sessionId: 's1',
+      project: 'proj',
+      tags: ['a', 'b'],
+    });
     expect(parsePayload(body.result as ToolCallResult)).toEqual({
       success: true,
       data: { entry_id: 'fact.md', project: 'proj', path: 'log/a/raw/fact.md' },
@@ -71,14 +101,27 @@ describe('tools/call (integration)', () => {
   });
 
   it('test_toolCall_wiki_remember_session_dedupUsesServiceResult', async () => {
-    const rememberSession = vi.fn().mockResolvedValue({ ok: true, file: 'log/a/raw/2026-05-08_s1.md', facts_count: 2 });
-    handle = await startServer(makeServices({ remember: { rememberFact: vi.fn(), rememberSession } }), { host: '127.0.0.1', port: 0 });
+    const rememberSession = vi
+      .fn()
+      .mockResolvedValue({ ok: true, file: 'log/a/raw/2026-05-08_s1.md', facts_count: 2 });
+    handle = await startServer(
+      makeServices({ remember: { rememberFact: vi.fn(), rememberSession } }),
+      { host: '127.0.0.1', port: 0 },
+    );
 
     const body = await callTool(handle.url, 'wiki_remember_session', {
-      summary: 'sum', agent: 'claude', sessionId: 's1', project: 'proj',
+      summary: 'sum',
+      agent: 'claude',
+      sessionId: 's1',
+      project: 'proj',
     });
 
-    expect(rememberSession).toHaveBeenCalledWith({ summary: 'sum', agent: 'claude', sessionId: 's1', project: 'proj' });
+    expect(rememberSession).toHaveBeenCalledWith({
+      summary: 'sum',
+      agent: 'claude',
+      sessionId: 's1',
+      project: 'proj',
+    });
     const payload = parsePayload(body.result as ToolCallResult);
     expect(payload.success).toBe(true);
     expect(payload.data).toEqual({
@@ -90,10 +133,19 @@ describe('tools/call (integration)', () => {
   });
 
   it('test_toolCall_wiki_ingest_projectUnsupported_returnsProjectScopeUnsupported', async () => {
-    const ingest = vi.fn().mockResolvedValue({ pages_created: ['wiki/x.md'], pages_updated: [], commit_sha: 'abc' });
-    handle = await startServer(makeServices({ ingest: { ingest } }), { host: '127.0.0.1', port: 0 });
+    const ingest = vi
+      .fn()
+      .mockResolvedValue({ pages_created: ['wiki/x.md'], pages_updated: [], commit_sha: 'abc' });
+    handle = await startServer(makeServices({ ingest: { ingest } }), {
+      host: '127.0.0.1',
+      port: 0,
+    });
 
-    const body = await callTool(handle.url, 'wiki_ingest', { source: '/tmp/s.md', hint: 'h', project: 'proj' });
+    const body = await callTool(handle.url, 'wiki_ingest', {
+      source: '/tmp/s.md',
+      hint: 'h',
+      project: 'proj',
+    });
     expect(ingest).not.toHaveBeenCalled();
     expect(parsePayload(body.result as ToolCallResult)).toEqual({
       success: false,
@@ -103,7 +155,9 @@ describe('tools/call (integration)', () => {
   });
 
   it('test_toolCall_wiki_lint_projectUnsupported_returnsProjectScopeUnsupported', async () => {
-    const lint = vi.fn().mockResolvedValue({ consolidated: 0, promoted: 0, issues: [], commitSha: null });
+    const lint = vi
+      .fn()
+      .mockResolvedValue({ consolidated: 0, promoted: 0, issues: [], commitSha: null });
     handle = await startServer(makeServices({ lint: { lint } }), { host: '127.0.0.1', port: 0 });
 
     const body = await callTool(handle.url, 'wiki_lint', { phases: ['health'], project: 'proj' });
@@ -116,8 +170,18 @@ describe('tools/call (integration)', () => {
   });
 
   it('test_toolCall_wiki_status_callsServiceWithoutArgs', async () => {
-    const status = vi.fn().mockResolvedValue({ total_pages: 1, projects: ['p'], unconsolidated: 0, last_lint: null, last_ingest: null, index_health: 'ok' });
-    handle = await startServer(makeServices({ status: { status } }), { host: '127.0.0.1', port: 0 });
+    const status = vi.fn().mockResolvedValue({
+      total_pages: 1,
+      projects: ['p'],
+      unconsolidated: 0,
+      last_lint: null,
+      last_ingest: null,
+      index_health: 'ok',
+    });
+    handle = await startServer(makeServices({ status: { status } }), {
+      host: '127.0.0.1',
+      port: 0,
+    });
 
     const body = await callTool(handle.url, 'wiki_status', {});
     expect(status).toHaveBeenCalledTimes(1);
@@ -135,11 +199,19 @@ describe('tools/call (integration)', () => {
   });
 
   it('test_toolCall_validationError_returnsInvalidParams', async () => {
-    const ingest = vi.fn().mockResolvedValue({ pages_created: [], pages_updated: [], commit_sha: 'sha' });
-    handle = await startServer(makeServices({ ingest: { ingest } }), { host: '127.0.0.1', port: 0 });
+    const ingest = vi
+      .fn()
+      .mockResolvedValue({ pages_created: [], pages_updated: [], commit_sha: 'sha' });
+    handle = await startServer(makeServices({ ingest: { ingest } }), {
+      host: '127.0.0.1',
+      port: 0,
+    });
 
     const res = await postMcp(handle.url, {
-      jsonrpc: '2.0', id: 20, method: 'tools/call', params: { name: 'wiki_ingest', arguments: {} },
+      jsonrpc: '2.0',
+      id: 20,
+      method: 'tools/call',
+      params: { name: 'wiki_ingest', arguments: {} },
     });
     const body = await readJsonRpc(res);
 
@@ -164,9 +236,16 @@ describe('tools/call (integration)', () => {
 
   it('test_toolCall_handlerError_mapsToInvalidParams', async () => {
     const rememberFact = vi.fn().mockRejectedValue(new Error('content must not be empty'));
-    handle = await startServer(makeServices({ remember: { rememberFact, rememberSession: vi.fn() } }), { host: '127.0.0.1', port: 0 });
+    handle = await startServer(
+      makeServices({ remember: { rememberFact, rememberSession: vi.fn() } }),
+      { host: '127.0.0.1', port: 0 },
+    );
 
-    const body = await callTool(handle.url, 'wiki_remember_fact', { content: 'x', agent: 'a', sessionId: 's' });
+    const body = await callTool(handle.url, 'wiki_remember_fact', {
+      content: 'x',
+      agent: 'a',
+      sessionId: 's',
+    });
     const payload = parsePayload(body.result as ToolCallResult);
 
     expect(payload.success).toBe(false);
@@ -176,7 +255,9 @@ describe('tools/call (integration)', () => {
 
 describe('wiki_ingest handler (direct)', () => {
   it('test_handler_wiki_ingest_invalidRetriesString_returnsInvalidParams', async () => {
-    const ingest = vi.fn().mockResolvedValue({ pages_created: ['wiki/x.md'], pages_updated: [], commit_sha: 'abc' });
+    const ingest = vi
+      .fn()
+      .mockResolvedValue({ pages_created: ['wiki/x.md'], pages_updated: [], commit_sha: 'abc' });
     const handler = createWikiIngestHandler(makeServices({ ingest: { ingest } }));
 
     const result = await handler({ source: '/tmp/s.md', retries: 'abc' });
@@ -189,7 +270,9 @@ describe('wiki_ingest handler (direct)', () => {
   });
 
   it('test_handler_wiki_ingest_invalidRetriesInfinity_returnsInvalidParams', async () => {
-    const ingest = vi.fn().mockResolvedValue({ pages_created: ['wiki/x.md'], pages_updated: [], commit_sha: 'abc' });
+    const ingest = vi
+      .fn()
+      .mockResolvedValue({ pages_created: ['wiki/x.md'], pages_updated: [], commit_sha: 'abc' });
     const handler = createWikiIngestHandler(makeServices({ ingest: { ingest } }));
 
     const result = await handler({ source: '/tmp/s.md', retries: Number.POSITIVE_INFINITY });
@@ -223,11 +306,25 @@ describe('tools/call smoke (real temp wiki)', () => {
 
     handle = await startServer(makeServices({ remember }), { host: '127.0.0.1', port: 0 });
 
-    const first = await callTool(handle.url, 'wiki_remember_session', { summary: '- one', agent: 'claude', sessionId: 's-dedup' });
-    const second = await callTool(handle.url, 'wiki_remember_session', { summary: '- two', agent: 'claude', sessionId: 's-dedup' });
+    const first = await callTool(handle.url, 'wiki_remember_session', {
+      summary: '- one',
+      agent: 'claude',
+      sessionId: 's-dedup',
+    });
+    const second = await callTool(handle.url, 'wiki_remember_session', {
+      summary: '- two',
+      agent: 'claude',
+      sessionId: 's-dedup',
+    });
 
-    const firstData = (parsePayload(first.result as ToolCallResult).data ?? {}) as Record<string, unknown>;
-    const secondData = (parsePayload(second.result as ToolCallResult).data ?? {}) as Record<string, unknown>;
+    const firstData = (parsePayload(first.result as ToolCallResult).data ?? {}) as Record<
+      string,
+      unknown
+    >;
+    const secondData = (parsePayload(second.result as ToolCallResult).data ?? {}) as Record<
+      string,
+      unknown
+    >;
     expect(secondData.entry_id).toBe(firstData.entry_id);
 
     const saved = await readFile(`${root}/log/claude/raw/${String(firstData.entry_id)}`, 'utf8');
@@ -250,23 +347,42 @@ async function callTool(baseUrl: string, name: string, args: Record<string, unkn
 function makeServices(overrides: Partial<AppServices> = {}): AppServices {
   const defaults = {
     remember: {
-      rememberFact: vi.fn().mockResolvedValue({ ok: true, file: 'log/a/raw/f.md', entry_id: 'f.md' }),
-      rememberSession: vi.fn().mockResolvedValue({ ok: true, file: 'log/a/raw/s.md', facts_count: 1 }),
+      rememberFact: vi
+        .fn()
+        .mockResolvedValue({ ok: true, file: 'log/a/raw/f.md', entry_id: 'f.md' }),
+      rememberSession: vi
+        .fn()
+        .mockResolvedValue({ ok: true, file: 'log/a/raw/s.md', facts_count: 1 }),
     },
     recall: {
-      recall: vi.fn().mockResolvedValue({ project: null, pages: [], unconsolidated_count: 0, total_pages: 0 }),
+      recall: vi
+        .fn()
+        .mockResolvedValue({ project: null, pages: [], unconsolidated_count: 0, total_pages: 0 }),
     },
     query: {
-      query: vi.fn().mockResolvedValue({ answer: '', citations: [], scope_used: 'all', project_used: null }),
+      query: vi
+        .fn()
+        .mockResolvedValue({ answer: '', citations: [], scope_used: 'all', project_used: null }),
     },
     ingest: {
-      ingest: vi.fn().mockResolvedValue({ pages_created: [], pages_updated: [], commit_sha: 'sha' }),
+      ingest: vi
+        .fn()
+        .mockResolvedValue({ pages_created: [], pages_updated: [], commit_sha: 'sha' }),
     },
     status: {
-      status: vi.fn().mockResolvedValue({ total_pages: 1, projects: [], unconsolidated: 0, last_lint: null, last_ingest: null, index_health: 'ok' }),
+      status: vi.fn().mockResolvedValue({
+        total_pages: 1,
+        projects: [],
+        unconsolidated: 0,
+        last_lint: null,
+        last_ingest: null,
+        index_health: 'ok',
+      }),
     },
     lint: {
-      lint: vi.fn().mockResolvedValue({ consolidated: 0, promoted: 0, issues: [], commitSha: null }),
+      lint: vi
+        .fn()
+        .mockResolvedValue({ consolidated: 0, promoted: 0, issues: [], commitSha: null }),
     },
     import_: {
       importFromAgent: vi.fn().mockResolvedValue({ imported: 0, skipped: 0 }),

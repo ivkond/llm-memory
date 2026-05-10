@@ -81,7 +81,7 @@ A personal knowledge base for AI agents implementing Andrej Karpathy's LLM Wiki 
 
 - **Tech stack**: TypeScript, pnpm monorepo, ESM-only, Node 20+ — established, no changes
 - **Architecture**: Clean Architecture with ports/adapters — must maintain strict layering
-- **Transport packages**: `@llm-wiki/mcp-server`, `@llm-wiki/cli`, `@llm-wiki/claude-code` are thin wrappers over core services — no business logic in transport
+- **Transport packages**: `@ivkond-llm-wiki/mcp-server`, `@ivkond-llm-wiki/cli`, `@ivkond-llm-wiki/claude-code` are thin wrappers over core services — no business logic in transport
 - **MCP SDK**: `@modelcontextprotocol/sdk` — reference implementation
 - **Solo use**: Target is local workstation, no server deployment
 <!-- GSD:project-end -->
@@ -99,15 +99,15 @@ A personal knowledge base for AI agents implementing Andrej Karpathy's LLM Wiki 
 - Lockfile: `pnpm-lock.yaml` (lockfile v9.0), committed.
 - `allowBuilds` allowlist in `pnpm-workspace.yaml`: `esbuild`, `re2` — only these native builds are permitted during install.
 ## Frameworks
-- The project is a TypeScript monorepo with executable transport packages present on disk: `@llm-wiki/cli`, `@llm-wiki/mcp-server`, and `@llm-wiki/common` wiring. There is no web framework dependency.
-- Vitest `^3.1.0` (resolved `3.2.4`) — runner, assertion library, and mocking framework. Workspace mode via `vitest.workspace.ts` (references `packages/core` and `packages/infra`). Each package has its own `vitest.config.ts` with `globals: true` and `include: ['tests/**/*.test.ts']`. `packages/infra/vitest.config.ts` aliases `@llm-wiki/core` and `@llm-wiki/infra` to their `src/index.ts` so tests run against unbuilt source.
-- MSW `^2.13.2` (resolved `2.13.2`) — HTTP mocking for `HttpSourceReader` tests (dev dep of `@llm-wiki/infra` only).
+- The project is a TypeScript monorepo with executable transport packages present on disk: `@ivkond-llm-wiki/cli`, `@ivkond-llm-wiki/mcp-server`, and `@ivkond-llm-wiki/common` wiring. There is no web framework dependency.
+- Vitest `^3.1.0` (resolved `3.2.4`) — runner, assertion library, and mocking framework. Workspace mode via `vitest.workspace.ts` (references `packages/core` and `packages/infra`). Each package has its own `vitest.config.ts` with `globals: true` and `include: ['tests/**/*.test.ts']`. `packages/infra/vitest.config.ts` aliases `@ivkond-llm-wiki/core` and `@ivkond-llm-wiki/infra` to their `src/index.ts` so tests run against unbuilt source.
+- MSW `^2.13.2` (resolved `2.13.2`) — HTTP mocking for `HttpSourceReader` tests (dev dep of `@ivkond-llm-wiki/infra` only).
 - TypeScript project references (`tsc -b`) — root `tsconfig.json` references `packages/core`, `packages/infra`, `packages/common`, `packages/cli`, and `packages/mcp-server`. Package tsconfigs set `composite: true`, `outDir: dist`, `rootDir: src`. Root `pnpm build` and `pnpm typecheck` run `tsc -b`; root `pnpm lint` runs ESLint.
 ## Key Dependencies
-### `@llm-wiki/core` (`packages/core/package.json`)
+### `@ivkond-llm-wiki/core` (`packages/core/package.json`)
 - `re2` `^1.24.0` (resolved `1.24.0`) — Google RE2 regex engine bindings. Used by the domain sanitization layer to guarantee linear-time pattern matching on untrusted input (avoids ReDoS on custom patterns from config).
 - `typescript` `^5.8.0`
-### `@llm-wiki/infra` (`packages/infra/package.json`)
+### `@ivkond-llm-wiki/infra` (`packages/infra/package.json`)
 - `@ai-sdk/openai` `^1.3.24` (resolved `1.3.24`) — OpenAI provider for the Vercel AI SDK. Used by `AiSdkLlmClient` and `AiSdkEmbeddingClient` as the default provider; the adapters accept any `LanguageModel` / `EmbeddingModel<string>` so providers are swappable without code changes.
 - `ai` `^5.0.172` (resolved `5.0.172`) — Vercel AI SDK v5. `generateText()` backs `AiSdkLlmClient.complete()`; `embedMany()` backs `AiSdkEmbeddingClient.embed()`. AI SDK v5 surfaces `usage.inputTokens` / `usage.outputTokens` directly.
 - `ruvector` `^0.2.22` (resolved `0.2.22`) — Rust-native embedded vector DB (HNSW) with Node N-API bindings. Provides the dense half of hybrid search in `RuVectorSearchEngine`. Persists to a single file at `<dbPath>/vectors.db`. Platform-specific optional binaries are pulled in via `@ruvector/rvf-node-*` sub-packages for darwin-arm64/x64, linux-arm64/x64 (gnu), and win32-x64 (msvc).
@@ -115,7 +115,7 @@ A personal knowledge base for AI agents implementing Andrej Karpathy's LLM Wiki 
 - `simple-git` `^3.27.0` (resolved `3.35.2`) — `IVersionControl` adapter (`GitVersionControl`). Handles commit, status, `worktree add -b`, `worktree remove`, `reset --soft main` squash, `merge --ff-only`. `GitProjectResolver` also shells out directly via `node:child_process execSync` for `git remote get-url origin`.
 - `gray-matter` `^4.0.3` (resolved `4.0.3`) — YAML frontmatter parser/serializer for wiki markdown files (`FsFileStore.readWikiPage`, `FsVerbatimStore.writeEntry`, `GitProjectResolver.resolve`).
 - `js-yaml` `^4.1.0` (resolved `4.1.1`) — YAML load/dump for `ConfigLoader` (`settings.shared.yaml` + `settings.local.yaml`) and `YamlStateStore` (`.local/state.yaml`).
-- `@llm-wiki/core` `workspace:*` — linked to `../core`.
+- `@ivkond-llm-wiki/core` `workspace:*` — linked to `../core`.
 - `@types/js-yaml` `^4.0.9`
 - `msw` `^2.13.2`
 - `typescript` `^5.8.0`
@@ -127,7 +127,7 @@ A personal knowledge base for AI agents implementing Andrej Karpathy's LLM Wiki 
 - `tsconfig.json` — solution file, references both packages.
 - `packages/core/tsconfig.json`, `packages/infra/tsconfig.json` — per-package composite builds.
 - `vitest.workspace.ts` at repo root.
-- `packages/core/vitest.config.ts`, `packages/infra/vitest.config.ts` — per-package configs. Infra adds source-path aliases for `@llm-wiki/core` and `@llm-wiki/infra` so tests hit TypeScript source, not `dist/`.
+- `packages/core/vitest.config.ts`, `packages/infra/vitest.config.ts` — per-package configs. Infra adds source-path aliases for `@ivkond-llm-wiki/core` and `@ivkond-llm-wiki/infra` so tests hit TypeScript source, not `dist/`.
 - **Type checking:** `tsc -b` (via `pnpm build` and `pnpm typecheck`).
 - **ESLint:** configured via root `eslint.config.js` and run with `pnpm lint`.
 - **Prettier:** configured via `.prettierrc.json` and run with `pnpm format` / `pnpm format:check`.
@@ -139,7 +139,7 @@ A personal knowledge base for AI agents implementing Andrej Karpathy's LLM Wiki 
 - Git CLI on `PATH` — `GitVersionControl` and `GitProjectResolver` both shell out to `git`. `git worktree add -b` / `worktree remove` / `merge --ff-only` must all be available.
 - A supported native platform for `ruvector` prebuilt binaries: darwin-arm64, darwin-x64, linux-arm64-gnu, linux-x64-gnu, or win32-x64-msvc. Musl-libc Linux is not in the `rvf-node` prebuild set.
 - A supported native platform for `re2` prebuilds (same four-plus-Windows matrix typical for N-API modules).
-- Runtime target is local workstation use: CLI and MCP transport packages are already present (`@llm-wiki/cli`, `@llm-wiki/mcp-server`) and wired via `@llm-wiki/common`.
+- Runtime target is local workstation use: CLI and MCP transport packages are already present (`@ivkond-llm-wiki/cli`, `@ivkond-llm-wiki/mcp-server`) and wired via `@ivkond-llm-wiki/common`.
 ## Milestone Status
 - **M1** (complete): domain + ports + adapters (`FsFileStore`, `FsVerbatimStore`, `GitProjectResolver`, `ConfigLoader`, `RememberService`, `RecallService`, `SanitizationService`).
 - **M2** (complete): hybrid search, query, ingest, status (`RuVectorSearchEngine`, `AiSdkLlmClient`, `AiSdkEmbeddingClient`, `GitVersionControl`, `FsSourceReader`, `HttpSourceReader`, `CompositeSourceReader`, `YamlStateStore`, `IngestService`, `QueryService`, `StatusService`).
@@ -219,8 +219,8 @@ A personal knowledge base for AI agents implementing Andrej Karpathy's LLM Wiki 
 ## Observed vs Stated Summary
 | Topic | Stated in `RULES.md` / `CLAUDE.md` | Observed in code |
 |-------|-------------------------------------|------------------|
-| Clean Architecture (`Infra → App → Domain`) | Required | Enforced by project references + `@llm-wiki/core` package boundary. Core has 1 external dep (`re2`), deliberate. |
-| Contract-First (Protocol → contract tests → impl) | Required | Ports under `packages/core/src/ports/` as `interface`, implementations in `@llm-wiki/infra`, contract-style tests live in `packages/infra/tests/<adapter>.test.ts`. |
+| Clean Architecture (`Infra → App → Domain`) | Required | Enforced by project references + `@ivkond-llm-wiki/core` package boundary. Core has 1 external dep (`re2`), deliberate. |
+| Contract-First (Protocol → contract tests → impl) | Required | Ports under `packages/core/src/ports/` as `interface`, implementations in `@ivkond-llm-wiki/infra`, contract-style tests live in `packages/infra/tests/<adapter>.test.ts`. |
 | TDD (Red → Green → Refactor) | Required | Cannot verify from commits alone; observed state is that every production file has a matching `*.test.ts`. |
 | SRP ≤300 lines | Required | Largest file is `packages/core/src/services/ingest-service.ts` at **346 lines** — **over budget** (see CONCERNS.md). All others ≤184 lines. |
 | ISP ≤5 methods per interface | Required | `IFileStore` has **5** methods, `ISearchEngine` has **6** — one-over. `IVersionControl` has **7** — over. See CONCERNS.md. |
@@ -238,7 +238,7 @@ A personal knowledge base for AI agents implementing Andrej Karpathy's LLM Wiki 
 ## Architecture
 
 ## Pattern Overview
-- Strict dependency direction: `Infrastructure -> Application (services) -> Domain`. The domain layer has zero runtime dependencies on infra; infra imports core exclusively via the `@llm-wiki/core` package entry point.
+- Strict dependency direction: `Infrastructure -> Application (services) -> Domain`. The domain layer has zero runtime dependencies on infra; infra imports core exclusively via the `@ivkond-llm-wiki/core` package entry point.
 - Two workspaces: `packages/core` (domain + ports + services, pure logic) and `packages/infra` (adapters that implement the ports using Node APIs, git, filesystem, LLM SDKs, vector DB).
 - Port/adapter seams are expressed as `I*` TypeScript interfaces under `packages/core/src/ports/`. Services depend only on these interfaces and are composed via constructor injection from wiring code.
 - TypeScript project references enforce the layering at build time: `packages/infra/tsconfig.json` references `../core`, but not vice versa (see `packages/core/tsconfig.json` which has no `references`).
@@ -257,13 +257,13 @@ A personal knowledge base for AI agents implementing Andrej Karpathy's LLM Wiki 
 - Purpose: Orchestrate ports to satisfy use cases (`wiki_ingest`, `wiki_query`, `wiki_remember`, `wiki_recall`, `wiki_status`, sanitization). Every service takes its collaborators as `readonly` constructor params; no service instantiates an adapter.
 - Location: `packages/core/src/services/`
 - Contains: `IngestService` (`ingest-service.ts`), `QueryService` (`query-service.ts`), `RememberService` (`remember-service.ts`), `RecallService` (`recall-service.ts`), `WikiStatusService` (`status-service.ts`), `SanitizationService` (`sanitization-service.ts`).
-- Depends on: Domain types + port interfaces. Never imports from `@llm-wiki/infra`.
-- Used by: Wiring code in `@llm-wiki/common`, `@llm-wiki/cli`, and `@llm-wiki/mcp-server`.
+- Depends on: Domain types + port interfaces. Never imports from `@ivkond-llm-wiki/infra`.
+- Used by: Wiring code in `@ivkond-llm-wiki/common`, `@ivkond-llm-wiki/cli`, and `@ivkond-llm-wiki/mcp-server`.
 - Purpose: Concrete adapters implementing each port with real I/O. Each adapter is a single class file named `<tech>-<port>.ts`.
 - Location: `packages/infra/src/`
 - Contains:
-- Depends on: `@llm-wiki/core` (via `"workspace:*"`) and third-party libs (`simple-git`, `gray-matter`, `js-yaml`, `minisearch`, `ruvector`, `ai`, `@ai-sdk/openai`, `msw` for tests).
-- Used by: Future wiring layer (CLI / MCP server). Infra imports cross the workspace boundary only through the `@llm-wiki/core` package entry (`packages/core/src/index.ts`), never by deep paths.
+- Depends on: `@ivkond-llm-wiki/core` (via `"workspace:*"`) and third-party libs (`simple-git`, `gray-matter`, `js-yaml`, `minisearch`, `ruvector`, `ai`, `@ai-sdk/openai`, `msw` for tests).
+- Used by: Future wiring layer (CLI / MCP server). Infra imports cross the workspace boundary only through the `@ivkond-llm-wiki/core` package entry (`packages/core/src/index.ts`), never by deep paths.
 - Not yet present. Services are instantiated inside tests (unit tests use hand-written fakes; integration tests under `packages/infra/tests/integration/` compose real adapters against a temp directory). Production wiring (CLI / MCP server) will be added in a later milestone; Milestone 3 on this branch adds Lint / Import / Archiver services that will be wired here.
 ## Data Flow
 - Read-only: lists `wiki/` + `projects/` via `IFileStore`, derives unique project names from `projects/<name>/...` paths, asks `IVerbatimStore` for the unconsolidated count, combines `ISearchEngine.health()` with per-file staleness (upgrade `ok -> stale` when any file's `updated` is newer than its `lastIndexedAt`), and reads `last_lint` / `last_ingest` from `IStateStore`.
@@ -284,7 +284,7 @@ A personal knowledge base for AI agents implementing Andrej Karpathy's LLM Wiki 
 - Location: `packages/core/src/domain/wiki-page.ts`, `packages/core/src/domain/verbatim-entry.ts`
 - Pattern: DDD value objects; all public fields are `readonly`.
 ## Entry Points
-- Re-exports `domain`, `ports`, `services` barrels. Infra and future wiring import exclusively through `@llm-wiki/core`.
+- Re-exports `domain`, `ports`, `services` barrels. Infra and future wiring import exclusively through `@ivkond-llm-wiki/core`.
 - Re-exports every adapter class plus `ConfigLoader` / `WikiConfig`.
 - `packages/core/tests/services/*.test.ts` drive services with in-memory fakes (example: `packages/core/tests/services/ingest-service.test.ts`).
 - `packages/infra/tests/integration/*.test.ts` compose real adapters against temp directories to exercise end-to-end flows: `ingest-e2e.test.ts`, `query-e2e.test.ts`, `remember-recall.test.ts`, `search-rebuild.test.ts`.

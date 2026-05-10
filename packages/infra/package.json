@@ -1,5 +1,5 @@
 {
-  "name": "@llm-wiki/infra",
+  "name": "@ivkond-llm-wiki/infra",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
@@ -18,7 +18,7 @@
   "dependencies": {
     "7zip-bin": "^5.2.0",
     "@ai-sdk/openai": "^1.3.24",
-    "@llm-wiki/core": "workspace:*",
+    "@ivkond-llm-wiki/core": "workspace:*",
     "ai": "^5.0.172",
     "globby": "^14.1.0",
     "gray-matter": "^4.0.3",

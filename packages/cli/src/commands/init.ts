@@ -13,7 +13,7 @@ import { Command } from 'commander';
 import path from 'node:path';
 import { homedir } from 'node:os';
 import { access, constants } from 'node:fs/promises';
-import { FsFileStore } from '@llm-wiki/infra';
+import { FsFileStore } from '@ivkond-llm-wiki/infra';
 import { simpleGit, type SimpleGit } from 'simple-git';
 
 async function dirExists(p: string): Promise<boolean> {
@@ -49,9 +49,9 @@ function hasGitIdentityEnv(): boolean {
   const committerEmail = process.env.GIT_COMMITTER_EMAIL?.trim();
   return Boolean(
     (authorName && authorEmail) ||
-      (committerName && committerEmail) ||
-      (authorName && committerEmail) ||
-      (committerName && authorEmail),
+    (committerName && committerEmail) ||
+    (authorName && committerEmail) ||
+    (committerName && authorEmail),
   );
 }
 

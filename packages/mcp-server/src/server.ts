@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { AddressInfo } from 'node:net';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import type { AppServices } from '@llm-wiki/common';
+import type { AppServices } from '@ivkond-llm-wiki/common';
 import { registerAllTools } from './tools/index.js';
 import { logError } from './logger.js';
 

@@ -6,12 +6,12 @@ import type {
   WikiStatusService,
   LintService,
   ImportService,
-} from '@llm-wiki/core';
+} from '@ivkond-llm-wiki/core';
 
 /**
  * Application-level service container assembled by the composition root
  * (`buildContainer`). Transports (MCP server, CLI) consume this contract
- * and must not depend on `@llm-wiki/infra` directly.
+ * and must not depend on `@ivkond-llm-wiki/infra` directly.
  *
  * `import_` has a trailing underscore because `import` is a reserved word
  * in ES modules; the shape stays named-export-only without `as` renames.

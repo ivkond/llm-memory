@@ -1,4 +1,4 @@
-import type { AppServices } from '@llm-wiki/common';
+import type { AppServices } from '@ivkond-llm-wiki/common';
 
 type LintPhaseName = 'consolidate' | 'promote' | 'health';
 
@@ -51,12 +51,12 @@ export function createWikiLintHandler(services: AppServices) {
             {
               type: 'text' as const,
               text: JSON.stringify({
-              success: false,
-              error: 'project-scoped lint is not supported yet',
-              code: 'PROJECT_SCOPE_UNSUPPORTED',
-            }),
-          },
-        ],
+                success: false,
+                error: 'project-scoped lint is not supported yet',
+                code: 'PROJECT_SCOPE_UNSUPPORTED',
+              }),
+            },
+          ],
         };
       }
 

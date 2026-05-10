@@ -1,5 +1,5 @@
 import { embedMany, type EmbeddingModel } from 'ai';
-import type { IEmbeddingClient } from '@llm-wiki/core';
+import type { IEmbeddingClient } from '@ivkond-llm-wiki/core';
 
 /**
  * Thin adapter from the domain's `IEmbeddingClient` port to the Vercel AI

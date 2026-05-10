@@ -106,10 +106,10 @@ jobs:
             fi
 
             if [[ "${pkg}" == "cli" || "${pkg}" == "mcp-server" ]]; then
-              if node -e "const fs=require('node:fs');const p=JSON.parse(fs.readFileSync('.release-pack/${pkg}.package.json','utf8'));const deps={...(p.dependencies||{}),...(p.optionalDependencies||{}),...(p.peerDependencies||{})};if(Object.keys(deps).some((name)=>/^@llm-wiki\/(core|infra|common)$/.test(name))){process.exit(1)}"; then
+              if node -e "const fs=require('node:fs');const p=JSON.parse(fs.readFileSync('.release-pack/${pkg}.package.json','utf8'));const deps={...(p.dependencies||{}),...(p.optionalDependencies||{}),...(p.peerDependencies||{})};if(Object.keys(deps).some((name)=>/^@ivkond-llm-wiki\/(core|infra|common)$/.test(name))){process.exit(1)}"; then
                 :
               else
-                echo "internal @llm-wiki runtime dependency found in packed ${pkg}" >&2
+                echo "internal @ivkond-llm-wiki runtime dependency found in packed ${pkg}" >&2
                 exit 1
               fi
 
@@ -121,8 +121,8 @@ jobs:
 
               while IFS= read -r dts_path; do
                 [[ "${dts_path}" == package/*.d.ts ]] || continue
-                if tar -xOf ".release-pack/${pack_file}" "${dts_path}" | grep -qE '@llm-wiki/(core|infra|common)'; then
-                  echo "internal @llm-wiki type import found in packed ${pkg} declaration: ${dts_path}" >&2
+                if tar -xOf ".release-pack/${pack_file}" "${dts_path}" | grep -qE '@ivkond-llm-wiki/(core|infra|common)'; then
+                  echo "internal @ivkond-llm-wiki type import found in packed ${pkg} declaration: ${dts_path}" >&2
                   exit 1
                 fi
               done < ".release-pack/${pkg}.files.txt"

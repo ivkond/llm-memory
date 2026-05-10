@@ -1,4 +1,4 @@
-import type { AppServices } from '@llm-wiki/common';
+import type { AppServices } from '@ivkond-llm-wiki/common';
 
 /**
  * Handler for `wiki_remember_fact` — wires to RememberService.

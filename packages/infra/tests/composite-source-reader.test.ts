@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { CompositeSourceReader } from '../src/composite-source-reader.js';
-import { SourceParseError, type ISourceReader, type SourceContent } from '@llm-wiki/core';
+import { SourceParseError, type ISourceReader, type SourceContent } from '@ivkond-llm-wiki/core';
 
 function mkContent(uri: string, content = 'x'): SourceContent {
   return { uri, content, bytes: content.length, estimatedTokens: 1 };

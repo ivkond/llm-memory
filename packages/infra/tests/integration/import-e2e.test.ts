@@ -8,7 +8,7 @@ import {
   YamlStateStore,
   ClaudeCodeMemoryReader,
 } from '../../src/index.js';
-import { ImportService } from '@llm-wiki/core';
+import { ImportService } from '@ivkond-llm-wiki/core';
 
 describe('Import E2E', () => {
   let wiki: string;

@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { simpleGit, type SimpleGit } from 'simple-git';
-import type { IVersionControl, WorktreeInfo } from '@llm-wiki/core';
-import { GitConflictError } from '@llm-wiki/core';
+import type { IVersionControl, WorktreeInfo } from '@ivkond-llm-wiki/core';
+import { GitConflictError } from '@ivkond-llm-wiki/core';
 
 /**
  * IVersionControl adapter backed by simple-git.

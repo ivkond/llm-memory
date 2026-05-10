@@ -89,8 +89,8 @@ describe('CLI command coverage', () => {
     process.chdir(oldCwd);
     process.env.HOME = oldHome;
     vi.restoreAllMocks();
-    vi.unmock('@llm-wiki/infra');
-    vi.unmock('@llm-wiki/common');
+    vi.unmock('@ivkond-llm-wiki/infra');
+    vi.unmock('@ivkond-llm-wiki/common');
     vi.unmock('simple-git');
   });
 
@@ -195,7 +195,7 @@ describe('CLI command coverage', () => {
     });
     const buildContainer = vi.fn(() => ({ ingest: { ingest } }));
 
-    vi.doMock('@llm-wiki/common', () => ({
+    vi.doMock('@ivkond-llm-wiki/common', () => ({
       buildContainer,
     }));
 
@@ -223,7 +223,9 @@ describe('CLI command coverage', () => {
     const tap = tapConsole();
     const restoreExit = mockExit();
 
-    await expect(runCommand('../src/commands/ingest.ts', 'ingestCommand', ['file.md'])).rejects.toMatchObject({ code: 1 });
+    await expect(
+      runCommand('../src/commands/ingest.ts', 'ingestCommand', ['file.md']),
+    ).rejects.toMatchObject({ code: 1 });
 
     restoreExit();
     tap.restore();
@@ -242,7 +244,7 @@ describe('CLI command coverage', () => {
     });
     const buildContainer = vi.fn(() => ({ lint: { lint } }));
 
-    vi.doMock('@llm-wiki/common', () => ({
+    vi.doMock('@ivkond-llm-wiki/common', () => ({
       buildContainer,
     }));
 
@@ -285,13 +287,11 @@ describe('CLI command coverage', () => {
     const wikiPath = await mkdtemp(path.join(tmpdir(), 'cli-import-wiki-'));
     await writeWikiConfig(wikiPath);
     const importAll = vi.fn().mockResolvedValue({
-      agents: [
-        { agent: 'claude-code', imported: 2, skipped: 1, discovered: 3, error: null },
-      ],
+      agents: [{ agent: 'claude-code', imported: 2, skipped: 1, discovered: 3, error: null }],
     });
     const buildContainer = vi.fn(() => ({ import_: { importAll } }));
 
-    vi.doMock('@llm-wiki/common', () => ({
+    vi.doMock('@ivkond-llm-wiki/common', () => ({
       buildContainer,
     }));
 
@@ -326,7 +326,7 @@ describe('CLI command coverage', () => {
     });
     const buildContainer = vi.fn(() => ({ query: { query } }));
 
-    vi.doMock('@llm-wiki/common', () => ({
+    vi.doMock('@ivkond-llm-wiki/common', () => ({
       buildContainer,
     }));
 
@@ -365,7 +365,7 @@ describe('CLI command coverage', () => {
     });
     const buildContainer = vi.fn(() => ({ status: { status } }));
 
-    vi.doMock('@llm-wiki/common', () => ({
+    vi.doMock('@ivkond-llm-wiki/common', () => ({
       buildContainer,
     }));
 
@@ -394,7 +394,7 @@ describe('CLI command coverage', () => {
   it('status: exits when service throws', async () => {
     const wikiPath = await mkdtemp(path.join(tmpdir(), 'cli-status-fail-wiki-'));
     await writeWikiConfig(wikiPath);
-    vi.doMock('@llm-wiki/common', () => ({
+    vi.doMock('@ivkond-llm-wiki/common', () => ({
       buildContainer: () => ({ status: { status: vi.fn().mockRejectedValue(new Error('boom')) } }),
     }));
 
@@ -431,7 +431,7 @@ describe('CLI command coverage', () => {
     const ingest = vi.fn();
     const buildContainer = vi.fn(() => ({ ingest: { ingest } }));
 
-    vi.doMock('@llm-wiki/common', () => ({
+    vi.doMock('@ivkond-llm-wiki/common', () => ({
       buildContainer,
     }));
 
@@ -464,18 +464,14 @@ describe('CLI command coverage', () => {
     });
     const buildContainer = vi.fn(() => ({ query: { query } }));
 
-    vi.doMock('@llm-wiki/common', () => ({
+    vi.doMock('@ivkond-llm-wiki/common', () => ({
       buildContainer,
     }));
 
     const tap = tapConsole();
     const restoreExit = mockExit();
 
-    await runCommand('../src/commands/search.ts', 'searchCommand', [
-      'testing',
-      '--wiki',
-      wikiPath,
-    ]);
+    await runCommand('../src/commands/search.ts', 'searchCommand', ['testing', '--wiki', wikiPath]);
 
     restoreExit();
     tap.restore();
@@ -495,7 +491,7 @@ describe('CLI command coverage', () => {
       commit_sha: '1234567890abcdef',
     });
     const buildContainer = vi.fn(() => ({ ingest: { ingest } }));
-    vi.doMock('@llm-wiki/common', () => ({
+    vi.doMock('@ivkond-llm-wiki/common', () => ({
       buildContainer,
     }));
 

@@ -8,8 +8,8 @@
  */
 import { Command } from 'commander';
 import path from 'node:path';
-import { ConfigLoader } from '@llm-wiki/infra';
-import { buildContainer } from '@llm-wiki/common';
+import { ConfigLoader } from '@ivkond-llm-wiki/infra';
+import { buildContainer } from '@ivkond-llm-wiki/common';
 
 type LintPhaseName = 'consolidate' | 'promote' | 'health';
 

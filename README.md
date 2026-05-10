@@ -31,7 +31,7 @@ pnpm test
 ### First Run Smoke Check
 
 ```bash
-pnpm --filter @llm-wiki/cli build
+pnpm --filter @ivkond-llm-wiki/cli build
 node packages/cli/dist/index.js init ~/.llm-wiki
 node packages/cli/dist/index.js status --wiki ~/.llm-wiki --verbose
 ```
@@ -46,7 +46,7 @@ Expected result on a fresh wiki:
 Build CLI first:
 
 ```bash
-pnpm --filter @llm-wiki/cli build
+pnpm --filter @ivkond-llm-wiki/cli build
 ```
 
 Run CLI directly from the built package:
@@ -90,7 +90,7 @@ Installed skills are stored in:
 Build MCP server first:
 
 ```bash
-pnpm --filter @llm-wiki/mcp-server build
+pnpm --filter @ivkond-llm-wiki/mcp-server build
 ```
 
 Start server:
@@ -148,17 +148,17 @@ This project targets local workstation use only. There is no server deployment t
 
 Release workflow: `.github/workflows/release.yml`
 
-- Primary trigger: push semver tag `vX.Y.Z`.
+- Primary trigger: push semver tag `X.Y.Z`.
 - Manual retry trigger: `workflow_dispatch` with required `tag` input pointing to an existing semver tag.
 - Validation before publish: `pnpm install --frozen-lockfile`, version/tag guard, `pnpm typecheck`, `pnpm build`, `pnpm test`, npm pack checks for workspace dependencies, Docker build + smoke start.
-- npm publish order: `@llm-wiki/core` -> `@llm-wiki/infra` -> `@llm-wiki/common` -> `@llm-wiki/cli` -> `@llm-wiki/mcp-server`.
-- GHCR publish target: `ghcr.io/ivkond/llm-wiki` with tags `${version}`, `v${version}`, and `latest`.
+- npm publish targets: `@ivkond-llm-wiki/cli` and `@ivkond-llm-wiki/mcp-server`.
+- GHCR publish target: `ghcr.io/ivkond/llm-wiki` with tags `${version}` and `latest`.
 
-Required GitHub secrets and permissions:
+Required GitHub permissions:
 
-- `NPM_TOKEN`: npm automation token for publishing `@llm-wiki/*` packages.
+- npm packages use trusted publishing via GitHub Actions OIDC.
 - `GITHUB_TOKEN`: built-in token with `packages: write` permission to publish to GHCR.
-- Workflow permissions are set to `contents: read` and `packages: write`.
+- Workflow permissions are set to `contents: read`, `id-token: write`, and `packages: write`.
 
 Rerun behavior:
 

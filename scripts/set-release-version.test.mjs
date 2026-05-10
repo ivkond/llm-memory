@@ -24,10 +24,10 @@ test('test_setReleaseVersion_whenReleaseTagVersionProvided_updatesAllReleasePack
 
   for (const packageName of RELEASE_PACKAGES) {
     await writeJson(path.join(rootDir, 'packages', packageName, 'package.json'), {
-      name: `@llm-wiki/${packageName}`,
+      name: `@ivkond-llm-wiki/${packageName}`,
       version: '0.1.0',
       dependencies: {
-        '@llm-wiki/core': 'workspace:*',
+        '@ivkond-llm-wiki/core': 'workspace:*',
       },
     });
   }
@@ -38,7 +38,7 @@ test('test_setReleaseVersion_whenReleaseTagVersionProvided_updatesAllReleasePack
     const packageJson = await readJson(path.join(rootDir, 'packages', packageName, 'package.json'));
     assert.equal(packageJson.version, '1.2.3');
     assert.deepEqual(packageJson.dependencies, {
-      '@llm-wiki/core': 'workspace:*',
+      '@ivkond-llm-wiki/core': 'workspace:*',
     });
   }
 
@@ -53,7 +53,7 @@ test('test_setReleaseVersion_whenVersionIsNotSemver_rejectsWithoutChangingPackag
   const rootDir = await mkdtemp(path.join(tmpdir(), 'llm-wiki-release-version-'));
   const packageJsonPath = path.join(rootDir, 'packages', 'core', 'package.json');
   await writeJson(packageJsonPath, {
-    name: '@llm-wiki/core',
+    name: '@ivkond-llm-wiki/core',
     version: '0.1.0',
   });
 

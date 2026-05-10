@@ -6,7 +6,7 @@ import {
   SourceParseError,
   type ISourceReader,
   type SourceContent,
-} from '@llm-wiki/core';
+} from '@ivkond-llm-wiki/core';
 
 /**
  * A resolved IP with its family. Mirrors `dns.promises.lookup({ all: true })`

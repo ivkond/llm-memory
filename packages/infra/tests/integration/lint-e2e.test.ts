@@ -21,7 +21,7 @@ import {
   PromotePhase,
   HealthPhase,
   VerbatimEntry,
-} from '@llm-wiki/core';
+} from '@ivkond-llm-wiki/core';
 
 function okGen(text: string) {
   return {

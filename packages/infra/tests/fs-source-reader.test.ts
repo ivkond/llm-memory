@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { FsSourceReader } from '../src/fs-source-reader.js';
-import { SourceNotFoundError, estimateTokens } from '@llm-wiki/core';
+import { SourceNotFoundError, estimateTokens } from '@ivkond-llm-wiki/core';
 
 describe('FsSourceReader', () => {
   let dir: string;

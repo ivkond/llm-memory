@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { list } from 'node-7z';
 import sevenBin from '7zip-bin';
-import { ArchiveError } from '@llm-wiki/core';
+import { ArchiveError } from '@ivkond-llm-wiki/core';
 import { SevenZipArchiver } from '../src/seven-zip-archiver.js';
 
 async function listArchiveBasenames(archivePath: string): Promise<string[]> {

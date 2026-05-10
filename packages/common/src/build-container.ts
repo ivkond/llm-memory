@@ -16,7 +16,7 @@ import {
   SevenZipArchiver,
   ClaudeCodeMemoryReader,
   type WikiConfig,
-} from '@llm-wiki/infra';
+} from '@ivkond-llm-wiki/infra';
 import {
   RememberService,
   RecallService,
@@ -30,7 +30,7 @@ import {
   PromotePhase,
   HealthPhase,
   type IFileStore,
-} from '@llm-wiki/core';
+} from '@ivkond-llm-wiki/core';
 import type { AppServices } from './app-services.js';
 
 /**

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { FsFileStore } from '../src/fs-file-store.js';
 import { YamlStateStore } from '../src/yaml-state-store.js';
-import { EMPTY_RUNTIME_STATE } from '@llm-wiki/core';
+import { EMPTY_RUNTIME_STATE } from '@ivkond-llm-wiki/core';
 
 describe('YamlStateStore', () => {
   let dir: string;

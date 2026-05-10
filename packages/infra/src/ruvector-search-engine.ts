@@ -6,7 +6,7 @@ import path from 'node:path';
 // type inside this file to avoid leaking `any` through the rest of the infra.
 import { VectorDb as RuVectorDb } from 'ruvector';
 import MiniSearch from 'minisearch';
-import { SearchResult } from '@llm-wiki/core';
+import { SearchResult } from '@ivkond-llm-wiki/core';
 import type {
   IEmbeddingClient,
   ISearchEngine,
@@ -14,7 +14,7 @@ import type {
   IndexHealth,
   SearchQuery,
   SearchSource,
-} from '@llm-wiki/core';
+} from '@ivkond-llm-wiki/core';
 
 /** Minimal structural type for the ruvector VectorDBWrapper we rely on. */
 interface VectorDbLike {

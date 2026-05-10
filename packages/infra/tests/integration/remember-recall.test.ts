@@ -3,8 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { execSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { RememberService, RecallService, SanitizationService } from '@llm-wiki/core';
-import { FsFileStore, FsVerbatimStore, GitProjectResolver } from '@llm-wiki/infra';
+import { RememberService, RecallService, SanitizationService } from '@ivkond-llm-wiki/core';
+import { FsFileStore, FsVerbatimStore, GitProjectResolver } from '@ivkond-llm-wiki/infra';
 
 describe('Remember + Recall integration', () => {
   let wikiDir: string;

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { homedir } from 'node:os';
-import { ConfigLoader } from '@llm-wiki/infra';
-import { buildContainer } from '@llm-wiki/common';
+import { ConfigLoader } from '@ivkond-llm-wiki/infra';
+import { buildContainer } from '@ivkond-llm-wiki/common';
 import { startServer, type ServerHandle } from './server.js';
 import { logInfo, logError } from './logger.js';
 
@@ -15,7 +15,7 @@ import { logInfo, logError } from './logger.js';
  * 4. Start the HTTP listener on `config.mcp.{host,port}`.
  * 5. Install SIGINT / SIGTERM handlers for graceful shutdown (T-01-09).
  *
- * main.ts is the ONLY file in this package allowed to import `@llm-wiki/infra`.
+ * main.ts is the ONLY file in this package allowed to import `@ivkond-llm-wiki/infra`.
  * `server.ts`, `tools/*` stay transport-pure.
  */
 

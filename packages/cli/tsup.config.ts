@@ -11,5 +11,5 @@ export default defineConfig({
   clean: true,
   shims: false,
   skipNodeModulesBundle: true,
-  noExternal: [/^@llm-wiki\/(core|infra|common)$/],
+  noExternal: [/^@ivkond-llm-wiki\/(core|infra|common)$/],
 });

@@ -1,6 +1,6 @@
 import { execSync } from 'node:child_process';
 import matter from 'gray-matter';
-import type { IProjectResolver, IFileStore } from '@llm-wiki/core';
+import type { IProjectResolver, IFileStore } from '@ivkond-llm-wiki/core';
 
 export class GitProjectResolver implements IProjectResolver {
   constructor(private readonly fileStore: IFileStore) {}

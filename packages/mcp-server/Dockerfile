@@ -23,4 +23,4 @@ RUN pnpm install --prod --frozen-lockfile
 
 ENV LLM_WIKI_PATH=/data/.llm-wiki
 EXPOSE 7849
-CMD ["pnpm", "--filter", "@llm-wiki/mcp-server", "exec", "llm-wiki-mcp"]
+CMD ["pnpm", "--filter", "@ivkond-llm-wiki/mcp-server", "exec", "llm-wiki-mcp"]

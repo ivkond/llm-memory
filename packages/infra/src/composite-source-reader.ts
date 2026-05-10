@@ -1,4 +1,4 @@
-import { SourceParseError, type ISourceReader, type SourceContent } from '@llm-wiki/core';
+import { SourceParseError, type ISourceReader, type SourceContent } from '@ivkond-llm-wiki/core';
 
 /**
  * Dispatches `ISourceReader.read(uri)` to either a filesystem reader or an
