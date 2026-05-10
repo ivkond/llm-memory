@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
   packages: write
 
 env:
@@ -47,10 +48,10 @@ jobs:
           fetch-depth: 0
           ref: ${{ steps.vars.outputs.tag }}
 
-      - name: Setup Node 20
+      - name: Setup Node 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22.14.0
           registry-url: https://registry.npmjs.org
 
       - name: Enable Corepack and pnpm
@@ -171,7 +172,6 @@ jobs:
 
       - name: Publish npm packages
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           COREPACK_ENABLE_PROJECT_SPEC: 0
         shell: bash
         run: |
