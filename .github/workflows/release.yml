@@ -1,0 +1,159 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing semver tag (for retry), e.g. v0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY_IMAGE: ghcr.io/ivkond/llm-wiki
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve release tag
+        id: vars
+        shell: bash
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+
+          if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag must match vX.Y.Z, got: ${TAG}" >&2
+            exit 1
+          fi
+
+          VERSION="${TAG#v}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ steps.vars.outputs.tag }}
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Enable Corepack and pnpm
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.12.4 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify package versions match tag
+        shell: bash
+        run: |
+          version="${{ steps.vars.outputs.version }}"
+          for pkg in core infra common cli mcp-server; do
+            pkg_version=$(node -p "require('./packages/${pkg}/package.json').version")
+            if [[ "${pkg_version}" != "${version}" ]]; then
+              echo "packages/${pkg} version ${pkg_version} does not match tag version ${version}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Typecheck and build
+        run: |
+          pnpm typecheck
+          pnpm build
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Pack dry-run and ensure no workspace protocol in tarballs
+        shell: bash
+        run: |
+          rm -rf .release-pack
+          mkdir -p .release-pack
+          for pkg in core infra common cli mcp-server; do
+            pkg_dir="packages/${pkg}"
+            pack_path=$(pnpm --dir "${pkg_dir}" pack --pack-destination ../../.release-pack | tail -n 1)
+            pack_file=$(basename "${pack_path}")
+            tar -xOf ".release-pack/${pack_file}" package/package.json > ".release-pack/${pkg}.package.json"
+            if grep -q 'workspace:\*' ".release-pack/${pkg}.package.json"; then
+              echo "workspace:* dependency found in packed ${pkg}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Build Docker image for validation
+        run: docker build -f packages/mcp-server/Dockerfile -t llm-wiki-mcp:ci .
+
+      - name: Smoke test Docker image startup
+        shell: bash
+        run: |
+          cid=$(docker run -d --rm -p 7849:7849 \
+            -e LLM_WIKI_PATH=/tmp/.llm-wiki \
+            -e LLM_WIKI_MCP_HOST=0.0.0.0 \
+            llm-wiki-mcp:ci)
+          cleanup() { docker rm -f "$cid" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+
+          rc=1
+          for _ in {1..20}; do
+            if timeout 1 bash -c '</dev/tcp/127.0.0.1/7849' >/dev/null 2>&1; then
+              rc=0
+              break
+            fi
+            sleep 1
+          done
+
+          if [[ "$rc" != "0" ]]; then
+            docker logs "$cid" || true
+          fi
+
+          set -e
+          if [[ "$rc" != "0" ]]; then
+            echo "Docker smoke test failed with exit code ${rc}" >&2
+            exit 1
+          fi
+
+      - name: Publish npm packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          pnpm --dir packages/core publish --access public --no-git-checks
+          pnpm --dir packages/infra publish --access public --no-git-checks
+          pnpm --dir packages/common publish --access public --no-git-checks
+          pnpm --dir packages/cli publish --access public --no-git-checks
+          pnpm --dir packages/mcp-server publish --access public --no-git-checks
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish MCP image to GHCR
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packages/mcp-server/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY_IMAGE }}:${{ steps.vars.outputs.version }}
+            ${{ env.REGISTRY_IMAGE }}:v${{ steps.vars.outputs.version }}
+            ${{ env.REGISTRY_IMAGE }}:latest

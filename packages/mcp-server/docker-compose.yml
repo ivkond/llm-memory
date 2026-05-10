@@ -1,0 +1,10 @@
+services:
+  llm-wiki-mcp:
+    image: ghcr.io/ivkond/llm-wiki:latest
+    environment:
+      LLM_WIKI_PATH: /data/.llm-wiki
+      LLM_WIKI_MCP_HOST: 0.0.0.0
+    volumes:
+      - ./wiki-data:/data/.llm-wiki
+    ports:
+      - "7849:7849"
