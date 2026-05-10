@@ -10,6 +10,7 @@ export { lintCommand } from './lint.js';
 export { importCommand } from './import-cmd.js';
 export { searchCommand } from './search.js';
 export { statusCommand } from './status.js';
+export { skillCommand } from './skill.js';
 
 /**
  * CommandModule type for cliffy subcommands
