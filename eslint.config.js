@@ -37,6 +37,7 @@ export default tseslint.config(
             'packages/*/vitest.config.ts',
             'packages/cli/tsconfig.json',
             'packages/cli/tests/tsconfig.json',
+            'scripts/*.mjs',
           ],
         },
         tsconfigRootDir: import.meta.dirname,
@@ -162,6 +163,16 @@ export default tseslint.config(
   {
     files: ['**/*.config.js', '**/*.config.ts', '**/*.config.mjs', 'vitest.workspace.ts'],
     ...tseslint.configs.disableTypeChecked,
+  },
+  {
+    files: ['scripts/*.mjs'],
+    ...tseslint.configs.disableTypeChecked,
+    languageOptions: {
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+      },
+    },
   },
   prettierConfig,
 );

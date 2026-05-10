@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing semver tag (for retry), e.g. v0.1.0
+        description: Existing semver tag (for retry), e.g. 0.1.0
         required: true
         type: string
 
@@ -37,7 +37,7 @@ jobs:
             exit 1
           fi
 
-          VERSION="${TAG#v}"
+          VERSION="${TAG}"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
@@ -58,6 +58,12 @@ jobs:
         run: |
           corepack enable
           corepack prepare pnpm@10.12.4 --activate
+
+      - name: Run release version tooling tests
+        run: pnpm test:release-version
+
+      - name: Set package versions from release tag
+        run: node scripts/set-release-version.mjs "${{ steps.vars.outputs.version }}"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -185,5 +191,4 @@ jobs:
           push: true
           tags: |
             ${{ env.REGISTRY_IMAGE }}:${{ steps.vars.outputs.version }}
-            ${{ env.REGISTRY_IMAGE }}:v${{ steps.vars.outputs.version }}
             ${{ env.REGISTRY_IMAGE }}:latest
