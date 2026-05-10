@@ -1,184 +1,319 @@
-# LLM Wiki
+# LLM Memory
 
-Local-first personal knowledge base for AI agents. Markdown files in git are the source of truth; services are exposed via CLI and MCP.
+LLM Memory is a local-first memory layer for AI agents and developer tools. It gives an assistant a durable knowledge base it can write to, search, and reuse across sessions without relying on a hosted service.
 
-## Local Workstation Quickstart
+The project follows Andrej Karpathy's [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) idea: keep long-term knowledge as plain Markdown files, let LLMs help structure and maintain it, and use search/retrieval to bring the right context back when needed.
 
-### Prerequisites
+## What it is for
+
+Use LLM Memory when you want an AI agent to:
+
+- remember facts, decisions, and session summaries between runs;
+- build a searchable personal or project knowledge base;
+- ingest documents, notes, files, or URLs into structured Markdown pages;
+- retrieve relevant context through CLI or MCP-compatible clients;
+- keep all memory local, inspectable, versioned, and editable by hand.
+
+The repository is designed for local workstation use. Your knowledge base lives on disk, in Git, as Markdown.
+
+## How it works
+
+At a high level, LLM Memory combines a few simple pieces:
+
+```text
+User / Agent
+    │
+    ├── CLI commands: llm-wiki init, ingest, search, lint, status
+    └── MCP tools: wiki_query, wiki_recall, wiki_remember_*, ...
+            │
+            ▼
+      Core services
+            │
+            ├── Markdown files as source of truth
+            ├── Git for history and transactional updates
+            ├── LLM for extraction, consolidation, and answers
+            └── Hybrid search: BM25 + embeddings
+```
+
+### Storage model
+
+A wiki directory contains:
+
+```text
+~/.llm-wiki/
+  .config/
+    settings.shared.yaml      # main configuration
+  .local/
+    state.yaml                # runtime state
+    search.db/                # local search index
+  wiki/                       # global curated knowledge
+  projects/                   # project-scoped knowledge
+  log/                        # raw remembered facts and session summaries
+```
+
+The important part: **Markdown files are the source of truth**. Search indexes and runtime state can be rebuilt; the knowledge itself remains readable and editable.
+
+### Under the hood
+
+LLM Memory uses:
+
+- **Markdown + Git** for durable, auditable knowledge storage.
+- **LLM calls** for turning sources into wiki pages, consolidating raw notes, and producing natural-language answers.
+- **Embeddings** for semantic search.
+- **MiniSearch/BM25** for lexical search.
+- **Hybrid retrieval** to combine semantic and keyword matching.
+- **MCP server** to expose memory tools to compatible AI clients.
+- **CLI** for direct local operation.
+
+## Quick start
+
+### 1. Prerequisites
+
+You need:
 
 - Node.js 20+
-- Corepack enabled (`corepack enable`)
-- pnpm 10.12.4 (`corepack prepare pnpm@10.12.4 --activate`)
-- Git configured with author identity (`git config --global user.name` / `git config --global user.email`)
-
-### Install
+- npm
+- Git with author identity configured:
 
 ```bash
-corepack enable
-corepack prepare pnpm@10.12.4 --activate
-pnpm install
+git config --global user.name "Your Name"
+git config --global user.email "you@example.com"
 ```
 
-### Build and verify
+### 2. Install from npm
+
+Install the CLI and MCP server globally:
 
 ```bash
-pnpm build
-pnpm typecheck
-pnpm lint
-pnpm test
+npm install -g @ivkond-llm-wiki/cli @ivkond-llm-wiki/mcp-server
 ```
 
-### First Run Smoke Check
+This provides two commands:
 
 ```bash
-pnpm --filter @ivkond-llm-wiki/cli build
-node packages/cli/dist/index.js init ~/.llm-wiki
-node packages/cli/dist/index.js status --wiki ~/.llm-wiki --verbose
+llm-wiki --help
+llm-wiki-mcp
 ```
 
-Expected result on a fresh wiki:
-- `init` succeeds and creates `.config`, `.local`, `wiki/`, and `projects/`.
-- `status` succeeds with `Total pages: 0`.
-- `Index health` can be `missing` until content is ingested/indexed.
-
-## CLI Usage
-
-Build CLI first:
+You can also run the CLI without global installation:
 
 ```bash
-pnpm --filter @ivkond-llm-wiki/cli build
+npx -y @ivkond-llm-wiki/cli --help
 ```
 
-Run CLI directly from the built package:
+### 3. Initialize a wiki
+
+Create the default wiki at `~/.llm-wiki`:
 
 ```bash
-node packages/cli/dist/index.js --help
+llm-wiki init
 ```
 
-Initialize a wiki (default path is `~/.llm-wiki`):
+Or choose a custom location:
 
 ```bash
-node packages/cli/dist/index.js init
-# or a custom path
-node packages/cli/dist/index.js init ./my-wiki
+llm-wiki init ./my-wiki
 ```
 
-Core commands:
+### 4. Configure models
+
+By default, the generated config uses OpenAI-compatible LLM and embedding models:
+
+- LLM: `gpt-4o-mini`
+- Embeddings: `text-embedding-3-small`
+
+Set API keys with environment variables:
 
 ```bash
-node packages/cli/dist/index.js ingest <file-or-url> --wiki <path>
-node packages/cli/dist/index.js lint --wiki <path>
-node packages/cli/dist/index.js import --agent claude-code --wiki <path>
-node packages/cli/dist/index.js search "your query" --wiki <path>
-node packages/cli/dist/index.js status --wiki <path>
+export LLM_WIKI_LLM_API_KEY="your-key"
+export LLM_WIKI_EMBEDDING_API_KEY="your-key"
 ```
 
-Skill commands:
+Or edit:
+
+```text
+~/.llm-wiki/.config/settings.shared.yaml
+```
+
+### 5. Check status
 
 ```bash
-node packages/cli/dist/index.js skill install llm-memory
-node packages/cli/dist/index.js skill list
-node packages/cli/dist/index.js skill uninstall llm-memory
+llm-wiki status
 ```
 
-Installed skills are stored in:
-- `.agent_context/skills/<name>/`
-- `.agent_context/skills.json`
+On a new wiki you should see zero pages and an index status such as `missing` until content is ingested.
 
-## MCP Server Usage
+### 6. Add knowledge
 
-Build MCP server first:
+Ingest a local file:
 
 ```bash
-pnpm --filter @ivkond-llm-wiki/mcp-server build
+llm-wiki ingest ./notes.md
 ```
 
-Start server:
+Ingest a URL:
 
 ```bash
-LLM_WIKI_PATH=<path-to-wiki> node packages/mcp-server/dist/main.js
+llm-wiki ingest https://example.com/article
 ```
 
-Default bind comes from wiki config (`mcp.host`/`mcp.port`); `llm-wiki init` defaults to `127.0.0.1:7849`.
+LLM Memory will extract durable reference pages, write them as Markdown, commit the changes, and update the search index.
 
-Exposed MCP tools:
-
-- `wiki_query`
-- `wiki_recall`
-- `wiki_remember_fact`
-- `wiki_remember_session`
-- `wiki_ingest`
-- `wiki_lint`
-- `wiki_status`
-
-## Environment Variables
-
-Configuration is loaded from `.config/settings.shared.yaml` and `.config/settings.local.yaml`, then overridden by environment variables.
-
-Common variables:
-
-- `LLM_WIKI_PATH`
-- `LLM_WIKI_LLM_API_KEY`
-- `LLM_WIKI_LLM_MODEL`
-- `LLM_WIKI_LLM_BASE_URL`
-- `LLM_WIKI_EMBEDDING_API_KEY`
-- `LLM_WIKI_EMBEDDING_MODEL`
-- `LLM_WIKI_EMBEDDING_BASE_URL`
-
-## Claude Hooks and Skills
-
-Repository hooks:
-
-- `.claude/hooks/recall-context.sh`
-- `.claude/hooks/summarize-session.sh`
-
-Smoke test:
+### 7. Search the wiki
 
 ```bash
-./.claude/hooks/tests/smoke.sh
+llm-wiki search "What did we decide about the release process?"
 ```
 
-Repository skills are in `.claude/skills/`.
+For machine-readable output:
 
-## Scope
+```bash
+llm-wiki search "release process" --format json
+```
 
-This project targets local workstation use only. There is no server deployment target in this repository.
+### 8. Run the MCP server
 
-## Release Automation
+Start the server for MCP-compatible clients:
 
-Release workflow: `.github/workflows/release.yml`
+```bash
+LLM_WIKI_PATH=~/.llm-wiki llm-wiki-mcp
+```
 
-- Primary trigger: push semver tag `X.Y.Z`.
-- Manual retry trigger: `workflow_dispatch` with required `tag` input pointing to an existing semver tag.
-- Validation before publish: `pnpm install --frozen-lockfile`, version/tag guard, `pnpm typecheck`, `pnpm build`, `pnpm test`, npm pack checks for workspace dependencies, Docker build + smoke start.
-- npm publish targets: `@ivkond-llm-wiki/cli` and `@ivkond-llm-wiki/mcp-server`.
-- GHCR publish target: `ghcr.io/ivkond/llm-wiki` with tags `${version}` and `latest`.
+By default, the server listens on `127.0.0.1:7849`. You can change this in config or with environment variables.
 
-Required GitHub permissions:
+## CLI reference
 
-- npm packages use trusted publishing via GitHub Actions OIDC.
-- npm trusted publishing environment: `publish`.
-- Release npm publishes use Node.js 24 and npm CLI 11.5.1+.
-- `GITHUB_TOKEN`: built-in token with `packages: write` permission to publish to GHCR.
-- Workflow permissions are set to `contents: read`, `id-token: write`, and `packages: write`.
+| Command | Purpose |
+| --- | --- |
+| `llm-wiki init [directory]` | Create a new wiki directory and Git repository. |
+| `llm-wiki status` | Show wiki health, page counts, index status, and recent activity. |
+| `llm-wiki ingest <file-or-url>` | Convert a file or URL into structured wiki pages. |
+| `llm-wiki search <query>` | Search the wiki and optionally generate an answer. |
+| `llm-wiki lint` | Consolidate raw memories, promote shared patterns, and run health checks. |
+| `llm-wiki import --agent claude-code` | Import supported external agent memory sources. |
+| `llm-wiki skill install <name>` | Install packaged agent skills into `.agent_context/skills`. |
 
-Rerun behavior:
+Useful global options:
 
-- npm versions are immutable; the workflow skips package versions already present in npm so partial retries can continue.
-- GHCR tags may be repushed on retry, so image digest for the same tag can change.
-- Recommended retry path is `workflow_dispatch` with the same tag after fixing the failing step.
+```bash
+llm-wiki status --wiki ./my-wiki
+llm-wiki search "query" --limit 5 --format json
+llm-wiki ingest ./doc.md --verbose
+```
+
+## MCP tools
+
+The MCP server exposes these tools:
+
+| Tool | Purpose |
+| --- | --- |
+| `wiki_query` | Ask a natural-language question against the indexed wiki. |
+| `wiki_recall` | Retrieve relevant wiki context for a working directory. |
+| `wiki_remember_fact` | Store a raw fact for later consolidation. |
+| `wiki_remember_session` | Store a session summary with deduplication by session ID. |
+| `wiki_ingest` | Ingest a file path or URL into wiki pages. |
+| `wiki_lint` | Run consolidation, promotion, and health phases. |
+| `wiki_status` | Return wiki health and metadata. |
+
+## Configuration
+
+Configuration is loaded in this order:
+
+1. built-in defaults;
+2. `.config/settings.shared.yaml` inside the wiki;
+3. `.local/settings.local.yaml` inside the wiki;
+4. environment variables.
+
+Common environment variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `LLM_WIKI_PATH` | Wiki directory path. |
+| `LLM_WIKI_LLM_API_KEY` | API key for the LLM provider. |
+| `LLM_WIKI_LLM_MODEL` | LLM model name. |
+| `LLM_WIKI_LLM_BASE_URL` | OpenAI-compatible LLM base URL. |
+| `LLM_WIKI_EMBEDDING_API_KEY` | API key for the embedding provider. |
+| `LLM_WIKI_EMBEDDING_MODEL` | Embedding model name. |
+| `LLM_WIKI_EMBEDDING_BASE_URL` | OpenAI-compatible embedding base URL. |
+| `LLM_WIKI_MCP_HOST` | MCP server host. |
+| `LLM_WIKI_MCP_PORT` | MCP server port. |
+
+Example:
+
+```bash
+export LLM_WIKI_PATH="$HOME/.llm-wiki"
+export LLM_WIKI_LLM_API_KEY="your-key"
+export LLM_WIKI_EMBEDDING_API_KEY="your-key"
+llm-wiki status
+```
+
+## Data ownership and privacy
+
+LLM Memory is local-first:
+
+- wiki content is stored as local Markdown files;
+- changes are committed to a local Git repository;
+- search indexes are stored under the wiki directory;
+- there is no hosted backend in this project.
+
+Content sent to LLM or embedding providers depends on the commands you run and the provider configuration you choose. If you use a remote API provider, relevant source text, queries, or excerpts may be sent to that provider.
 
 ## Troubleshooting
 
-- `pnpm: command not found`:
-  run `corepack enable && corepack prepare pnpm@10.12.4 --activate` and re-open your shell.
-- `Git author identity is not configured` during `init`:
-  configure git once with:
-  `git config --global user.name "Your Name"`
-  `git config --global user.email "you@example.com"`
-- `Error: No wiki found`:
-  initialize a wiki with `node packages/cli/dist/index.js init` or pass `--wiki <path>`.
-- `Invalid LLM_WIKI_MCP_PORT`:
-  set `LLM_WIKI_MCP_PORT` to an integer in `1..65535`.
-- Missing LLM/embedding API keys:
-  set `LLM_WIKI_LLM_API_KEY` and `LLM_WIKI_EMBEDDING_API_KEY` before commands that call providers.
+### `llm-wiki: command not found`
+
+Install the CLI globally:
+
+```bash
+npm install -g @ivkond-llm-wiki/cli
+```
+
+Or use `npx`:
+
+```bash
+npx -y @ivkond-llm-wiki/cli --help
+```
+
+### `Git author identity is not configured`
+
+Configure Git once:
+
+```bash
+git config --global user.name "Your Name"
+git config --global user.email "you@example.com"
+```
+
+### `Error: No wiki found`
+
+Initialize a wiki first:
+
+```bash
+llm-wiki init
+```
+
+Or pass the path explicitly:
+
+```bash
+llm-wiki status --wiki ./my-wiki
+```
+
+### Missing API keys
+
+Set both LLM and embedding keys before commands that call providers:
+
+```bash
+export LLM_WIKI_LLM_API_KEY="your-key"
+export LLM_WIKI_EMBEDDING_API_KEY="your-key"
+```
+
+### Invalid MCP port
+
+Use an integer between `1` and `65535`:
+
+```bash
+export LLM_WIKI_MCP_PORT=7849
+```
+
+## Status
+
+LLM Memory is currently aimed at local workstation usage. It is best suited for users who want a transparent, hackable, Git-backed memory system for AI agents and personal knowledge workflows.
