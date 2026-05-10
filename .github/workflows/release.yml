@@ -134,9 +134,6 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          pnpm --dir packages/core publish --access public --no-git-checks
-          pnpm --dir packages/infra publish --access public --no-git-checks
-          pnpm --dir packages/common publish --access public --no-git-checks
           pnpm --dir packages/cli publish --access public --no-git-checks
           pnpm --dir packages/mcp-server publish --access public --no-git-checks
 
