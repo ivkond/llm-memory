@@ -6,7 +6,8 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "llm-wiki": "./dist/index.js"
+    "llm-wiki": "./dist/index.js",
+    "multica": "./dist/index.js"
   },
   "exports": {
     ".": "./dist/index.js",

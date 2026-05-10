@@ -73,6 +73,18 @@ node packages/cli/dist/index.js search "your query" --wiki <path>
 node packages/cli/dist/index.js status --wiki <path>
 ```
 
+Skill commands:
+
+```bash
+node packages/cli/dist/index.js skill install llm-memory
+node packages/cli/dist/index.js skill list
+node packages/cli/dist/index.js skill uninstall llm-memory
+```
+
+Installed skills are stored in:
+- `.agent_context/skills/<name>/`
+- `.agent_context/skills.json`
+
 ## MCP Server Usage
 
 Build MCP server first:
