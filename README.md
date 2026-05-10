@@ -157,6 +157,7 @@ Release workflow: `.github/workflows/release.yml`
 Required GitHub permissions:
 
 - npm packages use trusted publishing via GitHub Actions OIDC.
+- npm trusted publishing environment: `publish`.
 - `GITHUB_TOKEN`: built-in token with `packages: write` permission to publish to GHCR.
 - Workflow permissions are set to `contents: read`, `id-token: write`, and `packages: write`.
 
