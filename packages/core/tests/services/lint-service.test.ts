@@ -157,6 +157,17 @@ class FakeArchiver implements IArchiver {
 
 class FakeIdempotencyStore implements IIdempotencyStore {
   private records = new Map<string, any>();
+  seedCompleted(operation: string, key: string, fingerprint: string, response: unknown): void {
+    this.records.set(`${operation}:${key}`, {
+      operation,
+      key,
+      fingerprint,
+      status: 'completed',
+      response,
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+    });
+  }
   async acquire(operation: any, key: string, fingerprint: string) {
     const id = `${operation}:${key}`;
     const existing = this.records.get(id);
@@ -505,5 +516,45 @@ describe('LintService', () => {
     await service.lint({ phases: ['health'] });
 
     expect(searchEngine.indexed).toEqual([]);
+  });
+
+  it('replays lint result when store returns completed plain object response', async () => {
+    const idempotency = new FakeIdempotencyStore();
+    idempotency.seedCompleted('lint', 'lint-key', JSON.stringify({ phases: ['health'], project: null }), {
+      consolidated: 2,
+      promoted: 1,
+      issues: [],
+      commitSha: 'abc123',
+    });
+    const consolidateSpy = vi.fn();
+    const service = new LintService({
+      mainRepoRoot: '/main',
+      mainFileStore: mainFs,
+      mainVerbatimStore: vs,
+      versionControl: vc,
+      searchEngine,
+      fileStoreFactory: fsFactory,
+      verbatimStoreFactory: () => vs,
+      stateStore: state,
+      archiver,
+      idempotencyStore: idempotency,
+      makeConsolidatePhase: () => ({
+        name: 'consolidate',
+        async run() {
+          consolidateSpy();
+          return { consolidatedCount: 1, touchedPaths: [] };
+        },
+      }),
+      makePromotePhase: () => stubPromote(),
+      makeHealthPhase: () => stubHealth(),
+      now: () => new Date('2026-04-10T12:00:00Z'),
+    });
+
+    const report = await service.lint({ phases: ['health'], idempotencyKey: 'lint-key' });
+    expect(consolidateSpy).not.toHaveBeenCalled();
+    expect(report.consolidated).toBe(2);
+    expect(report.promoted).toBe(1);
+    expect(report.commitSha).toBe('abc123');
+    expect(report.idempotencyReplayed).toBe(true);
   });
 });

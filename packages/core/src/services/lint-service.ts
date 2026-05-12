@@ -117,9 +117,29 @@ export class LintService {
         return commitSha ? report.withCommit(commitSha) : report;
       },
     );
-    return replayed
-      ? LintReport.from({ ...result.toData(), idempotencyReplayed: true })
-      : result;
+    if (!replayed) return result;
+    return LintReport.from({
+      ...this.toLintReportData(result),
+      idempotencyReplayed: true,
+    });
+  }
+
+  private toLintReportData(result: unknown): {
+    consolidated: number;
+    promoted: number;
+    issues: HealthIssue[];
+    commitSha: string | null;
+  } {
+    if (result instanceof LintReport) {
+      return result.toData();
+    }
+    const data = (result ?? {}) as Record<string, unknown>;
+    return {
+      consolidated: Number(data.consolidated ?? 0),
+      promoted: Number(data.promoted ?? 0),
+      issues: Array.isArray(data.issues) ? (data.issues as HealthIssue[]) : [],
+      commitSha: typeof data.commitSha === 'string' ? data.commitSha : null,
+    };
   }
 
   private async runPhases(
