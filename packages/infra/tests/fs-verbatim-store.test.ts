@@ -114,6 +114,8 @@ describe('FsVerbatimStore.readEntry', () => {
       expect(roundtrip!.sessionId).toBe('sess1');
       expect(roundtrip!.project).toBe('cli-relay');
       expect(roundtrip!.consolidated).toBe(false);
+      expect(roundtrip!.entryId).toBe('uuid1');
+      expect(roundtrip!.source.type).toBe('manual');
       expect(roundtrip!.content).toContain('pgx MaxConns rule');
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -136,6 +138,7 @@ describe('FsVerbatimStore.markConsolidated', () => {
       await store.markConsolidated(entry.filePath);
       const reloaded = await store.readEntry(entry.filePath);
       expect(reloaded!.consolidated).toBe(true);
+      expect(reloaded!.processing.consolidated_at).toBeTruthy();
       const unconsolidated = await store.listUnconsolidated('claude-code');
       expect(unconsolidated).toHaveLength(0);
     } finally {

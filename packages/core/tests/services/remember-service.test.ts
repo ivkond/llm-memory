@@ -26,6 +26,9 @@ function createMocks() {
     }),
     listUnconsolidated: vi.fn(async () => []),
     countUnconsolidated: vi.fn(async () => 0),
+    listAgents: vi.fn(async () => []),
+    readEntry: vi.fn(async () => null),
+    markConsolidated: vi.fn(async () => undefined),
   };
 
   return { fileStore, verbatimStore, files };
@@ -96,6 +99,8 @@ describe('RememberService', () => {
 
     expect(result.ok).toBe(true);
     expect(result.facts_count).toBe(2);
+    expect(result.entry_id).toBeTruthy();
+    expect(result.created_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(verbatimStore.writeEntry).toHaveBeenCalledOnce();
   });
 

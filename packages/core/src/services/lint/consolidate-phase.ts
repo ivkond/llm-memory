@@ -110,8 +110,12 @@ export class ConsolidatePhase {
   private async askLlm(batch: VerbatimEntry[]): Promise<ProposedPage[]> {
     const userPayload = batch.map((e) => ({
       path: e.filePath,
+      entry_id: e.entryId,
       agent: e.agent,
       project: e.project,
+      source: e.source,
+      operation_id: e.operationId,
+      processing: e.processing,
       content: e.content,
     }));
     const response = await this.llmClient.complete({

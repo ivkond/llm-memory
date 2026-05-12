@@ -1,4 +1,3 @@
-import { basename } from 'node:path';
 import type { AppServices } from '@ivkond-llm-wiki/common';
 
 /**
@@ -31,14 +30,30 @@ export function createWikiRememberSessionHandler(services: AppServices) {
       const agent = params.agent != null ? String(params.agent) : '';
       const sessionId = params.sessionId != null ? String(params.sessionId) : '';
       const project = params.project != null ? String(params.project) : undefined;
+      const sourceUri = params.source_uri != null ? String(params.source_uri) : undefined;
+      const sourceDigest =
+        params.source_digest != null ? String(params.source_digest) : undefined;
+      const operationId =
+        params.operation_id != null ? String(params.operation_id) : undefined;
+      const modelProvider =
+        params.model_provider != null ? String(params.model_provider) : undefined;
+      const modelName = params.model_name != null ? String(params.model_name) : undefined;
+      const callId = params.call_id != null ? String(params.call_id) : undefined;
+      const toolCallId = params.tool_call_id != null ? String(params.tool_call_id) : undefined;
 
       const result = await rememberService.rememberSession({
         summary,
         agent,
         sessionId,
         project,
+        sourceUri,
+        sourceDigest,
+        operationId,
+        modelProvider,
+        modelName,
+        callId,
+        toolCallId,
       });
-      const entryId = basename(result.file);
 
       return {
         content: [
@@ -47,9 +62,9 @@ export function createWikiRememberSessionHandler(services: AppServices) {
             text: JSON.stringify({
               success: true,
               data: {
-                entry_id: entryId,
+                entry_id: result.entry_id,
                 session_id: sessionId,
-                created_at: inferCreatedAtFromEntryId(entryId),
+                created_at: result.created_at,
                 facts_count: result.facts_count,
               },
             }),
@@ -74,10 +89,4 @@ export function createWikiRememberSessionHandler(services: AppServices) {
       };
     }
   };
-}
-
-function inferCreatedAtFromEntryId(entryId: string): string | null {
-  const match = /^(\d{4}-\d{2}-\d{2})/.exec(entryId);
-  if (!match) return null;
-  return `${match[1]}T00:00:00.000Z`;
 }

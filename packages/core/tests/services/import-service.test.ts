@@ -120,6 +120,8 @@ describe('ImportService', () => {
 
     expect(result.agents).toHaveLength(2);
     expect(verbatim.written).toHaveLength(2);
+    expect(verbatim.written[0].source.type).toBe('import');
+    expect(verbatim.written[0].processing.imported_at).toBe('2026-04-10T12:00:00.000Z');
     const agents = result.agents.map((a) => a.agent).sort();
     expect(agents).toEqual(['claude-code', 'cursor']);
     const reloaded = await state.load();
