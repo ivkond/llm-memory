@@ -155,10 +155,13 @@ export class FsVerbatimStore implements IVerbatimStore {
   }
 }
 
-function cleanObject<T extends Record<string, unknown> | undefined>(value: T): T | undefined {
-  if (!value || typeof value !== 'object') return undefined;
-  const cleaned = Object.fromEntries(
-    Object.entries(value).filter(([, v]) => v !== undefined),
-  ) as T;
+function cleanObject<T extends object>(value: T | undefined): Record<string, unknown> | undefined {
+  if (!value) return undefined;
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, fieldValue] of Object.entries(value as Record<string, unknown>)) {
+    if (fieldValue !== undefined) {
+      cleaned[key] = fieldValue;
+    }
+  }
   return Object.keys(cleaned).length > 0 ? cleaned : undefined;
 }
