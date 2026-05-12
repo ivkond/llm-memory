@@ -97,7 +97,7 @@ export class PromotePhase {
     touchedPaths: string[],
     allowedSources: Set<string>,
   ): Promise<'applied' | string> {
-    const validProjectSources = prop.sources.filter((sourcePath) => allowedSources.has(sourcePath));
+    const validProjectSources = this.uniqueValidProjectSources(prop.sources, allowedSources);
     if (validProjectSources.length === 0) {
       return `review: no valid project practice sources for ${prop.target}`;
     }
@@ -122,6 +122,16 @@ export class PromotePhase {
       await this.rewriteSource(sourcePath, prop, touchedPaths);
     }
     return 'applied';
+  }
+
+  private uniqueValidProjectSources(sources: string[], allowedSources: Set<string>): string[] {
+    const unique = new Set<string>();
+    for (const sourcePath of sources) {
+      if (!allowedSources.has(sourcePath)) continue;
+      if (unique.has(sourcePath)) continue;
+      unique.add(sourcePath);
+    }
+    return [...unique];
   }
 
   private async rewriteSource(

@@ -315,4 +315,31 @@ describe('PromotePhase', () => {
     const phase = new PromotePhase(fileStore, llm);
     await expect(phase.run()).rejects.toThrow(/malformed promote entry/);
   });
+
+  it('routes duplicate single-source evidence without rationale to review', async () => {
+    fileStore.files['projects/x/practices.md'] = '---\ntitle: x\n---\n\n## pattern-a\nDetail.\n';
+    llm.response = {
+      promoted: [
+        {
+          target: 'wiki/patterns/pattern-a.md',
+          title: 'Pattern A',
+          content: 'Useful shared pattern.',
+          confidence: 0.95,
+          promotion_reason: ' ',
+          sources: ['projects/x/practices.md', 'projects/x/practices.md'],
+          replacement_marker: 'pattern-a',
+        },
+      ],
+    };
+
+    const phase = new PromotePhase(fileStore, llm);
+    const result = await phase.run();
+
+    expect(result.promotedCount).toBe(0);
+    expect(result.reviewCount).toBe(1);
+    expect(result.skippedReasons?.some((reason) => reason.includes('insufficient sources/rationale'))).toBe(
+      true,
+    );
+    expect(fileStore.files['wiki/patterns/pattern-a.md']).toBeUndefined();
+  });
 });
