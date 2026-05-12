@@ -110,11 +110,11 @@ export class FsVerbatimStore implements IVerbatimStore {
       processing:
         parsed.data.processing && typeof parsed.data.processing === 'object'
           ? {
-              created_at: String(
-                (parsed.data.processing as Record<string, unknown>).created_at ??
-                  parsed.data.created ??
-                  '',
-              ),
+              created_at:
+                normalizeTimestamp(
+                  (parsed.data.processing as Record<string, unknown>).created_at ??
+                    parsed.data.created,
+                ) ?? '',
               ingested_at: (parsed.data.processing as Record<string, unknown>).ingested_at
                 ? String((parsed.data.processing as Record<string, unknown>).ingested_at)
                 : undefined,
@@ -130,7 +130,7 @@ export class FsVerbatimStore implements IVerbatimStore {
             }
           : undefined,
       consolidated: parsed.data.consolidated === true,
-      created: String(parsed.data.created ?? ''),
+      created: normalizeTimestamp(parsed.data.created) ?? '',
       content: parsed.content,
     });
   }
@@ -164,4 +164,10 @@ function cleanObject<T extends object>(value: T | undefined): Record<string, unk
     }
   }
   return Object.keys(cleaned).length > 0 ? cleaned : undefined;
+}
+
+function normalizeTimestamp(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (value instanceof Date) return value.toISOString();
+  return String(value);
 }
