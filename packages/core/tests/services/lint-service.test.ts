@@ -13,6 +13,7 @@ import type {
   IVersionControl,
   IStateStore,
   IArchiver,
+  IIdempotencyStore,
   ISearchEngine,
   IndexEntry,
   SearchQuery,
@@ -154,6 +155,16 @@ class FakeArchiver implements IArchiver {
   }
 }
 
+class FakeIdempotencyStore implements IIdempotencyStore {
+  private records = new Map<string, any>();
+  async get(operation: any, key: string) {
+    return this.records.get(`${operation}:${key}`) ?? null;
+  }
+  async put(record: any) {
+    this.records.set(`${record.operation}:${record.key}`, record);
+  }
+}
+
 function stubConsolidate(touched: string[] = []): LintPhase<'consolidate'> {
   return {
     name: 'consolidate',
@@ -215,6 +226,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      idempotencyStore: new FakeIdempotencyStore(),
       makeConsolidatePhase: () => stubConsolidate(consolidatePaths),
       makePromotePhase: () => stubPromote(['wiki/patterns/x.md']),
       makeHealthPhase: () => stubHealth([]),
@@ -244,6 +256,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      idempotencyStore: new FakeIdempotencyStore(),
       makeConsolidatePhase: () => ({
         name: 'consolidate',
         async run() {
@@ -273,6 +286,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      idempotencyStore: new FakeIdempotencyStore(),
       makeConsolidatePhase: () => stubConsolidate(['wiki/x.md']),
       makePromotePhase: () => stubPromote(),
       makeHealthPhase: () => stubHealth(),
@@ -299,6 +313,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      idempotencyStore: new FakeIdempotencyStore(),
       makeConsolidatePhase: () => ({
         name: 'consolidate',
         async run() {
@@ -335,6 +350,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      idempotencyStore: new FakeIdempotencyStore(),
       makeConsolidatePhase: () => stubConsolidate(),
       makePromotePhase: () => stubPromote(),
       makeHealthPhase: () => stubHealth(),
@@ -372,6 +388,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      idempotencyStore: new FakeIdempotencyStore(),
       makeConsolidatePhase: () => phase,
       makePromotePhase: () => stubPromote(),
       makeHealthPhase: () => stubHealth(),
@@ -421,6 +438,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      idempotencyStore: new FakeIdempotencyStore(),
       makeConsolidatePhase: () => stubConsolidate(['wiki/tools/postgresql.md']),
       makePromotePhase: () => stubPromote(['wiki/patterns/no-db-mocking.md']),
       makeHealthPhase: () => stubHealth(),
@@ -445,6 +463,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      idempotencyStore: new FakeIdempotencyStore(),
       makeConsolidatePhase: () => stubConsolidate(),
       makePromotePhase: () => stubPromote(),
       makeHealthPhase: () => stubHealth([]),

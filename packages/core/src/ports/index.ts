@@ -8,5 +8,10 @@ export type { IEmbeddingClient } from './embedding-client.js';
 export type { ISourceReader, SourceContent } from './source-reader.js';
 export { estimateTokens } from './source-reader.js';
 export type { IStateStore } from './state-store.js';
+export type {
+  IIdempotencyStore,
+  IdempotencyOperation,
+  IdempotencyRecord,
+} from './idempotency-store.js';
 export type { IArchiver, ArchiveEntry, ArchiveResult } from './archiver.js';
 export type { IAgentMemoryReader, AgentMemoryDiscoveryOptions } from './agent-memory-reader.js';

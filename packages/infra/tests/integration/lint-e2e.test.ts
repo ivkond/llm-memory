@@ -14,6 +14,7 @@ import {
   AiSdkLlmClient,
   AiSdkEmbeddingClient,
   RuVectorSearchEngine,
+  YamlIdempotencyStore,
 } from '../../src/index.js';
 import {
   LintService,
@@ -140,6 +141,7 @@ describe('Lint E2E', () => {
       verbatimStoreFactory: (fs) => new FsVerbatimStore(fs),
       stateStore,
       archiver,
+      idempotencyStore: new YamlIdempotencyStore(mainFs),
       makeConsolidatePhase: (fs, vs) => new ConsolidatePhase(fs, vs, llm, wiki),
       makePromotePhase: (fs) => new PromotePhase(fs, llm),
       makeHealthPhase: (fs) => new HealthPhase(fs),

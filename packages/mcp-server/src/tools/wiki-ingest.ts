@@ -60,8 +60,9 @@ export function createWikiIngestHandler(services: AppServices) {
 
         const source = params.source != null ? String(params.source) : '';
         const hint = params.hint != null ? String(params.hint) : undefined;
-
-        const result = await ingestService.ingest({ source, hint });
+        const idempotencyKey =
+          params.idempotencyKey != null ? String(params.idempotencyKey) : undefined;
+        const result = await ingestService.ingest({ source, hint, idempotencyKey });
 
         return {
           content: [

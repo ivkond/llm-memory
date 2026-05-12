@@ -150,3 +150,24 @@ export class ProjectScopeUnsupportedError extends WikiError {
     );
   }
 }
+
+export class InvalidIdempotencyKeyError extends WikiError {
+  constructor(public readonly value: string) {
+    super(
+      'INVALID_IDEMPOTENCY_KEY',
+      `Invalid idempotency key: ${JSON.stringify(value)} — must match [a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}`,
+    );
+  }
+}
+
+export class IdempotencyConflictError extends WikiError {
+  constructor(
+    public readonly operation: string,
+    public readonly key: string,
+  ) {
+    super(
+      'IDEMPOTENCY_CONFLICT',
+      `Idempotency conflict for operation "${operation}" and key ${JSON.stringify(key)}`,
+    );
+  }
+}

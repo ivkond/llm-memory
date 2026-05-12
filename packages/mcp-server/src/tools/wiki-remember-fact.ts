@@ -30,6 +30,8 @@ export function createWikiRememberFactHandler(services: AppServices) {
       const agent = params.agent != null ? String(params.agent) : '';
       const sessionId = params.sessionId != null ? String(params.sessionId) : '';
       const project = params.project != null ? String(params.project) : undefined;
+      const idempotencyKey =
+        params.idempotencyKey != null ? String(params.idempotencyKey) : undefined;
       const tags = params.tags
         ? Array.isArray(params.tags)
           ? params.tags.map((t) => String(t))
@@ -42,6 +44,7 @@ export function createWikiRememberFactHandler(services: AppServices) {
         sessionId,
         project,
         tags,
+        idempotencyKey,
       });
 
       return {

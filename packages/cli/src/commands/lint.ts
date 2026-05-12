@@ -40,7 +40,8 @@ export const lintCommand = new Command()
   )
   .option('-v, --verbose', 'Verbose output', false)
   .option('-w, --wiki <path>', 'Wiki directory path')
-  .action(async (options: { phases?: string; verbose?: boolean; wiki?: string }) => {
+  .option('--idempotency-key <key>', 'Idempotency key for retry-safe lint')
+  .action(async (options: { phases?: string; verbose?: boolean; wiki?: string; idempotencyKey?: string }) => {
     const phasesInput = options.phases ?? 'consolidate,promote,health';
     const verbose = options.verbose ?? false;
 
@@ -77,7 +78,7 @@ export const lintCommand = new Command()
       console.log(`Running lint phases: ${phases.join(', ')}`);
 
       const startTime = Date.now();
-      const report = await services.lint.lint({ phases });
+      const report = await services.lint.lint({ phases, idempotencyKey: options.idempotencyKey });
 
       const elapsed = Date.now() - startTime;
 
@@ -102,6 +103,9 @@ export const lintCommand = new Command()
 
       if (report.commitSha) {
         console.log(`\nCommit: ${report.commitSha.slice(0, 7)}`);
+      }
+      if (report.idempotencyReplayed && options.idempotencyKey) {
+        console.log(`Replayed idempotent result for key ${options.idempotencyKey}`);
       }
 
       if (verbose) {

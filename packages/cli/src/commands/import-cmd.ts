@@ -32,7 +32,8 @@ export const importCommand = new Command()
   .option('-a, --agent <agent>', 'Agent to import from (claude-code, all)', 'claude-code')
   .option('-v, --verbose', 'Verbose output', false)
   .option('-w, --wiki <path>', 'Wiki directory path')
-  .action(async (options: { agent?: string; verbose?: boolean; wiki?: string }) => {
+  .option('--idempotency-key <key>', 'Idempotency key for retry-safe import')
+  .action(async (options: { agent?: string; verbose?: boolean; wiki?: string; idempotencyKey?: string }) => {
     const agent = options.agent ?? 'claude-code';
     const verbose = options.verbose ?? false;
 
@@ -65,7 +66,10 @@ export const importCommand = new Command()
 
       const startTime = Date.now();
       const agents = agent === 'all' ? undefined : [agent];
-      const result = await services.import_.importAll({ agents });
+      const result = await services.import_.importAll({
+        agents,
+        idempotencyKey: options.idempotencyKey,
+      });
 
       const elapsed = Date.now() - startTime;
 
@@ -94,6 +98,9 @@ export const importCommand = new Command()
         console.log('\nNo entries to import');
       } else {
         console.log(`\nTotal: ${totalImported} imported, ${totalSkipped} skipped`);
+      }
+      if (result.idempotency_replayed && options.idempotencyKey) {
+        console.log(`Replayed idempotent result for key ${options.idempotencyKey}`);
       }
 
       if (verbose) {

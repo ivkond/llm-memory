@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RememberService } from '../../src/services/remember-service.js';
 import { SanitizationService } from '../../src/services/sanitization-service.js';
 import type { IFileStore } from '../../src/ports/file-store.js';
+import type { IIdempotencyStore } from '../../src/ports/idempotency-store.js';
 import type { IVerbatimStore } from '../../src/ports/verbatim-store.js';
 
 function createMocks() {
@@ -31,6 +32,16 @@ function createMocks() {
   return { fileStore, verbatimStore, files };
 }
 
+function createIdempotencyStore(): IIdempotencyStore {
+  const records = new Map<string, unknown>();
+  return {
+    get: vi.fn(async (operation, key) => records.get(`${operation}:${key}`) ?? null),
+    put: vi.fn(async (record) => {
+      records.set(`${record.operation}:${record.key}`, record);
+    }),
+  };
+}
+
 describe('RememberService', () => {
   let fileStore: IFileStore;
   let verbatimStore: IVerbatimStore;
@@ -41,7 +52,7 @@ describe('RememberService', () => {
     fileStore = mocks.fileStore;
     verbatimStore = mocks.verbatimStore;
     const sanitizer = new SanitizationService({ enabled: true, mode: 'redact' });
-    service = new RememberService(fileStore, verbatimStore, sanitizer);
+    service = new RememberService(fileStore, verbatimStore, sanitizer, createIdempotencyStore());
   });
 
   it('test_rememberFact_validContent_writesFile', async () => {

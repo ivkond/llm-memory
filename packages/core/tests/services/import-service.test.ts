@@ -5,6 +5,7 @@ import { ImportReaderNotRegisteredError } from '../../src/domain/errors.js';
 import { EMPTY_RUNTIME_STATE, type WikiRuntimeState } from '../../src/domain/runtime-state.js';
 import type {
   IAgentMemoryReader,
+  IIdempotencyStore,
   IVerbatimStore,
   IStateStore,
   AgentMemoryDiscoveryOptions,
@@ -67,6 +68,16 @@ class FakeStateStore implements IStateStore {
   }
 }
 
+class FakeIdempotencyStore implements IIdempotencyStore {
+  private records = new Map<string, any>();
+  async get(operation: any, key: string) {
+    return this.records.get(`${operation}:${key}`) ?? null;
+  }
+  async put(record: any) {
+    this.records.set(`${record.operation}:${record.key}`, record);
+  }
+}
+
 describe('ImportService', () => {
   let verbatim: FakeVerbatimStore;
   let state: FakeStateStore;
@@ -113,6 +124,7 @@ describe('ImportService', () => {
       verbatimStore: verbatim,
       stateStore: state,
       agentConfigs: configs,
+      idempotencyStore: new FakeIdempotencyStore(),
       now: () => new Date('2026-04-10T12:00:00Z'),
     });
 
@@ -142,6 +154,7 @@ describe('ImportService', () => {
       verbatimStore: verbatim,
       stateStore: state,
       agentConfigs: configs,
+      idempotencyStore: new FakeIdempotencyStore(),
       now: () => new Date(),
     });
     await service.importAll({});
@@ -165,6 +178,7 @@ describe('ImportService', () => {
       verbatimStore: verbatim,
       stateStore: state,
       agentConfigs: configs,
+      idempotencyStore: new FakeIdempotencyStore(),
       now: () => new Date(),
     });
     await service.importAll({});
@@ -190,6 +204,7 @@ describe('ImportService', () => {
       verbatimStore: verbatim,
       stateStore: state,
       agentConfigs: configs,
+      idempotencyStore: new FakeIdempotencyStore(),
       now: () => new Date('2026-04-10T12:00:00Z'),
     });
 
@@ -222,6 +237,7 @@ describe('ImportService', () => {
       verbatimStore: verbatim,
       stateStore: state,
       agentConfigs: { 'claude-code': { enabled: true, paths: ['~/.claude'] } },
+      idempotencyStore: new FakeIdempotencyStore(),
       now: () => new Date('2026-04-10T12:00:00Z'),
     });
 
@@ -242,6 +258,7 @@ describe('ImportService', () => {
       verbatimStore: verbatim,
       stateStore: state,
       agentConfigs: { 'claude-code': { enabled: true, paths: [] } },
+      idempotencyStore: new FakeIdempotencyStore(),
       now: () => new Date(),
     });
     await expect(service.importAll({ agents: ['ghost'] })).rejects.toBeInstanceOf(

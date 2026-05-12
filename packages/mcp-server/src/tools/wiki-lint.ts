@@ -45,6 +45,8 @@ export function createWikiLintHandler(services: AppServices) {
       }
 
       const project = params.project != null ? String(params.project) : undefined;
+      const idempotencyKey =
+        params.idempotencyKey != null ? String(params.idempotencyKey) : undefined;
       if (project) {
         return {
           content: [
@@ -60,7 +62,7 @@ export function createWikiLintHandler(services: AppServices) {
         };
       }
 
-      const report = await lintService.lint({ phases });
+      const report = await lintService.lint({ phases, idempotencyKey });
 
       return {
         content: [

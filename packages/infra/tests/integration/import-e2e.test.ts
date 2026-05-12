@@ -7,6 +7,7 @@ import {
   FsVerbatimStore,
   YamlStateStore,
   ClaudeCodeMemoryReader,
+  YamlIdempotencyStore,
 } from '../../src/index.js';
 import { ImportService } from '@ivkond-llm-wiki/core';
 
@@ -62,6 +63,7 @@ describe('Import E2E', () => {
           paths: [globPath()],
         },
       },
+      idempotencyStore: new YamlIdempotencyStore(mainFs),
       now: () => new Date('2026-04-10T12:00:00Z'),
     });
 
@@ -103,6 +105,7 @@ describe('Import E2E', () => {
           paths: [globPath()],
         },
       },
+      idempotencyStore: new YamlIdempotencyStore(mainFs),
       now: () => new Date('2026-04-10T12:00:00Z'),
     });
 

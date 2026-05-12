@@ -17,6 +17,7 @@ import type {
   ISourceReader,
   SourceContent,
   IStateStore,
+  IIdempotencyStore,
   WorktreeInfo,
   FileStoreFactory,
   FileInfo,
@@ -198,6 +199,16 @@ class FakeStateStore implements IStateStore {
   }
 }
 
+class FakeIdempotencyStore implements IIdempotencyStore {
+  private records = new Map<string, any>();
+  async get(operation: any, key: string) {
+    return this.records.get(`${operation}:${key}`) ?? null;
+  }
+  async put(record: any) {
+    this.records.set(`${record.operation}:${record.key}`, record);
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 describe('IngestService', () => {
@@ -236,7 +247,16 @@ describe('IngestService', () => {
         mainStore.files[p] = content;
       }
     };
-    service = new IngestService(sourceReader, llm, search, vcs, mainStore, factory, stateStore);
+    service = new IngestService(
+      sourceReader,
+      llm,
+      search,
+      vcs,
+      mainStore,
+      factory,
+      stateStore,
+      new FakeIdempotencyStore(),
+    );
   });
 
   it('test_ingest_validSource_createsWikiPagesInWorktree', async () => {

@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FsFileStore, FsVerbatimStore } from '@ivkond-llm-wiki/infra';
+import { FsFileStore, FsVerbatimStore, YamlIdempotencyStore } from '@ivkond-llm-wiki/infra';
 import { RememberService, SanitizationService } from '@ivkond-llm-wiki/core';
 import type { AppServices } from '@ivkond-llm-wiki/common';
 import { startServer, type ServerHandle } from '../src/index.js';
@@ -302,7 +302,12 @@ describe('tools/call smoke (real temp wiki)', () => {
     const fileStore = new FsFileStore(root);
     const verbatimStore = new FsVerbatimStore(fileStore);
     const sanitizer = new SanitizationService({ enabled: false, mode: 'off' });
-    const remember = new RememberService(fileStore, verbatimStore, sanitizer);
+    const remember = new RememberService(
+      fileStore,
+      verbatimStore,
+      sanitizer,
+      new YamlIdempotencyStore(fileStore),
+    );
 
     handle = await startServer(makeServices({ remember }), { host: '127.0.0.1', port: 0 });
 
