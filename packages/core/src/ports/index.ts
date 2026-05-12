@@ -10,6 +10,7 @@ export { estimateTokens } from './source-reader.js';
 export type { IStateStore } from './state-store.js';
 export type {
   IIdempotencyStore,
+  IdempotencyAcquireResult,
   IdempotencyOperation,
   IdempotencyRecord,
 } from './idempotency-store.js';
