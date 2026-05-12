@@ -65,7 +65,7 @@ export function buildContainer(config: WikiConfig): AppServices {
   const projectResolver = new GitProjectResolver(fileStore);
   const versionControl = new GitVersionControl(wikiRoot);
   const stateStore = new YamlStateStore(fileStore);
-  const idempotencyStore = new YamlIdempotencyStore(fileStore);
+  const idempotencyStore = new YamlIdempotencyStore(fileStore, wikiRoot);
   const sourceReader = new CompositeSourceReader(new FsSourceReader(), new HttpSourceReader());
   const archiver = new SevenZipArchiver();
 
