@@ -83,6 +83,8 @@ describe('PromotePhase', () => {
           target: 'wiki/patterns/no-db-mocking.md',
           title: 'No DB mocking',
           content: '## Summary\nPrefer testcontainers to DB mocks.',
+          confidence: 0.95,
+          promotion_reason: 'Repeated across services and reusable for new projects.',
           sources: ['projects/cli-relay/practices.md', 'projects/other-app/practices.md'],
           replacement_marker: 'no-db-mocking',
         },
@@ -112,6 +114,8 @@ describe('PromotePhase', () => {
           target: 'wiki/tools/x.md',
           title: 'x',
           content: 'y',
+          confidence: 0.95,
+          promotion_reason: 'Reusable pattern.',
           sources: ['projects/x/practices.md'],
           replacement_marker: 'a',
         },
@@ -133,6 +137,8 @@ describe('PromotePhase', () => {
           target: 'wiki/patterns/safe.md',
           title: 'Safe pattern',
           content: 'Extracted pattern.',
+          confidence: 0.95,
+          promotion_reason: 'Can be reused in multiple codebases.',
           sources: ['projects/x/practices.md', 'wiki/important-page.md'],
           replacement_marker: 'pattern-a',
         },
@@ -152,5 +158,161 @@ describe('PromotePhase', () => {
     llm.response = new Error('boom');
     const phase = new PromotePhase(fileStore, llm);
     await expect(phase.run()).rejects.toThrow();
+  });
+
+  it('routes below-threshold proposals to review instead of auto-promoting', async () => {
+    fileStore.files['projects/x/practices.md'] = '---\ntitle: x\n---\n\n## pattern-a\nDetail.\n';
+    llm.response = {
+      promoted: [
+        {
+          target: 'wiki/patterns/pattern-a.md',
+          title: 'Pattern A',
+          content: 'Useful shared pattern.',
+          confidence: 0.6,
+          promotion_reason: 'Potentially reusable.',
+          sources: ['projects/x/practices.md'],
+          replacement_marker: 'pattern-a',
+        },
+      ],
+    };
+
+    const phase = new PromotePhase(fileStore, llm, { autoPromoteConfidenceThreshold: 0.8 });
+    const result = await phase.run();
+
+    expect(result.promotedCount).toBe(0);
+    expect(result.reviewCount).toBe(1);
+    expect(fileStore.files['wiki/patterns/pattern-a.md']).toBeUndefined();
+    expect(fileStore.files['projects/x/practices.md']).toContain('## pattern-a');
+  });
+
+  it('skips proposal safely when replacement marker does not match source', async () => {
+    fileStore.files['projects/x/practices.md'] = '---\ntitle: x\n---\n\n## different-marker\nDetail.\n';
+    llm.response = {
+      promoted: [
+        {
+          target: 'wiki/patterns/pattern-a.md',
+          title: 'Pattern A',
+          content: 'Useful shared pattern.',
+          confidence: 0.95,
+          promotion_reason: 'Clearly reusable.',
+          sources: ['projects/x/practices.md'],
+          replacement_marker: 'pattern-a',
+        },
+      ],
+    };
+
+    const phase = new PromotePhase(fileStore, llm);
+    const result = await phase.run();
+
+    expect(result.promotedCount).toBe(0);
+    expect(fileStore.files['wiki/patterns/pattern-a.md']).toBeUndefined();
+    expect(fileStore.files['projects/x/practices.md']).toContain('## different-marker');
+    expect(result.skippedReasons?.some((reason) => reason.includes('replacement_marker mismatch'))).toBe(
+      true,
+    );
+  });
+
+  it('routes single-source proposals without rationale to review', async () => {
+    fileStore.files['projects/x/practices.md'] = '---\ntitle: x\n---\n\n## pattern-a\nDetail.\n';
+    llm.response = {
+      promoted: [
+        {
+          target: 'wiki/patterns/pattern-a.md',
+          title: 'Pattern A',
+          content: 'Useful shared pattern.',
+          confidence: 0.95,
+          promotion_reason: '   ',
+          sources: ['projects/x/practices.md'],
+          replacement_marker: 'pattern-a',
+        },
+      ],
+    };
+
+    const phase = new PromotePhase(fileStore, llm);
+    const result = await phase.run();
+
+    expect(result.promotedCount).toBe(0);
+    expect(result.reviewCount).toBe(1);
+    expect(result.skippedReasons?.some((reason) => reason.includes('insufficient sources/rationale'))).toBe(
+      true,
+    );
+    expect(fileStore.files['wiki/patterns/pattern-a.md']).toBeUndefined();
+  });
+
+  it('routes one allowed + one disallowed source with blank rationale to review', async () => {
+    fileStore.files['projects/x/practices.md'] = '---\ntitle: x\n---\n\n## pattern-a\nDetail.\n';
+    fileStore.files['wiki/important-page.md'] = '## pattern-a\nSensitive content.\n';
+    llm.response = {
+      promoted: [
+        {
+          target: 'wiki/patterns/pattern-a.md',
+          title: 'Pattern A',
+          content: 'Useful shared pattern.',
+          confidence: 0.95,
+          promotion_reason: ' ',
+          sources: ['projects/x/practices.md', 'wiki/important-page.md'],
+          replacement_marker: 'pattern-a',
+        },
+      ],
+    };
+
+    const phase = new PromotePhase(fileStore, llm);
+    const result = await phase.run();
+
+    expect(result.promotedCount).toBe(0);
+    expect(result.reviewCount).toBe(1);
+    expect(result.skippedReasons?.some((reason) => reason.includes('insufficient sources/rationale'))).toBe(
+      true,
+    );
+    expect(fileStore.files['wiki/patterns/pattern-a.md']).toBeUndefined();
+    expect(fileStore.files['projects/x/practices.md']).toContain('## pattern-a');
+  });
+
+  it('does not write promoted page when all sources are outside allowlist', async () => {
+    fileStore.files['projects/x/practices.md'] = '---\ntitle: x\n---\n\n## pattern-a\nDetail.\n';
+    fileStore.files['wiki/important-page.md'] = '## pattern-a\nSensitive content.\n';
+    llm.response = {
+      promoted: [
+        {
+          target: 'wiki/patterns/pattern-a.md',
+          title: 'Pattern A',
+          content: 'Useful shared pattern.',
+          confidence: 0.95,
+          promotion_reason: 'Reusable.',
+          sources: ['wiki/important-page.md'],
+          replacement_marker: 'pattern-a',
+        },
+      ],
+    };
+
+    const phase = new PromotePhase(fileStore, llm);
+    const result = await phase.run();
+
+    expect(result.promotedCount).toBe(0);
+    expect(result.reviewCount).toBe(1);
+    expect(result.skippedReasons?.some((reason) => reason.includes('no valid project practice sources'))).toBe(
+      true,
+    );
+    expect(fileStore.files['wiki/patterns/pattern-a.md']).toBeUndefined();
+  });
+
+  it('rejects non-string sources entries in model response', async () => {
+    fileStore.files['projects/x/practices.md'] = '---\ntitle: x\n---\n\n## pattern-a\nDetail.\n';
+    llm.response = {
+      promoted: [
+        {
+          target: 'wiki/patterns/pattern-a.md',
+          title: 'Pattern A',
+          content: 'Useful shared pattern.',
+          confidence: 0.95,
+          promotion_reason: 'Reusable.',
+          sources: ['projects/x/practices.md', 123],
+          replacement_marker: 'pattern-a',
+        },
+      ],
+    };
+
+    const phase = new PromotePhase(fileStore, llm);
+    await expect(phase.run()).rejects.toThrow(/malformed promote entry/);
   });
 });
