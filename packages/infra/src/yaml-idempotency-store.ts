@@ -1,6 +1,7 @@
 import yaml from 'js-yaml';
 import type {
   IFileStore,
+  IdempotencyAcquireResult,
   IIdempotencyStore,
   IdempotencyOperation,
   IdempotencyRecord,
@@ -22,17 +23,87 @@ export class YamlIdempotencyStore implements IIdempotencyStore {
     return state.records.find((r) => r.operation === operation && r.key === key) ?? null;
   }
 
-  async put(record: IdempotencyRecord): Promise<void> {
-    const next = this.writeChain.then(async () => {
+  async acquire(
+    operation: IdempotencyOperation,
+    key: string,
+    fingerprint: string,
+  ): Promise<IdempotencyAcquireResult> {
+    return this.withWriteLock(async () => {
       const state = await this.loadState();
-      const records = state.records.filter(
-        (r) => !(r.operation === record.operation && r.key === record.key),
+      const existing = state.records.find((r) => r.operation === operation && r.key === key) ?? null;
+      if (!existing) {
+        state.records.push({
+          operation,
+          key,
+          fingerprint,
+          status: 'in_progress',
+          startedAt: new Date().toISOString(),
+        });
+        await this.writeState(state);
+        return { kind: 'acquired' };
+      }
+      if (existing.fingerprint !== fingerprint) {
+        return { kind: 'conflict' };
+      }
+      if (existing.status === 'completed') {
+        return { kind: 'replay', record: existing };
+      }
+      return { kind: 'in_progress' };
+    });
+  }
+
+  async complete(
+    operation: IdempotencyOperation,
+    key: string,
+    fingerprint: string,
+    response: unknown,
+  ): Promise<void> {
+    await this.withWriteLock(async () => {
+      const state = await this.loadState();
+      const idx = state.records.findIndex((r) => r.operation === operation && r.key === key);
+      const now = new Date().toISOString();
+      const record: IdempotencyRecord = {
+        operation,
+        key,
+        fingerprint,
+        status: 'completed',
+        response,
+        startedAt: idx >= 0 ? state.records[idx].startedAt : now,
+        completedAt: now,
+      };
+      if (idx >= 0) {
+        state.records[idx] = record;
+      } else {
+        state.records.push(record);
+      }
+      await this.writeState(state);
+    });
+  }
+
+  async abort(operation: IdempotencyOperation, key: string, fingerprint: string): Promise<void> {
+    await this.withWriteLock(async () => {
+      const state = await this.loadState();
+      state.records = state.records.filter(
+        (r) =>
+          !(
+            r.operation === operation &&
+            r.key === key &&
+            r.fingerprint === fingerprint &&
+            r.status === 'in_progress'
+          ),
       );
-      records.push(record);
-      await this.writeState({ records });
+      await this.writeState(state);
+    });
+  }
+
+  private async withWriteLock<T>(run: () => Promise<T>): Promise<T> {
+    let result!: T;
+    const next = this.writeChain.then(async () => {
+      result = await run();
     });
     this.writeChain = next.catch(() => undefined);
     await next;
+    return result;
   }
 
   private async loadState(): Promise<IdempotencyState> {
@@ -61,7 +132,8 @@ export class YamlIdempotencyStore implements IIdempotencyStore {
       typeof record.operation !== 'string' ||
       typeof record.key !== 'string' ||
       typeof record.fingerprint !== 'string' ||
-      typeof record.completedAt !== 'string'
+      (record.status !== 'in_progress' && record.status !== 'completed') ||
+      typeof record.startedAt !== 'string'
     ) {
       return null;
     }
@@ -69,8 +141,10 @@ export class YamlIdempotencyStore implements IIdempotencyStore {
       operation: record.operation as IdempotencyOperation,
       key: record.key,
       fingerprint: record.fingerprint,
+      status: record.status as 'in_progress' | 'completed',
       response: record.response,
-      completedAt: record.completedAt,
+      startedAt: record.startedAt,
+      completedAt: typeof record.completedAt === 'string' ? record.completedAt : undefined,
     };
   }
 

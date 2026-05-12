@@ -80,30 +80,28 @@ export class RememberService {
   async rememberSession(req: RememberSessionRequest): Promise<RememberSessionResponse> {
     if (!req.summary.trim()) throw new ContentEmptyError();
 
-    // Deduplication by session_id — return stored entry metadata, not new request data
-    if (req.sessionId) {
-      const existing = await this.findExistingSession(req.agent, req.sessionId);
-      if (existing) {
-        const storedContent = await this.fileStore.readFile(existing);
-        const factsCount = storedContent ? this.countFacts(storedContent) : 1;
-        return { ok: true, file: existing, facts_count: factsCount };
-      }
-    }
-
-    const sanitized = this.sanitizer.sanitize(req.summary);
-    if (sanitized.isBlocked) throw new SanitizationBlockedError(sanitized.redactedRatio);
-
     const { result, replayed } = await runWithIdempotency(
       this.idempotencyStore,
       'remember_session',
       req.idempotencyKey,
       {
-        summary: sanitized.content,
+        summary: req.summary,
         agent: req.agent,
         sessionId: req.sessionId,
         project: req.project,
       },
       async () => {
+        // Deduplication by session_id — return stored entry metadata, not new request data
+        if (req.sessionId) {
+          const existing = await this.findExistingSession(req.agent, req.sessionId);
+          if (existing) {
+            const storedContent = await this.fileStore.readFile(existing);
+            const factsCount = storedContent ? this.countFacts(storedContent) : 1;
+            return { ok: true as const, file: existing, facts_count: factsCount };
+          }
+        }
+        const sanitized = this.sanitizer.sanitize(req.summary);
+        if (sanitized.isBlocked) throw new SanitizationBlockedError(sanitized.redactedRatio);
         const entry = VerbatimEntry.create({
           content: sanitized.content,
           agent: req.agent,

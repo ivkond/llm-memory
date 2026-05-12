@@ -157,11 +157,43 @@ class FakeArchiver implements IArchiver {
 
 class FakeIdempotencyStore implements IIdempotencyStore {
   private records = new Map<string, any>();
+  async acquire(operation: any, key: string, fingerprint: string) {
+    const id = `${operation}:${key}`;
+    const existing = this.records.get(id);
+    if (!existing) {
+      this.records.set(id, {
+        operation,
+        key,
+        fingerprint,
+        status: 'in_progress',
+        startedAt: new Date().toISOString(),
+      });
+      return { kind: 'acquired' as const };
+    }
+    if (existing.fingerprint !== fingerprint) return { kind: 'conflict' as const };
+    if (existing.status === 'completed') return { kind: 'replay' as const, record: existing };
+    return { kind: 'in_progress' as const };
+  }
+  async complete(operation: any, key: string, fingerprint: string, response: unknown) {
+    this.records.set(`${operation}:${key}`, {
+      operation,
+      key,
+      fingerprint,
+      status: 'completed',
+      response,
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+    });
+  }
+  async abort(operation: any, key: string, fingerprint: string) {
+    const id = `${operation}:${key}`;
+    const existing = this.records.get(id);
+    if (existing && existing.fingerprint === fingerprint && existing.status === 'in_progress') {
+      this.records.delete(id);
+    }
+  }
   async get(operation: any, key: string) {
     return this.records.get(`${operation}:${key}`) ?? null;
-  }
-  async put(record: any) {
-    this.records.set(`${record.operation}:${record.key}`, record);
   }
 }
 

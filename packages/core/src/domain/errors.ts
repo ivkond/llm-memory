@@ -171,3 +171,15 @@ export class IdempotencyConflictError extends WikiError {
     );
   }
 }
+
+export class IdempotencyInProgressError extends WikiError {
+  constructor(
+    public readonly operation: string,
+    public readonly key: string,
+  ) {
+    super(
+      'IDEMPOTENCY_IN_PROGRESS',
+      `Idempotent operation "${operation}" with key ${JSON.stringify(key)} is in progress`,
+    );
+  }
+}

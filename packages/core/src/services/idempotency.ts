@@ -1,10 +1,13 @@
 import {
   IdempotencyConflictError,
+  IdempotencyInProgressError,
   InvalidIdempotencyKeyError,
 } from '../domain/errors.js';
 import type { IIdempotencyStore, IdempotencyOperation } from '../ports/idempotency-store.js';
 
 const IDEMPOTENCY_KEY_RE = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/;
+const MAX_WAIT_MS = 10_000;
+const POLL_MS = 25;
 
 export interface IdempotencyRunResult<T> {
   result: T;
@@ -25,24 +28,30 @@ export async function runWithIdempotency<T>(
     throw new InvalidIdempotencyKeyError(key);
   }
 
-  const fingerprint = stableHash(stableStringify(request));
-  const existing = await store.get(operation, key);
-  if (existing) {
-    if (existing.fingerprint !== fingerprint) {
+  const fingerprint = stableStringify(request);
+  while (true) {
+    const acquired = await store.acquire(operation, key, fingerprint);
+    if (acquired.kind === 'replay') {
+      return { result: acquired.record.response as T, replayed: true };
+    }
+    if (acquired.kind === 'conflict') {
       throw new IdempotencyConflictError(operation, key);
     }
-    return { result: existing.response as T, replayed: true };
-  }
+    if (acquired.kind === 'in_progress') {
+      const replayed = await waitForCompletion<T>(store, operation, key, fingerprint);
+      if (replayed) return { result: replayed, replayed: true };
+      continue;
+    }
 
-  const result = await action();
-  await store.put({
-    operation,
-    key,
-    fingerprint,
-    response: result,
-    completedAt: new Date().toISOString(),
-  });
-  return { result, replayed: false };
+    try {
+      const result = await action();
+      await store.complete(operation, key, fingerprint, result);
+      return { result, replayed: false };
+    } catch (error) {
+      await store.abort(operation, key, fingerprint);
+      throw error;
+    }
+  }
 }
 
 function stableStringify(input: unknown): string {
@@ -60,10 +69,27 @@ function sortDeep(input: unknown): unknown {
   return input;
 }
 
-function stableHash(input: string): string {
-  let hash = 0;
-  for (const ch of input) {
-    hash = Math.trunc((hash << 5) - hash + (ch.codePointAt(0) ?? 0));
+async function waitForCompletion<T>(
+  store: IIdempotencyStore,
+  operation: IdempotencyOperation,
+  key: string,
+  fingerprint: string,
+): Promise<T | null> {
+  const start = Date.now();
+  while (Date.now() - start < MAX_WAIT_MS) {
+    const existing = await store.get(operation, key);
+    if (!existing) return null;
+    if (existing.fingerprint !== fingerprint) {
+      throw new IdempotencyConflictError(operation, key);
+    }
+    if (existing.status === 'completed') {
+      return existing.response as T;
+    }
+    await sleep(POLL_MS);
   }
-  return (hash >>> 0).toString(16).padStart(8, '0');
+  throw new IdempotencyInProgressError(operation, key);
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }

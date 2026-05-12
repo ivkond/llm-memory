@@ -33,12 +33,60 @@ function createMocks() {
 }
 
 function createIdempotencyStore(): IIdempotencyStore {
-  const records = new Map<string, unknown>();
+  const records = new Map<string, any>();
+  let chain = Promise.resolve();
+  const withLock = async <T>(run: () => Promise<T>): Promise<T> => {
+    let result!: T;
+    const next = chain.then(async () => {
+      result = await run();
+    });
+    chain = next.catch(() => undefined);
+    await next;
+    return result;
+  };
   return {
     get: vi.fn(async (operation, key) => records.get(`${operation}:${key}`) ?? null),
-    put: vi.fn(async (record) => {
-      records.set(`${record.operation}:${record.key}`, record);
-    }),
+    acquire: vi.fn(async (operation, key, fingerprint) =>
+      withLock(async () => {
+        const id = `${operation}:${key}`;
+        const existing = records.get(id);
+        if (!existing) {
+          records.set(id, {
+            operation,
+            key,
+            fingerprint,
+            status: 'in_progress',
+            startedAt: new Date().toISOString(),
+          });
+          return { kind: 'acquired' as const };
+        }
+        if (existing.fingerprint !== fingerprint) return { kind: 'conflict' as const };
+        if (existing.status === 'completed') return { kind: 'replay' as const, record: existing };
+        return { kind: 'in_progress' as const };
+      }),
+    ),
+    complete: vi.fn(async (operation, key, fingerprint, response) =>
+      withLock(async () => {
+        records.set(`${operation}:${key}`, {
+          operation,
+          key,
+          fingerprint,
+          status: 'completed',
+          response,
+          startedAt: new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+        });
+      }),
+    ),
+    abort: vi.fn(async (operation, key, fingerprint) =>
+      withLock(async () => {
+        const id = `${operation}:${key}`;
+        const existing = records.get(id);
+        if (existing && existing.fingerprint === fingerprint && existing.status === 'in_progress') {
+          records.delete(id);
+        }
+      }),
+    ),
   };
 }
 
@@ -134,6 +182,93 @@ describe('RememberService', () => {
 
     expect(second.file).toBe(first.file);
     expect(second.facts_count).toBe(first.facts_count);
+    expect(verbatimStore.writeEntry).toHaveBeenCalledOnce();
+  });
+
+  it('replays same idempotency key for rememberFact', async () => {
+    const first = await service.rememberFact({
+      content: 'same',
+      agent: 'a',
+      sessionId: 's',
+      idempotencyKey: 'key-1',
+    });
+    const second = await service.rememberFact({
+      content: 'same',
+      agent: 'a',
+      sessionId: 's',
+      idempotencyKey: 'key-1',
+    });
+    expect(second.file).toBe(first.file);
+    expect(second.idempotency_replayed).toBe(true);
+    expect(verbatimStore.writeEntry).toHaveBeenCalledOnce();
+  });
+
+  it('raises conflict for same idempotency key with different rememberFact payload', async () => {
+    await service.rememberFact({
+      content: 'first',
+      agent: 'a',
+      sessionId: 's',
+      idempotencyKey: 'key-2',
+    });
+    await expect(
+      service.rememberFact({
+        content: 'second',
+        agent: 'a',
+        sessionId: 's',
+        idempotencyKey: 'key-2',
+      }),
+    ).rejects.toThrow(/Idempotency conflict/);
+  });
+
+  it('rejects invalid idempotency key', async () => {
+    await expect(
+      service.rememberFact({
+        content: 'x',
+        agent: 'a',
+        sessionId: 's',
+        idempotencyKey: 'bad key',
+      }),
+    ).rejects.toThrow(/Invalid idempotency key/);
+  });
+
+  it('rememberSession dedupe still enforces idempotency conflict', async () => {
+    const first = await service.rememberSession({
+      summary: 'summary one',
+      agent: 'claude-code',
+      sessionId: 'dedupe-sess',
+      idempotencyKey: 'sess-key',
+    });
+    (fileStore.listFiles as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { path: first.file, updated: new Date().toISOString() },
+    ]);
+    (fileStore.readFile as ReturnType<typeof vi.fn>).mockResolvedValue(
+      '---\nsession: dedupe-sess\nagent: claude-code\n---\n- summary one',
+    );
+    await expect(
+      service.rememberSession({
+        summary: 'summary two',
+        agent: 'claude-code',
+        sessionId: 'dedupe-sess',
+        idempotencyKey: 'sess-key',
+      }),
+    ).rejects.toThrow(/Idempotency conflict/);
+  });
+
+  it('concurrent same-key rememberFact executes write once', async () => {
+    const p1 = service.rememberFact({
+      content: 'concurrent',
+      agent: 'a',
+      sessionId: 's',
+      idempotencyKey: 'ckey',
+    });
+    const p2 = service.rememberFact({
+      content: 'concurrent',
+      agent: 'a',
+      sessionId: 's',
+      idempotencyKey: 'ckey',
+    });
+    const [r1, r2] = await Promise.all([p1, p2]);
+    expect(r1.file).toBe(r2.file);
     expect(verbatimStore.writeEntry).toHaveBeenCalledOnce();
   });
 });
