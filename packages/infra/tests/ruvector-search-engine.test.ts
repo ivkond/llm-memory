@@ -136,6 +136,26 @@ describe('RuVectorSearchEngine', () => {
     expect(new Date(ts!).toISOString()).toBe(ts);
   });
 
+  it('test_lastIndexedAtMany_returnsKnownAndUnknownPaths', async () => {
+    await engine.index({
+      path: 'wiki/a.md',
+      title: 'A',
+      content: 'hello',
+      updated: '2026-04-09',
+    });
+    await engine.index({
+      path: 'wiki/b.md',
+      title: 'B',
+      content: 'world',
+      updated: '2026-04-09',
+    });
+
+    const map = await engine.lastIndexedAtMany(['wiki/a.md', 'wiki/b.md', 'wiki/missing.md']);
+    expect(map['wiki/a.md']).not.toBeNull();
+    expect(map['wiki/b.md']).not.toBeNull();
+    expect(map['wiki/missing.md']).toBeNull();
+  });
+
   it('test_hybrid_ranksMoreRelevantFirst', async () => {
     // Entry A has exact keyword match, entry B is semantically close but lacks
     // the keyword. With hybrid BM25 + vector, A should beat B on a keyword query.

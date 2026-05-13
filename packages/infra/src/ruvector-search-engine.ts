@@ -452,6 +452,15 @@ export class RuVectorSearchEngine implements ISearchEngine {
     return this.indexedAt[docPath] ?? null;
   }
 
+  async lastIndexedAtMany(paths: string[]): Promise<Record<string, string | null>> {
+    await this.init();
+    const result: Record<string, string | null> = {};
+    for (const p of paths) {
+      result[p] = this.indexedAt[p] ?? null;
+    }
+    return result;
+  }
+
   private excerpt(content: string): string {
     const lines = content.split('\n');
     const paragraph: string[] = [];

@@ -96,6 +96,11 @@ class FakeSearchEngine implements ISearchEngine {
   async lastIndexedAt(): Promise<string | null> {
     return null;
   }
+  async lastIndexedAtMany(paths: string[]): Promise<Record<string, string | null>> {
+    const result: Record<string, string | null> = {};
+    for (const p of paths) result[p] = null;
+    return result;
+  }
 }
 
 class FakeVersionControl implements IVersionControl {

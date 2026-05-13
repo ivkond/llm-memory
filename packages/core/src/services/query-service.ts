@@ -153,8 +153,9 @@ export class QueryService {
 
     for (const dir of directories) {
       const files = await this.fileStore.listFiles(dir);
+      const lastIndexedMap = await this.searchEngine.lastIndexedAtMany(files.map((f) => f.path));
       for (const file of files) {
-        const lastIndexed = await this.searchEngine.lastIndexedAt(file.path);
+        const lastIndexed = lastIndexedMap[file.path] ?? null;
         const fileUpdated = file.updated;
         if (lastIndexed !== null && new Date(fileUpdated) <= new Date(lastIndexed)) {
           continue;

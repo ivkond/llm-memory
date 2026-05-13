@@ -1,6 +1,6 @@
 # RM-0050: Query-time stale-index performance
 
-- Status: Proposed
+- Status: Implemented
 - Priority: P1
 - Area: retrieval
 - Source roadmap item: `../ROADMAP.md`
@@ -9,6 +9,8 @@
 - Related items:
   - RM-0007 (retrieval freshness semantics)
   - RM-0014 (index consistency checks and repair)
+  - HAR-171 (implementation umbrella)
+  - HAR-219 / HAR-220 / HAR-221 / HAR-222 (delivery slices)
 
 ## Problem
 
@@ -38,6 +40,12 @@ The roadmap concern is tracked independently with enough context to design, prio
 ## Design notes
 
 RM-0050 owns performance of stale-index detection so hot queries avoid full sequential per-file checks while preserving RM-0007/RM-0014 correctness.
+
+## Implementation notes
+
+- Added `ISearchEngine.lastIndexedAtMany(paths)` and implemented it in `RuVectorSearchEngine`.
+- Refactored `QueryService.syncStaleFiles()` to fetch index timestamps in bulk per directory instead of per-file sequential checks.
+- Added regression tests for bulk freshness lookup usage and new search-engine metadata behavior.
 
 ## Dependencies
 
