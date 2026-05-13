@@ -24,6 +24,8 @@ export interface VerbatimSourceMetadata {
   type: string;
   uri?: string;
   digest?: string;
+  mime_type?: string;
+  bytes?: number;
 }
 
 export interface VerbatimModelMetadata {
@@ -76,6 +78,13 @@ function assertEntryId(value: string): void {
   }
 }
 
+function assertOptionalSafeIdentifier(field: string, value: string | undefined): void {
+  if (!value) return;
+  if (!IDENTIFIER_PATTERN.test(value)) {
+    throw new InvalidIdentifierError(field, value);
+  }
+}
+
 export class VerbatimEntry {
   private constructor(
     public readonly filename: string,
@@ -102,6 +111,9 @@ export class VerbatimEntry {
     const genId = opts.idGenerator ?? (() => Math.random().toString(16).slice(2, 10));
     const entryId = opts.entryId ?? genId();
     assertEntryId(entryId);
+    assertOptionalSafeIdentifier('operation_id', opts.operationId);
+    assertOptionalSafeIdentifier('model.call_id', opts.model?.call_id);
+    assertOptionalSafeIdentifier('model.tool_call_id', opts.model?.tool_call_id);
     const filename = `${date}-${opts.sessionId}-${entryId}.md`;
     const processing: VerbatimProcessingMetadata = {
       created_at: now.toISOString(),
@@ -132,6 +144,9 @@ export class VerbatimEntry {
     const fallbackEntryId = filename.replace(/\.md$/, '');
     const entryId = data.entry_id ?? fallbackEntryId;
     assertEntryId(entryId);
+    assertOptionalSafeIdentifier('operation_id', data.operation_id);
+    assertOptionalSafeIdentifier('model.call_id', data.model?.call_id);
+    assertOptionalSafeIdentifier('model.tool_call_id', data.model?.tool_call_id);
     const created = data.created || data.processing?.created_at || new Date().toISOString();
     const processing: VerbatimProcessingMetadata = {
       created_at: created,
