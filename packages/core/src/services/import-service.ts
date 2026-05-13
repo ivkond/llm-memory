@@ -89,14 +89,18 @@ export class ImportService {
       let imported = 0;
       let skipped = 0;
       for (const item of items) {
+        if (item.agent !== agent) {
+          skipped++;
+          continue;
+        }
         let entry: VerbatimEntry;
         try {
-          entry = this.toVerbatim(item);
+          entry = this.toVerbatim(agent, item);
         } catch {
           skipped++;
           continue;
         }
-        if (!this.isAllowedImportFilePath(entry.filePath, item.agent)) {
+        if (!this.isAllowedImportFilePath(entry.filePath, agent)) {
           skipped++;
           continue;
         }
@@ -127,14 +131,14 @@ export class ImportService {
     return [...this.deps.readers.keys()].sort((a, b) => a.localeCompare(b));
   }
 
-  private toVerbatim(item: AgentMemoryItem): VerbatimEntry {
+  private toVerbatim(agent: string, item: AgentMemoryItem): VerbatimEntry {
     const createdAt = item.mtime ? new Date(item.mtime) : this.now();
     const digest =
       item.sourceDigest ??
       ImportService.stableHash(`${item.sourceUri}|${item.mtime ?? ''}|${item.content}`);
     return VerbatimEntry.create({
       content: item.content,
-      agent: item.agent,
+      agent,
       sessionId: item.sessionId,
       project: item.project,
       createdAt,
@@ -143,6 +147,7 @@ export class ImportService {
         type: 'import',
         uri: item.sourceUri,
         digest,
+        adapter: item.sourceType,
       },
       processing: {
         imported_at: this.now().toISOString(),

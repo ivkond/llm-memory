@@ -123,6 +123,7 @@ describe('ImportService', () => {
     expect(verbatim.written[0].source.type).toBe('import');
     expect(verbatim.written[0].source.uri).toBe('/a/mem.md');
     expect(verbatim.written[0].source.digest).toBeDefined();
+    expect(verbatim.written[0].source.adapter).toBe('claude-code');
     expect(verbatim.written[0].processing.imported_at).toBe('2026-04-10T12:00:00.000Z');
     expect(verbatim.written[0].filePath.startsWith('log/claude-code/raw/')).toBe(true);
     expect(verbatim.written[0].filePath.startsWith('wiki/')).toBe(false);
@@ -350,6 +351,48 @@ describe('ImportService', () => {
     expect(result.agents[0].imported).toBe(1);
     expect(result.agents[0].skipped).toBe(1);
     expect(verbatim.written).toHaveLength(1);
+  });
+
+  it('skips cross-agent items from a malformed reader and keeps writes in agent namespace', async () => {
+    readerA.items = [
+      {
+        agent: 'cursor',
+        sourcePath: '/x/mem.md',
+        sessionId: 'sess1',
+        project: undefined,
+        content: 'cross-agent',
+        mtime: '2026-04-09T10:00:00Z',
+        sourceUri: '/x/mem.md',
+        sourceDigest: 'digest',
+        sourceType: 'claude-code',
+        dedupeKey: 'cursor:sess1:/x/mem.md:digest',
+      } as unknown as AgentMemoryItem,
+      AgentMemoryItem.create({
+        agent: 'claude-code',
+        sourcePath: '/ok/mem.md',
+        sessionId: 'sess2',
+        content: 'valid',
+        mtime: '2026-04-09T10:00:00Z',
+      }),
+    ];
+    const service = new ImportService({
+      readers: new Map([['claude-code', readerA]]),
+      verbatimStore: verbatim,
+      stateStore: state,
+      agentConfigs: { 'claude-code': { enabled: true, paths: ['~/.claude'] } },
+      now: () => new Date('2026-04-10T12:00:00Z'),
+    });
+
+    const result = await service.importAll({});
+    expect(result.agents[0].imported).toBe(1);
+    expect(result.agents[0].skipped).toBe(1);
+    expect(verbatim.written).toHaveLength(1);
+    expect(verbatim.written[0].agent).toBe('claude-code');
+    expect(verbatim.written[0].filePath.startsWith('log/claude-code/raw/')).toBe(true);
+
+    const reloaded = await state.load();
+    expect(reloaded.imports['claude-code'].last_import).toBe('2026-04-10T12:00:00.000Z');
+    expect(reloaded.imports['cursor']?.last_import ?? null).toBeNull();
   });
 
   it('throws ImportReaderNotRegisteredError when agent filter hits an unknown agent', async () => {

@@ -163,6 +163,7 @@ describe('VerbatimEntry', () => {
         type: 'import',
         uri: '/tmp/source.md',
         digest: 'sha256:abc',
+        adapter: 'claude-code',
       },
       operationId: 'op_123',
       processing: {
@@ -175,6 +176,7 @@ describe('VerbatimEntry', () => {
     expect(data.source?.type).toBe('import');
     expect(data.source?.uri).toBe('/tmp/source.md');
     expect(data.source?.digest).toBe('sha256:abc');
+    expect(data.source?.adapter).toBe('claude-code');
     expect(data.operation_id).toBe('op_123');
     expect(data.processing?.created_at).toBeDefined();
     expect(data.processing?.imported_at).toBe('2026-04-10T12:00:00.000Z');
