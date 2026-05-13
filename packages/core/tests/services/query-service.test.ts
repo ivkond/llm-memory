@@ -73,8 +73,17 @@ class FakeLlmClient implements ILlmClient {
     maxTokens?: number;
     temperature?: number;
   }) {
-    this.completeSpy(request);
+    const maybeOverride = this.completeSpy(request);
     this.lastRequest = request;
+    if (maybeOverride && typeof (maybeOverride as Promise<unknown>).then === 'function') {
+      return maybeOverride as Promise<{ content: string; usage: { inputTokens: number; outputTokens: number } }>;
+    }
+    if (maybeOverride && typeof maybeOverride === 'object') {
+      return maybeOverride as {
+        content: string;
+        usage: { inputTokens: number; outputTokens: number };
+      };
+    }
     if (this.response instanceof Error) throw this.response;
     return {
       content: this.response,
@@ -157,12 +166,24 @@ describe('QueryService', () => {
       new SearchResult('wiki/a.md', 'A', 'alpha snippet', 0.9, 'hybrid'),
       new SearchResult('wiki/b.md', 'B', 'beta snippet', 0.7, 'bm25'),
     ];
-    llmClient.response = 'Answer with refs.';
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: 'Answer with refs [1].',
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: JSON.stringify({
+        status: 'verified',
+        reason: null,
+        unsupported_claims: [],
+      }),
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
 
     const response = await service.query({ question: 'alpha?', cwd: '/tmp' });
 
-    expect(response.answer).toBe('Answer with refs.');
+    expect(response.answer).toBe('Answer with refs [1].');
     expect(response.citations).toHaveLength(2);
+    expect(response.citation_check.status).toBe('verified');
     expect(response.citations[0].page).toBe('wiki/a.md');
     expect(response.citations[0].title).toBe('A');
     expect(response.citations[0].excerpt).toBe('alpha snippet');
@@ -173,6 +194,18 @@ describe('QueryService', () => {
     searchEngine.documents = [
       new SearchResult('wiki/patterns/testing.md', 'T', 'x', 0.9, 'hybrid'),
     ];
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: 'Scoped answer [1].',
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: JSON.stringify({
+        status: 'verified',
+        reason: null,
+        unsupported_claims: [],
+      }),
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
     await service.query({ question: 'q', scope: 'wiki/patterns/' });
 
     expect(searchEngine.searchSpy).toHaveBeenCalledTimes(1);
@@ -188,6 +221,18 @@ describe('QueryService', () => {
       new SearchResult('wiki/patterns/testing.md', 'T', 'x', 0.9, 'hybrid'),
     ];
 
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: 'Project cascade answer [1].',
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: JSON.stringify({
+        status: 'verified',
+        reason: null,
+        unsupported_claims: [],
+      }),
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
     const response = await service.query({ question: 'q', cwd: '/tmp/cli-relay' });
 
     // Three search calls in cascade order
@@ -207,6 +252,18 @@ describe('QueryService', () => {
       new SearchResult('wiki/patterns/testing.md', 'T', 'y', 0.8, 'hybrid'),
     ];
 
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: 'Project answer [1].',
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: JSON.stringify({
+        status: 'verified',
+        reason: null,
+        unsupported_claims: [],
+      }),
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
     const response = await service.query({ question: 'q', cwd: '/tmp/cli-relay' });
 
     expect(response.scope_used).toBe('projects/cli-relay/');
@@ -226,6 +283,12 @@ describe('QueryService', () => {
     expect(response.answer).toBe('');
     expect(response.citations).toHaveLength(1);
     expect(response.citations[0].page).toBe('wiki/a.md');
+    expect(response.citation_check).toEqual({
+      status: 'skipped',
+      reason: 'answer_unavailable',
+      invalid_citations: [],
+      unsupported_claims: [],
+    });
   });
 
   it('test_query_llmThrowsGenericError_stillReturnsCitations', async () => {
@@ -238,6 +301,7 @@ describe('QueryService', () => {
     const response = await service.query({ question: 'q' });
     expect(response.answer).toBe('');
     expect(response.citations).toHaveLength(1);
+    expect(response.citation_check.status).toBe('skipped');
   });
 
   it('test_query_noSearchResults_throwsSearchEmpty', async () => {
@@ -251,6 +315,18 @@ describe('QueryService', () => {
     searchEngine.lastIndexedMap['wiki/a.md'] = '2026-04-09T00:00:00Z';
     searchEngine.documents = [new SearchResult('wiki/a.md', 'A', 'body', 0.9, 'hybrid')];
 
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: 'Stale sync [1].',
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: JSON.stringify({
+        status: 'verified',
+        reason: null,
+        unsupported_claims: [],
+      }),
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
     await service.query({ question: 'q' });
 
     expect(searchEngine.indexSpy).toHaveBeenCalled();
@@ -268,6 +344,18 @@ describe('QueryService', () => {
     searchEngine.lastIndexedMap['wiki/a.md'] = '2026-04-10T12:00:00Z';
     searchEngine.documents = [new SearchResult('wiki/a.md', 'A', 'body', 0.9, 'hybrid')];
 
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: 'Fresh file [1].',
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: JSON.stringify({
+        status: 'verified',
+        reason: null,
+        unsupported_claims: [],
+      }),
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
     await service.query({ question: 'q' });
     expect(searchEngine.indexSpy).not.toHaveBeenCalled();
   });
@@ -279,6 +367,18 @@ describe('QueryService', () => {
     searchEngine.lastIndexedMap['wiki/b.md'] = '2026-04-10T12:00:00Z';
     searchEngine.documents = [new SearchResult('wiki/a.md', 'A', 'body', 0.9, 'hybrid')];
 
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: 'Bulk lookup [1].',
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: JSON.stringify({
+        status: 'verified',
+        reason: null,
+        unsupported_claims: [],
+      }),
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
     await service.query({ question: 'q' });
 
     expect(searchEngine.lastIndexedManySpy).toHaveBeenCalledTimes(2);
@@ -291,6 +391,18 @@ describe('QueryService', () => {
     // No lastIndexedMap entry -> null
     searchEngine.documents = [new SearchResult('wiki/new.md', 'New', 'body', 0.9, 'hybrid')];
 
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: 'Unindexed file [1].',
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: JSON.stringify({
+        status: 'verified',
+        reason: null,
+        unsupported_claims: [],
+      }),
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
     await service.query({ question: 'q' });
     const indexed = searchEngine.indexSpy.mock.calls.map((c) => c[0].path);
     expect(indexed).toContain('wiki/new.md');
@@ -303,15 +415,118 @@ describe('QueryService', () => {
       (_, i) => new SearchResult(`wiki/${i}.md`, `T${i}`, `e${i}`, 1 - i * 0.01, 'hybrid'),
     );
 
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: 'Capped citations [1].',
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: JSON.stringify({
+        status: 'verified',
+        reason: null,
+        unsupported_claims: [],
+      }),
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
     const response = await service.query({ question: 'q', maxResults: 25 });
     expect(response.citations.length).toBe(20);
   });
 
   it('test_query_answerRespectsMaxTokens', async () => {
     searchEngine.documents = [new SearchResult('wiki/a.md', 'A', 'alpha', 0.9, 'hybrid')];
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: 'Token bounded answer [1].',
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: JSON.stringify({
+        status: 'verified',
+        reason: null,
+        unsupported_claims: [],
+      }),
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
     await service.query({ question: 'q', maxTokens: 512 });
 
     expect(llmClient.lastRequest).not.toBeNull();
-    expect(llmClient.lastRequest!.maxTokens).toBe(512);
+    expect(llmClient.completeSpy.mock.calls[0]?.[0]?.maxTokens).toBe(512);
+  });
+
+  it('test_query_outOfRangeCitation_suppressesAnswer', async () => {
+    searchEngine.documents = [new SearchResult('wiki/a.md', 'A', 'alpha', 0.9, 'hybrid')];
+    llmClient.response = 'Unsupported reference [99].';
+
+    const response = await service.query({ question: 'q' });
+
+    expect(response.answer).toBe('');
+    expect(response.citation_check.status).toBe('unsupported');
+    expect(response.citation_check.reason).toBe('invalid_citation_reference');
+    expect(response.citation_check.invalid_citations).toEqual(['[99]']);
+    expect(llmClient.completeSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('test_query_verifierUnsupported_suppressesAnswer', async () => {
+    searchEngine.documents = [new SearchResult('wiki/a.md', 'A', 'alpha', 0.9, 'hybrid')];
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: 'Claim [1].',
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: JSON.stringify({
+        status: 'unsupported',
+        reason: 'claim_not_supported',
+        unsupported_claims: [{ claim: 'Claim', citations: [1], reason: 'not in excerpt' }],
+      }),
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
+
+    const response = await service.query({ question: 'q' });
+
+    expect(response.answer).toBe('');
+    expect(response.citation_check.status).toBe('unsupported');
+    expect(response.citation_check.unsupported_claims).toHaveLength(1);
+  });
+
+  it('test_query_verifierMalformed_returnsUnknown', async () => {
+    searchEngine.documents = [new SearchResult('wiki/a.md', 'A', 'alpha', 0.9, 'hybrid')];
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: 'Claim [1].',
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: 'not-json',
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
+
+    const response = await service.query({ question: 'q' });
+
+    expect(response.answer).toBe('');
+    expect(response.citation_check.status).toBe('unknown');
+    expect(response.citation_check.reason).toBe('verifier_malformed_output');
+  });
+
+  it('test_query_verifierUsesCappedCitationList', async () => {
+    searchEngine.documents = Array.from(
+      { length: 25 },
+      (_, i) => new SearchResult(`wiki/${i}.md`, `T${i}`, `e${i}`, 1 - i * 0.01, 'hybrid'),
+    );
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: 'Claim [20].',
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: JSON.stringify({
+        status: 'verified',
+        reason: null,
+        unsupported_claims: [],
+      }),
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
+
+    const response = await service.query({ question: 'q', maxResults: 25 });
+
+    expect(response.citations).toHaveLength(20);
+    const verifierRequest = llmClient.completeSpy.mock.calls[1]?.[0];
+    expect(verifierRequest?.messages[0]?.content).toContain('[20] T19 (wiki/19.md)');
+    expect(verifierRequest?.messages[0]?.content).not.toContain('[21]');
   });
 });

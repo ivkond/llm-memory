@@ -89,6 +89,14 @@ export const searchCommand = new Command()
 
           if (result.answer) {
             console.log(`\n\x1b[1mAnswer:\x1b[0m\n${result.answer}`);
+            if (result.citation_check?.status === 'verified') {
+              console.log('\nCitation check: verified');
+            }
+          } else if (result.citation_check) {
+            console.log(
+              `\nAnswer withheld: citation faithfulness ${result.citation_check.status}` +
+                `${result.citation_check.reason ? ` (${result.citation_check.reason})` : ''}`,
+            );
           }
         }
 

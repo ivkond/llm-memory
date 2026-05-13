@@ -91,8 +91,19 @@ describe('Query E2E', () => {
       updated: '2026-04-09',
     });
 
+    let callCount = 0;
     const llmModel = new MockLanguageModelV2({
-      doGenerate: async () => okGen('Use testcontainers.', 10, 5),
+      doGenerate: async () => {
+        callCount += 1;
+        if (callCount % 2 === 1) {
+          return okGen('Use testcontainers [1].', 10, 5);
+        }
+        return okGen(
+          JSON.stringify({ status: 'verified', reason: null, unsupported_claims: [] }),
+          10,
+          5,
+        );
+      },
     });
     const llm = new AiSdkLlmClient(llmModel);
     const resolver = new GitProjectResolver(fs);
@@ -117,6 +128,7 @@ describe('Query E2E', () => {
     const result = await service.query({ question: 'how to test' });
     expect(result.answer).toContain('testcontainers');
     expect(result.citations.length).toBeGreaterThan(0);
+    expect(result.citation_check.status).toBe('verified');
   });
 
   it('test_query_scopeCascade_projectFirstThenWiki (INV-10)', async () => {
@@ -130,5 +142,6 @@ describe('Query E2E', () => {
     const result = await throwingService.query({ question: 'how to test' });
     expect(result.answer).toBe('');
     expect(result.citations.length).toBeGreaterThan(0);
+    expect(result.citation_check.status).toBe('skipped');
   });
 });
