@@ -32,6 +32,11 @@ export function createWikiQueryHandler(services: AppServices) {
         cwd: params.cwd ? String(params.cwd) : undefined,
         maxResults: typeof params.maxResults === 'number' ? params.maxResults : undefined,
         maxTokens: typeof params.maxTokens === 'number' ? params.maxTokens : undefined,
+        includeStale: typeof params.includeStale === 'boolean' ? params.includeStale : undefined,
+        stalenessMode:
+          params.stalenessMode === 'exclude_stale' || params.stalenessMode === 'prefer_fresh'
+            ? params.stalenessMode
+            : undefined,
       };
 
       const result = await queryService.query(request);

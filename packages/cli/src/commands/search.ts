@@ -28,13 +28,26 @@ export const searchCommand = new Command()
   .description('Search the wiki')
   .option('-l, --limit <limit>', 'Maximum results (default: 10)', '10')
   .option('-f, --format <format>', 'Output format (rich, json)', 'rich')
+  .option('--include-stale', 'Include stale citations when staleness exclusion is enabled', false)
+  .option(
+    '--staleness-mode <mode>',
+    'Staleness behavior: prefer_fresh or exclude_stale (default: prefer_fresh)',
+    'prefer_fresh',
+  )
   .option('-w, --wiki <path>', 'Wiki directory path')
   .option('-v, --verbose', 'Verbose output', false)
   .argument('<query>', 'Search query')
   .action(
     async (
       query: string,
-      options: { limit?: string; format?: string; wiki?: string; verbose?: boolean },
+      options: {
+        limit?: string;
+        format?: string;
+        wiki?: string;
+        verbose?: boolean;
+        includeStale?: boolean;
+        stalenessMode?: string;
+      },
     ) => {
       const limit = parseInt(options.limit ?? '10', 10);
       const format = options.format ?? 'rich';
@@ -59,7 +72,14 @@ export const searchCommand = new Command()
         const services = buildContainer(config);
 
         const startTime = Date.now();
-        const result = await services.query.query({ question: query, maxResults: limit });
+        const request = {
+          question: query,
+          maxResults: limit,
+          includeStale: options.includeStale ?? false,
+          stalenessMode:
+            options.stalenessMode === 'exclude_stale' ? ('exclude_stale' as const) : 'prefer_fresh',
+        };
+        const result = await services.query.query(request);
 
         const elapsed = Date.now() - startTime;
 
@@ -85,6 +105,13 @@ export const searchCommand = new Command()
               `   ${citation.excerpt.slice(0, 200)}${citation.excerpt.length > 200 ? '...' : ''}`,
             );
             console.log(`   Score: ${citation.score.toFixed(2)}`);
+            if (citation.freshness_status !== 'fresh') {
+              const reasons =
+                citation.freshness_reasons.length > 0
+                  ? ` (${citation.freshness_reasons.join(', ')})`
+                  : '';
+              console.log(`   Freshness: ${citation.freshness_status}${reasons}`);
+            }
           }
 
           if (result.answer) {

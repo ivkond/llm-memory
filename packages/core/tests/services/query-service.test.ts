@@ -119,6 +119,8 @@ function makePage(
   title: string,
   content: string,
   updated: string,
+  confidence = 0.9,
+  supersedes: string | null = null,
 ): { info: FileInfo; page: WikiPageData } {
   return {
     info: { path: filePath, updated },
@@ -127,9 +129,9 @@ function makePage(
         title,
         created: updated,
         updated,
-        confidence: 0.9,
+        confidence,
         sources: [],
-        supersedes: null,
+        supersedes,
         tags: [],
       },
       content,
@@ -313,5 +315,46 @@ describe('QueryService', () => {
 
     expect(llmClient.lastRequest).not.toBeNull();
     expect(llmClient.lastRequest!.maxTokens).toBe(512);
+  });
+
+  it('test_query_supersededPage_isDownRankedAndAnnotated', async () => {
+    fileStore.files['wiki/new.md'] = makePage(
+      'wiki/new.md',
+      'New',
+      'new body',
+      '2026-04-10T00:00:00Z',
+      0.9,
+      'wiki/old.md',
+    );
+    fileStore.files['wiki/old.md'] = makePage(
+      'wiki/old.md',
+      'Old',
+      'old body',
+      '2026-04-09T00:00:00Z',
+      0.9,
+      null,
+    );
+    searchEngine.documents = [
+      new SearchResult('wiki/old.md', 'Old', 'old body', 0.99, 'hybrid', { confidence: 0.9 }),
+      new SearchResult('wiki/new.md', 'New', 'new body', 0.9, 'hybrid', { confidence: 0.9 }),
+    ];
+
+    const response = await service.query({ question: 'q' });
+    expect(response.citations[0].page).toBe('wiki/new.md');
+    expect(response.citations[1].freshness_status).toBe('superseded');
+    expect(response.citations[1].freshness_reasons).toContain('superseded');
+    expect(response.citations[1].superseded_by).toBe('wiki/new.md');
+  });
+
+  it('test_query_excludeStale_filtersLowConfidence', async () => {
+    searchEngine.documents = [
+      new SearchResult('wiki/stale.md', 'Stale', 'stale body', 0.99, 'hybrid', { confidence: 0.2 }),
+      new SearchResult('wiki/fresh.md', 'Fresh', 'fresh body', 0.6, 'hybrid', { confidence: 0.95 }),
+    ];
+
+    const response = await service.query({ question: 'q', stalenessMode: 'exclude_stale' });
+    expect(response.citations).toHaveLength(1);
+    expect(response.citations[0].page).toBe('wiki/fresh.md');
+    expect(response.citations[0].freshness_status).toBe('fresh');
   });
 });

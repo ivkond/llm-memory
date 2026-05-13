@@ -31,6 +31,14 @@ export const wikiQueryShape = {
     .max(50)
     .optional()
     .describe('Max ranked hits to return (1-50)'),
+  includeStale: z
+    .boolean()
+    .optional()
+    .describe('Include stale citations when staleness mode excludes stale results'),
+  stalenessMode: z
+    .enum(['prefer_fresh', 'exclude_stale'])
+    .optional()
+    .describe('Staleness behavior policy for ranking/filtering'),
 };
 
 export const wikiRecallShape = {

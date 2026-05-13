@@ -346,7 +346,12 @@ describe('CLI command coverage', () => {
     restoreExit();
     tap.restore();
 
-    expect(query).toHaveBeenCalledWith({ question: 'testing', maxResults: 3 });
+    expect(query).toHaveBeenCalledWith({
+      question: 'testing',
+      maxResults: 3,
+      includeStale: false,
+      stalenessMode: 'prefer_fresh',
+    });
     expect(buildContainer.mock.calls[0]?.[0].wiki.path).toBe(wikiPath);
     expect(buildContainer.mock.calls[0]?.[0].llm.model).toBe('local-model');
     expect(tap.stdout[0]).toContain('"citations"');

@@ -46,6 +46,8 @@ interface DocFields {
   title: string;
   content: string;
   updated: string;
+  confidence: number;
+  supersedes: string | null;
 }
 
 interface Bm25FileV1 {
@@ -130,7 +132,7 @@ export class RuVectorSearchEngine implements ISearchEngine {
     return new MiniSearch<DocFields>({
       idField: 'id',
       fields: ['title', 'content'],
-      storeFields: ['path', 'title', 'content', 'updated'],
+      storeFields: ['path', 'title', 'content', 'updated', 'confidence', 'supersedes'],
       searchOptions: {
         prefix: true,
         fuzzy: 0.2,
@@ -174,7 +176,7 @@ export class RuVectorSearchEngine implements ISearchEngine {
       this.bm25 = MiniSearch.loadJSON<DocFields>(JSON.stringify(parsed.index), {
         idField: 'id',
         fields: ['title', 'content'],
-        storeFields: ['path', 'title', 'content', 'updated'],
+        storeFields: ['path', 'title', 'content', 'updated', 'confidence', 'supersedes'],
         searchOptions: {
           prefix: true,
           fuzzy: 0.2,
@@ -271,6 +273,8 @@ export class RuVectorSearchEngine implements ISearchEngine {
         title: entry.title,
         content: entry.content,
         updated: entry.updated,
+        confidence: entry.confidence ?? 0.5,
+        supersedes: entry.supersedes ?? null,
       },
     });
 
@@ -280,6 +284,8 @@ export class RuVectorSearchEngine implements ISearchEngine {
       title: entry.title,
       content: entry.content,
       updated: entry.updated,
+      confidence: entry.confidence ?? 0.5,
+      supersedes: entry.supersedes ?? null,
     });
 
     this.indexedAt[entry.path] = new Date().toISOString();
@@ -335,6 +341,9 @@ export class RuVectorSearchEngine implements ISearchEngine {
       path: string;
       title: string;
       content: string;
+      updated?: string;
+      confidence?: number;
+      supersedes?: string | null;
     }
 
     const fused = new Map<string, FusionEntry>();
@@ -351,6 +360,14 @@ export class RuVectorSearchEngine implements ISearchEngine {
         path: meta.path,
         title: meta.title ?? meta.path,
         content: meta.content ?? '',
+        updated: meta.updated,
+        confidence:
+          typeof meta.confidence === 'number'
+            ? meta.confidence
+            : typeof meta.confidence === 'string'
+              ? Number(meta.confidence)
+              : undefined,
+        supersedes: typeof meta.supersedes === 'string' ? meta.supersedes : null,
       });
     }
 
@@ -369,6 +386,17 @@ export class RuVectorSearchEngine implements ISearchEngine {
           path: docPath,
           title: (r.title as string | undefined) ?? docPath,
           content: (r.content as string | undefined) ?? '',
+          updated: r.updated as string | undefined,
+          confidence:
+            typeof r.confidence === 'number'
+              ? r.confidence
+              : typeof r.confidence === 'string'
+                ? Number(r.confidence)
+                : undefined,
+          supersedes:
+            typeof (r.supersedes as string | undefined) === 'string'
+              ? (r.supersedes as string)
+              : null,
         });
       }
     }
@@ -412,6 +440,11 @@ export class RuVectorSearchEngine implements ISearchEngine {
             this.excerpt(entry.content),
             top > 0 ? fused / top : 0,
             source,
+            {
+              updated: entry.updated,
+              confidence: entry.confidence,
+              supersedes: entry.supersedes ?? null,
+            },
           ),
       );
   }
