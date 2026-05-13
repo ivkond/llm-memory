@@ -8,6 +8,16 @@ import path from 'node:path';
 import { ConfigLoader } from '@ivkond-llm-wiki/infra';
 import { buildContainer } from '@ivkond-llm-wiki/common';
 
+type StalenessMode = 'prefer_fresh' | 'exclude_stale';
+
+function parseStalenessMode(input: string | undefined): StalenessMode {
+  const mode = input ?? 'prefer_fresh';
+  if (mode === 'prefer_fresh' || mode === 'exclude_stale') {
+    return mode;
+  }
+  throw new Error(`Invalid --staleness-mode '${mode}'. Use 'prefer_fresh' or 'exclude_stale'.`);
+}
+
 async function findWikiRoot(): Promise<string | null> {
   const candidates = [process.cwd(), path.join(process.env.HOME ?? '', '.llm-wiki')];
   for (const candidate of candidates) {
@@ -66,12 +76,7 @@ export const searchCommand = new Command()
       if (verbose) console.log(`Query: ${query}`);
 
       try {
-        const stalenessMode = options.stalenessMode ?? 'prefer_fresh';
-        if (stalenessMode !== 'prefer_fresh' && stalenessMode !== 'exclude_stale') {
-          throw new Error(
-            `Invalid --staleness-mode '${stalenessMode}'. Use 'prefer_fresh' or 'exclude_stale'.`,
-          );
-        }
+        const stalenessMode = parseStalenessMode(options.stalenessMode);
 
         // Load config and build services
         const configLoader = new ConfigLoader(wikiPath);
