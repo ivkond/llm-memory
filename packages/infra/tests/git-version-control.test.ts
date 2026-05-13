@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
@@ -126,5 +126,15 @@ describe('GitVersionControl', () => {
     const info = await vcs.createWorktree('ingest');
     await vcs.removeWorktree(info.path);
     expect(() => execSync('git status', { cwd: info.path })).toThrow();
+  });
+
+  it('test_listTrackedFiles_preservesExactPathSpacing', async () => {
+    const exactPath = 'wiki/ spaced-file .md';
+    await mkdir(path.join(repo, 'wiki'), { recursive: true });
+    await writeFile(path.join(repo, exactPath), 'x');
+    await vcs.commit([exactPath], 'add spaced file');
+
+    const tracked = await vcs.listTrackedFiles(['wiki/*.md']);
+    expect(tracked).toContain(exactPath);
   });
 });

@@ -103,12 +103,9 @@ export class GitVersionControl implements IVersionControl {
   }
 
   async listTrackedFiles(patterns?: string[]): Promise<string[]> {
-    const args = ['ls-files', '--'];
+    const args = ['ls-files', '-z', '--'];
     if (patterns && patterns.length > 0) args.push(...patterns);
     const output = await this.git.raw(args);
-    return output
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
+    return output.split('\0').filter((line) => line.length > 0);
   }
 }
