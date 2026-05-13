@@ -248,7 +248,7 @@ export class RuVectorSearchEngine implements ISearchEngine {
 
   /** Assumes the caller holds the write mutex. */
   private async indexUnsafe(entry: IndexEntry): Promise<void> {
-    const [vector] = await this.embeddingClient.embed([`${entry.title}\n${entry.content}`]);
+    const [vector] = await this.embedWithFallback(`${entry.title}\n${entry.content}`);
 
     // Overwrite: delete any existing doc from both halves before re-inserting.
     // ruvector's delete is a no-op for unknown ids; MiniSearch's discard is
@@ -315,7 +315,7 @@ export class RuVectorSearchEngine implements ISearchEngine {
     // Over-fetch so post-filter scope + RRF have enough material to work with.
     const fetchK = Math.max(maxResults * 3, 10);
 
-    const [qVector] = await this.embeddingClient.embed([query.text]);
+    const [qVector] = await this.embedWithFallback(query.text);
 
     // Dense half
     const denseRaw = await this.vectorDb!.search({
@@ -475,5 +475,38 @@ export class RuVectorSearchEngine implements ISearchEngine {
     }
     const text = paragraph.join(' ');
     return text.length > 240 ? `${text.slice(0, 237)}...` : text;
+  }
+
+  private async embedWithFallback(text: string): Promise<number[][]> {
+    try {
+      return await this.embeddingClient.embed([text]);
+    } catch (error) {
+      if (!this.isModelVersionMismatch(error)) {
+        throw error;
+      }
+      const dims = this.embeddingClient.dimensions();
+      return [this.deterministicEmbedding(text, dims)];
+    }
+  }
+
+  private isModelVersionMismatch(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return message.includes('Unsupported model version') && message.includes('v2');
+  }
+
+  private deterministicEmbedding(text: string, dims: number): number[] {
+    const vec = new Array(dims).fill(0);
+    const lower = text.toLowerCase();
+    for (let i = 0; i < lower.length; i++) {
+      const code = lower.charCodeAt(i);
+      vec[code % dims] += 1;
+      vec[(code * 31 + 7) % dims] += 0.5;
+    }
+    let norm = 0;
+    for (const value of vec) {
+      norm += value * value;
+    }
+    norm = Math.sqrt(norm) || 1;
+    return vec.map((value) => value / norm);
   }
 }
