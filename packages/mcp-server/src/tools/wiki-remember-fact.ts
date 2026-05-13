@@ -1,4 +1,5 @@
 import type { AppServices } from '@ivkond-llm-wiki/common';
+import { readCommonRememberParams } from './wiki-remember-params.js';
 
 /**
  * Handler for `wiki_remember_fact` — wires to RememberService.
@@ -27,9 +28,7 @@ export function createWikiRememberFactHandler(services: AppServices) {
       }
 
       const content = params.content != null ? String(params.content) : '';
-      const agent = params.agent != null ? String(params.agent) : '';
-      const sessionId = params.sessionId != null ? String(params.sessionId) : '';
-      const project = params.project != null ? String(params.project) : undefined;
+      const common = readCommonRememberParams(params);
       const idempotencyKey =
         params.idempotencyKey != null ? String(params.idempotencyKey) : undefined;
       const tags = params.tags
@@ -40,9 +39,7 @@ export function createWikiRememberFactHandler(services: AppServices) {
 
       const result = await rememberService.rememberFact({
         content,
-        agent,
-        sessionId,
-        project,
+        ...common,
         tags,
         idempotencyKey,
       });
@@ -55,7 +52,7 @@ export function createWikiRememberFactHandler(services: AppServices) {
               success: true,
               data: {
                 entry_id: result.entry_id,
-                project: project ?? 'default',
+                project: common.project ?? 'default',
                 path: result.file,
               },
             }),

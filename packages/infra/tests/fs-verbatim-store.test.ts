@@ -114,7 +114,40 @@ describe('FsVerbatimStore.readEntry', () => {
       expect(roundtrip!.sessionId).toBe('sess1');
       expect(roundtrip!.project).toBe('cli-relay');
       expect(roundtrip!.consolidated).toBe(false);
+      expect(roundtrip!.entryId).toBe('uuid1');
+      expect(roundtrip!.source.type).toBe('manual');
       expect(roundtrip!.content).toContain('pgx MaxConns rule');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('synthesizes metadata for legacy records without entry_id and processing', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'vs-read-'));
+    try {
+      const fs = new FsFileStore(root);
+      const store = new FsVerbatimStore(fs);
+      const filePath = 'log/claude-code/raw/2026-04-09-sess1-legacyid.md';
+      await fs.writeFile(
+        filePath,
+        [
+          '---',
+          'session: sess1',
+          'agent: claude-code',
+          'consolidated: false',
+          'created: 2026-04-09T10:20:30.000Z',
+          '---',
+          '',
+          'legacy content',
+          '',
+        ].join('\n'),
+      );
+
+      const entry = await store.readEntry(filePath);
+      expect(entry).not.toBeNull();
+      expect(entry!.entryId).toBe('2026-04-09-sess1-legacyid');
+      expect(entry!.source.type).toBe('legacy');
+      expect(entry!.processing.created_at).toBe('2026-04-09T10:20:30.000Z');
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -136,6 +169,7 @@ describe('FsVerbatimStore.markConsolidated', () => {
       await store.markConsolidated(entry.filePath);
       const reloaded = await store.readEntry(entry.filePath);
       expect(reloaded!.consolidated).toBe(true);
+      expect(reloaded!.processing.consolidated_at).toBeTruthy();
       const unconsolidated = await store.listUnconsolidated('claude-code');
       expect(unconsolidated).toHaveLength(0);
     } finally {

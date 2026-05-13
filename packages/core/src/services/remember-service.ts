@@ -13,6 +13,13 @@ export interface RememberFactRequest {
   project?: string;
   tags?: string[];
   idempotencyKey?: string;
+  sourceUri?: string;
+  sourceDigest?: string;
+  operationId?: string;
+  modelProvider?: string;
+  modelName?: string;
+  callId?: string;
+  toolCallId?: string;
 }
 
 export interface RememberFactResponse {
@@ -28,11 +35,20 @@ export interface RememberSessionRequest {
   sessionId: string;
   project?: string;
   idempotencyKey?: string;
+  sourceUri?: string;
+  sourceDigest?: string;
+  operationId?: string;
+  modelProvider?: string;
+  modelName?: string;
+  callId?: string;
+  toolCallId?: string;
 }
 
 export interface RememberSessionResponse {
   ok: true;
   file: string;
+  entry_id: string;
+  created_at: string;
   facts_count: number;
   idempotency_replayed?: boolean;
 }
@@ -61,17 +77,30 @@ export class RememberService {
         sessionId: req.sessionId,
         project: req.project,
         tags: req.tags ?? [],
+        sourceUri: req.sourceUri ?? null,
+        sourceDigest: req.sourceDigest ?? null,
+        operationId: req.operationId ?? null,
+        modelProvider: req.modelProvider ?? null,
+        modelName: req.modelName ?? null,
+        callId: req.callId ?? null,
+        toolCallId: req.toolCallId ?? null,
       },
       async () => {
+        const model = this.buildModelMetadata(req);
         const entry = VerbatimEntry.create({
           content: sanitized.content,
           agent: req.agent,
           sessionId: req.sessionId,
           project: req.project,
           tags: req.tags,
+          source: { type: 'mcp_fact', uri: req.sourceUri, digest: req.sourceDigest },
+          operationId: req.operationId,
+          model,
         });
+
         await this.verbatimStore.writeEntry(entry);
-        return { ok: true as const, file: entry.filePath, entry_id: entry.filename };
+
+        return { ok: true as const, file: entry.filePath, entry_id: entry.entryId };
       },
     );
     return replayed ? { ...result, idempotency_replayed: true } : result;
@@ -89,6 +118,13 @@ export class RememberService {
         agent: req.agent,
         sessionId: req.sessionId,
         project: req.project,
+        sourceUri: req.sourceUri ?? null,
+        sourceDigest: req.sourceDigest ?? null,
+        operationId: req.operationId ?? null,
+        modelProvider: req.modelProvider ?? null,
+        modelName: req.modelName ?? null,
+        callId: req.callId ?? null,
+        toolCallId: req.toolCallId ?? null,
       },
       async () => {
         // Deduplication by session_id — return stored entry metadata, not new request data
@@ -96,22 +132,39 @@ export class RememberService {
           const existing = await this.findExistingSession(req.agent, req.sessionId);
           if (existing) {
             const storedContent = await this.fileStore.readFile(existing);
+            const storedEntry = await this.verbatimStore.readEntry(existing);
             const factsCount = storedContent ? this.countFacts(storedContent) : 1;
-            return { ok: true as const, file: existing, facts_count: factsCount };
+            return {
+              ok: true as const,
+              file: existing,
+              entry_id: storedEntry?.entryId ?? existing.split('/').pop() ?? existing,
+              created_at: storedEntry?.processing.created_at ?? new Date().toISOString(),
+              facts_count: factsCount,
+            };
           }
         }
+
         const sanitized = this.sanitizer.sanitize(req.summary);
         if (sanitized.isBlocked) throw new SanitizationBlockedError(sanitized.redactedRatio);
+
+        const model = this.buildModelMetadata(req);
         const entry = VerbatimEntry.create({
           content: sanitized.content,
           agent: req.agent,
           sessionId: req.sessionId,
           project: req.project,
+          source: { type: 'session', uri: req.sourceUri, digest: req.sourceDigest },
+          operationId: req.operationId,
+          model,
         });
+
         await this.verbatimStore.writeEntry(entry);
+
         return {
           ok: true as const,
           file: entry.filePath,
+          entry_id: entry.entryId,
+          created_at: entry.processing.created_at,
           facts_count: this.countFacts(sanitized.content),
         };
       },
@@ -133,5 +186,17 @@ export class RememberService {
 
   private countFacts(content: string): number {
     return content.split('\n').filter((line) => line.trim().startsWith('- ')).length || 1;
+  }
+
+  private buildModelMetadata(
+    req: Pick<RememberFactRequest, 'modelProvider' | 'modelName' | 'callId' | 'toolCallId'>,
+  ): { provider?: string; model?: string; call_id?: string; tool_call_id?: string } | undefined {
+    if (!req.modelProvider && !req.modelName && !req.callId && !req.toolCallId) return undefined;
+    return {
+      provider: req.modelProvider,
+      model: req.modelName,
+      call_id: req.callId,
+      tool_call_id: req.toolCallId,
+    };
   }
 }

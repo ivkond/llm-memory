@@ -53,6 +53,13 @@ A wiki directory contains:
 
 The important part: **Markdown files are the source of truth**. Search indexes and runtime state can be rebuilt; the knowledge itself remains readable and editable.
 
+Raw verbatim records in `log/<agent>/raw/*.md` include metadata frontmatter for stable identity and provenance:
+
+- `entry_id` for record identity;
+- `source` (`type`, optional `uri` and `digest`);
+- optional `model` and `operation_id`;
+- `processing` timestamps (`created_at` and lifecycle markers like `imported_at` / `consolidated_at`).
+
 ### Under the hood
 
 LLM Memory uses:

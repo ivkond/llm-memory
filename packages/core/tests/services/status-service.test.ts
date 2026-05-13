@@ -63,6 +63,11 @@ class FakeSearchEngine implements ISearchEngine {
   async lastIndexedAt(p: string): Promise<string | null> {
     return this.lastIndexedMap[p] ?? null;
   }
+  async lastIndexedAtMany(paths: string[]): Promise<Record<string, string | null>> {
+    const result: Record<string, string | null> = {};
+    for (const p of paths) result[p] = this.lastIndexedMap[p] ?? null;
+    return result;
+  }
 }
 
 class FakeStateStore implements IStateStore {
