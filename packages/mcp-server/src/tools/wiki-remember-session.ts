@@ -1,4 +1,5 @@
 import type { AppServices } from '@ivkond-llm-wiki/common';
+import { readCommonRememberParams } from './wiki-remember-params.js';
 
 /**
  * Handler for `wiki_remember_session` — wires to RememberService.
@@ -27,32 +28,11 @@ export function createWikiRememberSessionHandler(services: AppServices) {
       }
 
       const summary = params.summary != null ? String(params.summary) : '';
-      const agent = params.agent != null ? String(params.agent) : '';
-      const sessionId = params.sessionId != null ? String(params.sessionId) : '';
-      const project = params.project != null ? String(params.project) : undefined;
-      const sourceUri = params.source_uri != null ? String(params.source_uri) : undefined;
-      const sourceDigest =
-        params.source_digest != null ? String(params.source_digest) : undefined;
-      const operationId =
-        params.operation_id != null ? String(params.operation_id) : undefined;
-      const modelProvider =
-        params.model_provider != null ? String(params.model_provider) : undefined;
-      const modelName = params.model_name != null ? String(params.model_name) : undefined;
-      const callId = params.call_id != null ? String(params.call_id) : undefined;
-      const toolCallId = params.tool_call_id != null ? String(params.tool_call_id) : undefined;
+      const common = readCommonRememberParams(params);
 
       const result = await rememberService.rememberSession({
         summary,
-        agent,
-        sessionId,
-        project,
-        sourceUri,
-        sourceDigest,
-        operationId,
-        modelProvider,
-        modelName,
-        callId,
-        toolCallId,
+        ...common,
       });
 
       return {
@@ -63,7 +43,7 @@ export function createWikiRememberSessionHandler(services: AppServices) {
               success: true,
               data: {
                 entry_id: result.entry_id,
-                session_id: sessionId,
+                session_id: common.sessionId,
                 created_at: result.created_at,
                 facts_count: result.facts_count,
               },

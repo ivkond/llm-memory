@@ -1,4 +1,5 @@
 import type { AppServices } from '@ivkond-llm-wiki/common';
+import { readCommonRememberParams } from './wiki-remember-params.js';
 
 /**
  * Handler for `wiki_remember_fact` — wires to RememberService.
@@ -27,38 +28,17 @@ export function createWikiRememberFactHandler(services: AppServices) {
       }
 
       const content = params.content != null ? String(params.content) : '';
-      const agent = params.agent != null ? String(params.agent) : '';
-      const sessionId = params.sessionId != null ? String(params.sessionId) : '';
-      const project = params.project != null ? String(params.project) : undefined;
+      const common = readCommonRememberParams(params);
       const tags = params.tags
         ? Array.isArray(params.tags)
           ? params.tags.map((t) => String(t))
           : [String(params.tags)]
         : undefined;
-      const sourceUri = params.source_uri != null ? String(params.source_uri) : undefined;
-      const sourceDigest =
-        params.source_digest != null ? String(params.source_digest) : undefined;
-      const operationId =
-        params.operation_id != null ? String(params.operation_id) : undefined;
-      const modelProvider =
-        params.model_provider != null ? String(params.model_provider) : undefined;
-      const modelName = params.model_name != null ? String(params.model_name) : undefined;
-      const callId = params.call_id != null ? String(params.call_id) : undefined;
-      const toolCallId = params.tool_call_id != null ? String(params.tool_call_id) : undefined;
 
       const result = await rememberService.rememberFact({
         content,
-        agent,
-        sessionId,
-        project,
+        ...common,
         tags,
-        sourceUri,
-        sourceDigest,
-        operationId,
-        modelProvider,
-        modelName,
-        callId,
-        toolCallId,
       });
 
       return {
@@ -69,7 +49,7 @@ export function createWikiRememberFactHandler(services: AppServices) {
               success: true,
               data: {
                 entry_id: result.entry_id,
-                project: project ?? 'default',
+                project: common.project ?? 'default',
                 path: result.file,
               },
             }),
