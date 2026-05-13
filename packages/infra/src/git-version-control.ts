@@ -109,13 +109,9 @@ export class GitVersionControl implements IVersionControl {
   }
 
   private async canFastForward(branch: string): Promise<boolean> {
-    try {
-      // Exit code 0 means HEAD is ancestor of branch, so ff merge is possible.
-      await this.git.raw(['merge-base', '--is-ancestor', 'HEAD', branch]);
-      return true;
-    } catch {
-      return false;
-    }
+    const head = (await this.git.revparse(['HEAD'])).trim();
+    const mergeBase = (await this.git.raw(['merge-base', 'HEAD', branch])).trim();
+    return mergeBase === head;
   }
 
   private async hasUnmergedEntries(): Promise<boolean> {
