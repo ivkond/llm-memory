@@ -443,7 +443,8 @@ export class RuVectorSearchEngine implements ISearchEngine {
     return this.runExclusive(async () => {
       // Clear the BM25 side wholesale. ruvector lacks a bulk clear, so
       // delete each known id individually before re-indexing.
-      for (const id of Object.keys(this.indexedAt)) {
+      const knownVectorIds = new Set([...Object.keys(this.indexedAt), ...this.vectorPaths]);
+      for (const id of knownVectorIds) {
         try {
           await this.vectorDb!.delete(id);
         } catch {

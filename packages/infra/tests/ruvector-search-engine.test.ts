@@ -455,4 +455,43 @@ describe('RuVectorSearchEngine', () => {
     expect(snapshot.bm25Paths).toEqual([]);
     expect(snapshot.vectorPaths).toEqual([]);
   });
+
+  it('test_rebuild_clearsVectorOnlyKnownPathFromInventory', async () => {
+    await engine.index({
+      path: 'wiki/legacy.md',
+      title: 'Legacy',
+      content: 'legacy vector payload',
+      updated: '2026-04-09',
+    });
+
+    const bm25File = path.join(dbPath, 'bm25.json');
+    const parsed = JSON.parse(await readFile(bm25File, 'utf-8')) as {
+      version: 1;
+      index: unknown;
+      lastIndexedAt: Record<string, string>;
+      bm25Paths: string[];
+      vectorPaths: string[];
+    };
+    delete parsed.lastIndexedAt['wiki/legacy.md'];
+    parsed.bm25Paths = [];
+    parsed.vectorPaths = ['wiki/legacy.md'];
+    await writeFile(bm25File, JSON.stringify(parsed), 'utf-8');
+
+    const reopened = new RuVectorSearchEngine(dbPath, embeddings);
+    await reopened.rebuild([
+      {
+        path: 'wiki/fresh.md',
+        title: 'Fresh',
+        content: 'fresh corpus',
+        updated: '2026-04-10',
+      },
+    ]);
+
+    const snapshot = await reopened.inspectIndex();
+    expect(snapshot.bm25Paths).toEqual(['wiki/fresh.md']);
+    expect(snapshot.vectorPaths).toEqual(['wiki/fresh.md']);
+
+    const legacyResults = await reopened.search({ text: 'legacy payload', maxResults: 10 });
+    expect(legacyResults.map((r) => r.path)).not.toContain('wiki/legacy.md');
+  });
 });
