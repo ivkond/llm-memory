@@ -111,3 +111,27 @@ test('test_verifyClaudeArtifacts_whenReleaseWorkflowIncludesSkill_rejects', asyn
     /\.github\/workflows\/release\.yml must not include packages\/skill\/llm-memory in release pack\/publish targets/,
   );
 });
+
+test('test_verifyClaudeArtifacts_whenPackLoopIncludesSkillPath_rejects', async () => {
+  const rootDir = await createFixtureRoot();
+  const releaseWorkflowPath = path.join(rootDir, '.github', 'workflows', 'release.yml');
+  await writeFile(
+    releaseWorkflowPath,
+    [
+      'jobs:',
+      '  release:',
+      '    steps:',
+      '      - name: Pack dry-run',
+      '        run: |',
+      '          for pkg in core infra common cli mcp-server skill/llm-memory; do',
+      '            echo "${pkg}"',
+      '          done',
+      '',
+    ].join('\n'),
+  );
+
+  await assert.rejects(
+    () => verifyClaudeArtifacts(rootDir),
+    /\.github\/workflows\/release\.yml must not include packages\/skill\/llm-memory in release pack\/publish targets/,
+  );
+});

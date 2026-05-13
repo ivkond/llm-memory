@@ -21,15 +21,31 @@ function parsePackLoopPackages(workflowContent) {
   return match[1].trim().split(/\s+/).filter(Boolean);
 }
 
+function normalizeWorkflowPackagePath(value) {
+  const trimmedValue = value.trim().replace(/^['"]|['"]$/g, '').replace(/^\.?\//, '');
+  if (!trimmedValue) {
+    return '';
+  }
+  if (trimmedValue === 'skill' || trimmedValue === 'llm-memory' || trimmedValue === 'skill/llm-memory') {
+    return 'packages/skill/llm-memory';
+  }
+  if (trimmedValue.startsWith('packages/')) {
+    return trimmedValue;
+  }
+  return `packages/${trimmedValue}`;
+}
+
 function releaseWorkflowIncludesSkill(workflowContent) {
   const packPackages = parsePackLoopPackages(workflowContent);
-  if (packPackages.includes('skill') || packPackages.includes('llm-memory')) {
-    return true;
+  for (const packPackage of packPackages) {
+    if (normalizeWorkflowPackagePath(packPackage) === 'packages/skill/llm-memory') {
+      return true;
+    }
   }
 
-  const publishPackagePaths = workflowContent.match(/publish_package\s+([^\s]+)/g) ?? [];
-  for (const publishCall of publishPackagePaths) {
-    if (publishCall.includes('packages/skill/llm-memory')) {
+  const publishPackageMatches = workflowContent.matchAll(/publish_package\s+([^\s]+)/g);
+  for (const publishPackageMatch of publishPackageMatches) {
+    if (normalizeWorkflowPackagePath(publishPackageMatch[1] ?? '') === 'packages/skill/llm-memory') {
       return true;
     }
   }
