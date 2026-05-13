@@ -12,10 +12,11 @@ import { GitConflictError } from '@ivkond-llm-wiki/core';
  * so a failure anywhere in the pipeline can be undone by a single
  * `removeWorktree` call.
  *
- * On merge conflicts, simple-git surfaces a `GitError` whose message
- * mentions `CONFLICT` — this adapter translates it into the domain-level
- * `GitConflictError` without removing the worktree, so `IngestService` /
- * `LintService` can decide what to do with the in-progress work.
+ * On merge failures, this adapter inspects machine-readable Git state
+ * (fast-forward ancestry and unmerged index entries) to detect conflict
+ * conditions and translate them into `GitConflictError` without removing
+ * the worktree, so `IngestService` / `LintService` can decide what to do
+ * with the in-progress work.
  */
 export class GitVersionControl implements IVersionControl {
   private readonly git: SimpleGit;
@@ -85,14 +86,19 @@ export class GitVersionControl implements IVersionControl {
     const branchInfo = await wtGit.revparse(['--abbrev-ref', 'HEAD']);
     const branch = branchInfo.trim();
 
+    const canFastForward = await this.canFastForward(branch);
+    if (!canFastForward) {
+      throw new GitConflictError(worktreePath, `Non-fast-forward merge for branch '${branch}'`);
+    }
+
     try {
       // simple-git's high-level `merge` throws on conflict. We explicitly
       // request a fast-forward merge; IngestService always squashes first,
       // so the worktree branch is always a linear descendant of main.
       await this.git.merge([branch, '--ff-only']);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (/conflict|CONFLICT|not possible to fast-forward|Merge conflict/i.test(message)) {
+      if (await this.hasUnmergedEntries()) {
+        const message = err instanceof Error ? err.message : String(err);
         throw new GitConflictError(worktreePath, message);
       }
       throw err;
@@ -100,5 +106,20 @@ export class GitVersionControl implements IVersionControl {
 
     const sha = await this.git.revparse(['HEAD']);
     return sha.trim();
+  }
+
+  private async canFastForward(branch: string): Promise<boolean> {
+    try {
+      // Exit code 0 means HEAD is ancestor of branch, so ff merge is possible.
+      await this.git.raw(['merge-base', '--is-ancestor', 'HEAD', branch]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async hasUnmergedEntries(): Promise<boolean> {
+    const output = await this.git.raw(['ls-files', '--unmerged']);
+    return output.trim().length > 0;
   }
 }

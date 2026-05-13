@@ -122,6 +122,33 @@ describe('GitVersionControl', () => {
     await vcs.removeWorktree(info.path, true);
   });
 
+  it('test_mergeWorktree_nonConflictFailure_doesNotMapByMessage', async () => {
+    const info = await vcs.createWorktree('ingest');
+    await writeFile(path.join(info.path, 'merged.md'), 'x');
+    await vcs.commitInWorktree(info.path, ['merged.md'], ':memo: merged');
+
+    const injectedError = new Error('No se puede fusionar');
+    const git = (vcs as unknown as { git: { merge: (args: string[]) => Promise<unknown> } }).git;
+    const originalMerge = git.merge.bind(git);
+    git.merge = async () => {
+      throw injectedError;
+    };
+
+    try {
+      let thrown: unknown;
+      try {
+        await vcs.mergeWorktree(info.path);
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBe(injectedError);
+      expect(thrown).not.toBeInstanceOf(GitConflictError);
+    } finally {
+      git.merge = originalMerge;
+      await vcs.removeWorktree(info.path, true);
+    }
+  });
+
   it('test_removeWorktree_cleansUpDirectory', async () => {
     const info = await vcs.createWorktree('ingest');
     await vcs.removeWorktree(info.path);
