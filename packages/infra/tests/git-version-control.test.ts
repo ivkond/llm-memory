@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -120,6 +120,31 @@ describe('GitVersionControl', () => {
     // Worktree preserved for manual recovery
     execSync('git status', { cwd: info.path });
     await vcs.removeWorktree(info.path, true);
+  });
+
+  it('test_mergeWorktree_conflictClassification_doesNotDependOnErrorMessage', async () => {
+    const info = await vcs.createWorktree('ingest');
+
+    await writeFile(path.join(repo, 'diverge.md'), 'main');
+    await vcs.commit(['diverge.md'], 'main divergence');
+
+    await writeFile(path.join(info.path, 'diverge.md'), 'worktree');
+    await vcs.commitInWorktree(info.path, ['diverge.md'], 'worktree divergence');
+
+    const mergeSpy = vi
+      .spyOn((vcs as unknown as { git: { merge: (...args: unknown[]) => Promise<unknown> } }).git, 'merge')
+      .mockRejectedValue(new Error('ошибка слияния'));
+
+    await expect(vcs.mergeWorktree(info.path)).rejects.toBeInstanceOf(GitConflictError);
+
+    expect(mergeSpy).not.toHaveBeenCalled();
+    mergeSpy.mockRestore();
+    await vcs.removeWorktree(info.path, true);
+  });
+
+  it('test_mergeWorktree_invalidWorktreePath_throwsNonConflictError', async () => {
+    const invalidPath = path.join(repo, '.worktrees', 'missing');
+    await expect(vcs.mergeWorktree(invalidPath)).rejects.not.toBeInstanceOf(GitConflictError);
   });
 
   it('test_removeWorktree_cleansUpDirectory', async () => {
