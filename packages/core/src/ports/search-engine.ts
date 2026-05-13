@@ -33,4 +33,7 @@ export interface ISearchEngine {
 
   /** Get last indexed timestamp for a file. Returns null if not indexed. */
   lastIndexedAt(path: string): Promise<string | null>;
+
+  /** Bulk variant of `lastIndexedAt` for query-time staleness checks. */
+  lastIndexedAtMany(paths: string[]): Promise<Record<string, string | null>>;
 }

@@ -25,6 +25,7 @@ class FakeSearchEngine implements ISearchEngine {
   public readonly indexSpy = vi.fn<(entry: IndexEntry) => void>();
   public readonly searchSpy = vi.fn<(query: SearchQuery) => void>();
   public readonly removeSpy = vi.fn<(path: string) => void>();
+  public readonly lastIndexedManySpy = vi.fn<(paths: string[]) => void>();
   public documents: SearchResult[] = [];
   public lastIndexedMap: Record<string, string | null> = {};
 
@@ -47,6 +48,12 @@ class FakeSearchEngine implements ISearchEngine {
   }
   async lastIndexedAt(p: string): Promise<string | null> {
     return this.lastIndexedMap[p] ?? null;
+  }
+  async lastIndexedAtMany(paths: string[]): Promise<Record<string, string | null>> {
+    this.lastIndexedManySpy(paths);
+    const result: Record<string, string | null> = {};
+    for (const p of paths) result[p] = this.lastIndexedMap[p] ?? null;
+    return result;
   }
 }
 
@@ -262,6 +269,20 @@ describe('QueryService', () => {
     searchEngine.documents = [new SearchResult('wiki/a.md', 'A', 'body', 0.9, 'hybrid')];
 
     await service.query({ question: 'q' });
+    expect(searchEngine.indexSpy).not.toHaveBeenCalled();
+  });
+
+  it('test_query_syncStaleFiles_usesBulkLookupPerDirectory', async () => {
+    fileStore.files['wiki/a.md'] = makePage('wiki/a.md', 'A', 'body', '2026-04-09T00:00:00Z');
+    fileStore.files['wiki/b.md'] = makePage('wiki/b.md', 'B', 'body', '2026-04-09T00:00:00Z');
+    searchEngine.lastIndexedMap['wiki/a.md'] = '2026-04-10T12:00:00Z';
+    searchEngine.lastIndexedMap['wiki/b.md'] = '2026-04-10T12:00:00Z';
+    searchEngine.documents = [new SearchResult('wiki/a.md', 'A', 'body', 0.9, 'hybrid')];
+
+    await service.query({ question: 'q' });
+
+    expect(searchEngine.lastIndexedManySpy).toHaveBeenCalledTimes(2);
+    expect(searchEngine.lastIndexedManySpy).toHaveBeenCalledWith(['wiki/a.md', 'wiki/b.md']);
     expect(searchEngine.indexSpy).not.toHaveBeenCalled();
   });
 
