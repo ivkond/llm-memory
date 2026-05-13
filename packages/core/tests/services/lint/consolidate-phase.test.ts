@@ -151,6 +151,9 @@ describe('ConsolidatePhase', () => {
     expect(result.touchedPaths).toContain('wiki/tools/postgresql.md');
     expect(fileStore.files['wiki/tools/postgresql.md']).toMatch(/PostgreSQL/);
     expect(verbatimStore.marked).toHaveLength(3);
+    const req = llm.completeSpy.mock.calls[0][0];
+    expect(req.messages[0].content).toContain('entry_id');
+    expect(req.messages[0].content).toContain('source');
   });
 
   it('rejects LLM-returned paths outside wiki/ or projects/', async () => {

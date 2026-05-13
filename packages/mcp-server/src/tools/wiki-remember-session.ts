@@ -1,5 +1,5 @@
-import { basename } from 'node:path';
 import type { AppServices } from '@ivkond-llm-wiki/common';
+import { readCommonRememberParams } from './wiki-remember-params.js';
 
 /**
  * Handler for `wiki_remember_session` — wires to RememberService.
@@ -28,17 +28,12 @@ export function createWikiRememberSessionHandler(services: AppServices) {
       }
 
       const summary = params.summary != null ? String(params.summary) : '';
-      const agent = params.agent != null ? String(params.agent) : '';
-      const sessionId = params.sessionId != null ? String(params.sessionId) : '';
-      const project = params.project != null ? String(params.project) : undefined;
+      const common = readCommonRememberParams(params);
 
       const result = await rememberService.rememberSession({
         summary,
-        agent,
-        sessionId,
-        project,
+        ...common,
       });
-      const entryId = basename(result.file);
 
       return {
         content: [
@@ -47,9 +42,9 @@ export function createWikiRememberSessionHandler(services: AppServices) {
             text: JSON.stringify({
               success: true,
               data: {
-                entry_id: entryId,
-                session_id: sessionId,
-                created_at: inferCreatedAtFromEntryId(entryId),
+                entry_id: result.entry_id,
+                session_id: common.sessionId,
+                created_at: result.created_at,
                 facts_count: result.facts_count,
               },
             }),
@@ -74,10 +69,4 @@ export function createWikiRememberSessionHandler(services: AppServices) {
       };
     }
   };
-}
-
-function inferCreatedAtFromEntryId(entryId: string): string | null {
-  const match = /^(\d{4}-\d{2}-\d{2})/.exec(entryId);
-  if (!match) return null;
-  return `${match[1]}T00:00:00.000Z`;
 }

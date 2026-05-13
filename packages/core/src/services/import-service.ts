@@ -127,6 +127,14 @@ export class ImportService {
       project: item.project,
       createdAt,
       idGenerator: () => this.idGen(item),
+      source: {
+        type: 'import',
+        uri: item.sourcePath,
+        digest: ImportService.stableHash(`${item.sourcePath}|${item.mtime}|${item.content}`),
+      },
+      processing: {
+        imported_at: this.now().toISOString(),
+      },
     });
   }
 

@@ -1,5 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FsFileStore, FsVerbatimStore } from '@ivkond-llm-wiki/infra';
@@ -93,6 +92,13 @@ describe('tools/call (integration)', () => {
       sessionId: 's1',
       project: 'proj',
       tags: ['a', 'b'],
+      sourceUri: undefined,
+      sourceDigest: undefined,
+      operationId: undefined,
+      modelProvider: undefined,
+      modelName: undefined,
+      callId: undefined,
+      toolCallId: undefined,
     });
     expect(parsePayload(body.result as ToolCallResult)).toEqual({
       success: true,
@@ -103,7 +109,13 @@ describe('tools/call (integration)', () => {
   it('test_toolCall_wiki_remember_session_dedupUsesServiceResult', async () => {
     const rememberSession = vi
       .fn()
-      .mockResolvedValue({ ok: true, file: 'log/a/raw/2026-05-08_s1.md', facts_count: 2 });
+      .mockResolvedValue({
+        ok: true,
+        file: 'log/a/raw/2026-05-08_s1.md',
+        entry_id: 'entry-123',
+        created_at: '2026-05-08T01:02:03.000Z',
+        facts_count: 2,
+      });
     handle = await startServer(
       makeServices({ remember: { rememberFact: vi.fn(), rememberSession } }),
       { host: '127.0.0.1', port: 0 },
@@ -121,13 +133,20 @@ describe('tools/call (integration)', () => {
       agent: 'claude',
       sessionId: 's1',
       project: 'proj',
+      sourceUri: undefined,
+      sourceDigest: undefined,
+      operationId: undefined,
+      modelProvider: undefined,
+      modelName: undefined,
+      callId: undefined,
+      toolCallId: undefined,
     });
     const payload = parsePayload(body.result as ToolCallResult);
     expect(payload.success).toBe(true);
     expect(payload.data).toEqual({
-      entry_id: '2026-05-08_s1.md',
+      entry_id: 'entry-123',
       session_id: 's1',
-      created_at: '2026-05-08T00:00:00.000Z',
+      created_at: '2026-05-08T01:02:03.000Z',
       facts_count: 2,
     });
   });
@@ -327,7 +346,9 @@ describe('tools/call smoke (real temp wiki)', () => {
     >;
     expect(secondData.entry_id).toBe(firstData.entry_id);
 
-    const saved = await readFile(`${root}/log/claude/raw/${String(firstData.entry_id)}`, 'utf8');
+    const files = await readdir(`${root}/log/claude/raw`);
+    expect(files).toHaveLength(1);
+    const saved = await readFile(`${root}/log/claude/raw/${files[0]}`, 'utf8');
     expect(saved).toContain('- one');
     expect(saved).not.toContain('- two');
   });
@@ -352,7 +373,13 @@ function makeServices(overrides: Partial<AppServices> = {}): AppServices {
         .mockResolvedValue({ ok: true, file: 'log/a/raw/f.md', entry_id: 'f.md' }),
       rememberSession: vi
         .fn()
-        .mockResolvedValue({ ok: true, file: 'log/a/raw/s.md', facts_count: 1 }),
+        .mockResolvedValue({
+          ok: true,
+          file: 'log/a/raw/s.md',
+          entry_id: 's',
+          created_at: '2026-05-01T00:00:00.000Z',
+          facts_count: 1,
+        }),
     },
     recall: {
       recall: vi

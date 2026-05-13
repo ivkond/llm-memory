@@ -49,6 +49,13 @@ export const wikiRememberFactShape = {
   sessionId: z.string().min(1).describe('Session identifier; facts from the same session coalesce'),
   project: z.string().optional().describe('Project name; defaults to cwd-derived project'),
   tags: z.array(z.string()).optional().describe('Optional list of free-form tags'),
+  source_uri: z.string().optional().describe('Optional source URI/path for provenance'),
+  source_digest: z.string().optional().describe('Optional source digest for provenance'),
+  operation_id: z.string().optional().describe('Optional operation ID for traceability'),
+  model_provider: z.string().optional().describe('Optional model provider'),
+  model_name: z.string().optional().describe('Optional model name'),
+  call_id: z.string().optional().describe('Optional model call identifier'),
+  tool_call_id: z.string().optional().describe('Optional tool call identifier'),
 };
 
 export const wikiRememberSessionShape = {
@@ -56,6 +63,13 @@ export const wikiRememberSessionShape = {
   agent: z.string().min(1).describe('Agent identifier'),
   sessionId: z.string().min(1).describe('Session identifier used as the dedup key'),
   project: z.string().optional().describe('Project name; defaults to cwd-derived project'),
+  source_uri: z.string().optional().describe('Optional source URI/path for provenance'),
+  source_digest: z.string().optional().describe('Optional source digest for provenance'),
+  operation_id: z.string().optional().describe('Optional operation ID for traceability'),
+  model_provider: z.string().optional().describe('Optional model provider'),
+  model_name: z.string().optional().describe('Optional model name'),
+  call_id: z.string().optional().describe('Optional model call identifier'),
+  tool_call_id: z.string().optional().describe('Optional tool call identifier'),
 };
 
 export const wikiIngestShape = {
