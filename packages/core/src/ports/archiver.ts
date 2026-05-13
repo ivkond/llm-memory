@@ -1,6 +1,12 @@
 export interface ArchiveEntry {
   /** Absolute path on disk of the source file to include in the archive. */
   sourcePath: string;
+  /**
+   * Logical repository-relative path (e.g. `log/<agent>/raw/<file>.md`) used
+   * by core services for grouping and policy decisions without relying on
+   * runtime-specific path separators.
+   */
+  logicalPath?: string;
 }
 
 export interface ArchiveResult {

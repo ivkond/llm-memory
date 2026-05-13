@@ -211,7 +211,6 @@ describe('LintService', () => {
   it('runs all phases, squashes, merges, stamps last_lint', async () => {
     const consolidatePaths = ['wiki/tools/postgresql.md'];
     const service = new LintService({
-      mainRepoRoot: '/main',
       mainFileStore: mainFs,
       mainVerbatimStore: vs,
       versionControl: vc,
@@ -220,6 +219,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      resolveArchivePath: (yearMonth, agent) => `/main/.archive/${yearMonth}-${agent}.7z`,
       makeConsolidatePhase: () => stubConsolidate(consolidatePaths),
       makePromotePhase: () => stubPromote(['wiki/patterns/x.md']),
       makeHealthPhase: () => stubHealth([]),
@@ -240,7 +240,6 @@ describe('LintService', () => {
 
   it('discards worktree and keeps state untouched when consolidate throws', async () => {
     const service = new LintService({
-      mainRepoRoot: '/main',
       mainFileStore: mainFs,
       mainVerbatimStore: vs,
       versionControl: vc,
@@ -249,6 +248,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      resolveArchivePath: (yearMonth, agent) => `/main/.archive/${yearMonth}-${agent}.7z`,
       makeConsolidatePhase: () => ({
         name: 'consolidate',
         async run() {
@@ -269,7 +269,6 @@ describe('LintService', () => {
   it('preserves worktree on GitConflictError and does NOT stamp state', async () => {
     vc.mergeResponse = new GitConflictError('/tmp/wt/lint-1');
     const service = new LintService({
-      mainRepoRoot: '/main',
       mainFileStore: mainFs,
       mainVerbatimStore: vs,
       versionControl: vc,
@@ -278,6 +277,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      resolveArchivePath: (yearMonth, agent) => `/main/.archive/${yearMonth}-${agent}.7z`,
       makeConsolidatePhase: () => stubConsolidate(['wiki/x.md']),
       makePromotePhase: () => stubPromote(),
       makeHealthPhase: () => stubHealth(),
@@ -295,7 +295,6 @@ describe('LintService', () => {
     const consolidateSpy = vi.fn();
     const promoteSpy = vi.fn();
     const service = new LintService({
-      mainRepoRoot: '/main',
       mainFileStore: mainFs,
       mainVerbatimStore: vs,
       versionControl: vc,
@@ -304,6 +303,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      resolveArchivePath: (yearMonth, agent) => `/main/.archive/${yearMonth}-${agent}.7z`,
       makeConsolidatePhase: () => ({
         name: 'consolidate',
         async run() {
@@ -331,7 +331,6 @@ describe('LintService', () => {
 
   it('rejects unsupported project scope before side effects', async () => {
     const service = new LintService({
-      mainRepoRoot: '/main',
       mainFileStore: mainFs,
       mainVerbatimStore: vs,
       versionControl: vc,
@@ -340,6 +339,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      resolveArchivePath: (yearMonth, agent) => `/main/.archive/${yearMonth}-${agent}.7z`,
       makeConsolidatePhase: () => stubConsolidate(),
       makePromotePhase: () => stubPromote(),
       makeHealthPhase: () => stubHealth(),
@@ -361,14 +361,19 @@ describe('LintService', () => {
           consolidatedCount: 2,
           touchedPaths: ['wiki/x.md'],
           archivedEntries: [
-            { sourcePath: '/main/log/claude-code/raw/2026-04-09-sessA-uuid1.md' },
-            { sourcePath: '/main/log/claude-code/raw/2026-04-09-sessB-uuid2.md' },
+            {
+              sourcePath: '/main/log/claude-code/raw/2026-04-09-sessA-uuid1.md',
+              logicalPath: 'log/claude-code/raw/2026-04-09-sessA-uuid1.md',
+            },
+            {
+              sourcePath: '/main/log/claude-code/raw/2026-04-09-sessB-uuid2.md',
+              logicalPath: 'log/claude-code/raw/2026-04-09-sessB-uuid2.md',
+            },
           ],
         };
       },
     };
     const service = new LintService({
-      mainRepoRoot: '/main',
       mainFileStore: mainFs,
       mainVerbatimStore: vs,
       versionControl: vc,
@@ -377,6 +382,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      resolveArchivePath: (yearMonth, agent) => `/main/.archive/${yearMonth}-${agent}.7z`,
       makeConsolidatePhase: () => phase,
       makePromotePhase: () => stubPromote(),
       makeHealthPhase: () => stubHealth(),
@@ -388,6 +394,39 @@ describe('LintService', () => {
     expect(archiver.calls).toHaveLength(1);
     expect(archiver.calls[0].entries).toHaveLength(2);
     expect(archiver.calls[0].path).toBe('/main/.archive/2026-04-claude-code.7z');
+  });
+
+  it('groups archival entries from Windows-style source paths without path module', async () => {
+    const phase: LintPhase<'consolidate'> = {
+      name: 'consolidate',
+      async run() {
+        return {
+          consolidatedCount: 1,
+          touchedPaths: ['wiki/x.md'],
+          archivedEntries: [{ sourcePath: 'C:\\repo\\log\\agent-a\\raw\\2026-04-09-sessA-1.md' }],
+        };
+      },
+    };
+    const service = new LintService({
+      mainFileStore: mainFs,
+      mainVerbatimStore: vs,
+      versionControl: vc,
+      searchEngine,
+      fileStoreFactory: fsFactory,
+      verbatimStoreFactory: () => vs,
+      stateStore: state,
+      archiver,
+      resolveArchivePath: (yearMonth, agent) => `/main/.archive/${yearMonth}-${agent}.7z`,
+      makeConsolidatePhase: () => phase,
+      makePromotePhase: () => stubPromote(),
+      makeHealthPhase: () => stubHealth(),
+      now: () => new Date('2026-04-10T12:00:00Z'),
+    });
+
+    await service.lint({});
+
+    expect(archiver.calls).toHaveLength(1);
+    expect(archiver.calls[0].path).toBe('/main/.archive/2026-04-agent-a.7z');
   });
 
   it('reindexes wiki + projects pages touched by lint, skipping log wildcard', async () => {
@@ -417,7 +456,6 @@ describe('LintService', () => {
     };
 
     const service = new LintService({
-      mainRepoRoot: '/main',
       mainFileStore: mainFs,
       mainVerbatimStore: vs,
       versionControl: vc,
@@ -426,6 +464,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      resolveArchivePath: (yearMonth, agent) => `/main/.archive/${yearMonth}-${agent}.7z`,
       makeConsolidatePhase: () => stubConsolidate(['wiki/tools/postgresql.md']),
       makePromotePhase: () => stubPromote(['wiki/patterns/no-db-mocking.md']),
       makeHealthPhase: () => stubHealth(),
@@ -441,7 +480,6 @@ describe('LintService', () => {
 
   it('does NOT reindex when no file writes happened (health-only run)', async () => {
     const service = new LintService({
-      mainRepoRoot: '/main',
       mainFileStore: mainFs,
       mainVerbatimStore: vs,
       versionControl: vc,
@@ -450,6 +488,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      resolveArchivePath: (yearMonth, agent) => `/main/.archive/${yearMonth}-${agent}.7z`,
       makeConsolidatePhase: () => stubConsolidate(),
       makePromotePhase: () => stubPromote(),
       makeHealthPhase: () => stubHealth([]),

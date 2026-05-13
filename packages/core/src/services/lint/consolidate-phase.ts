@@ -85,6 +85,7 @@ export class ConsolidatePhase {
     const archivedEntries: ArchiveEntry[] | undefined = this.mainRepoRoot
       ? batch.map((entry) => ({
           sourcePath: `${this.mainRepoRoot}/${entry.filePath}`,
+          logicalPath: entry.filePath,
         }))
       : undefined;
 

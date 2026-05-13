@@ -1,4 +1,3 @@
-import path from 'node:path';
 import { GitConflictError, ProjectScopeUnsupportedError } from '../domain/errors.js';
 import { LintReport } from '../domain/lint-report.js';
 import type { IFileStore, FileStoreFactory } from '../ports/file-store.js';
@@ -45,7 +44,6 @@ export interface LintRequest {
 export type VerbatimStoreFactory = (fileStore: IFileStore) => IVerbatimStore;
 
 export interface LintServiceDeps {
-  mainRepoRoot: string;
   mainFileStore: IFileStore;
   mainVerbatimStore: IVerbatimStore;
   versionControl: IVersionControl;
@@ -54,6 +52,7 @@ export interface LintServiceDeps {
   verbatimStoreFactory: VerbatimStoreFactory;
   stateStore: IStateStore;
   archiver: IArchiver;
+  resolveArchivePath: (yearMonth: string, agent: string) => string;
   makeConsolidatePhase: (fs: IFileStore, vs: IVerbatimStore) => LintPhase<'consolidate'>;
   makePromotePhase: (fs: IFileStore) => LintPhase<'promote'>;
   makeHealthPhase: (fs: IFileStore) => LintPhase<'health'>;
@@ -194,7 +193,9 @@ export class LintService {
     const archived = consolidateResult?.archivedEntries;
     if (!archived || archived.length === 0) return;
     const grouped = this.groupByMonthAndAgent(archived);
-    for (const [archivePath, entries] of grouped) {
+    for (const [archiveKey, entries] of grouped) {
+      const [yearMonth, agent] = archiveKey.split('|');
+      const archivePath = this.deps.resolveArchivePath(yearMonth, agent);
       await this.deps.archiver.createArchive(archivePath, entries);
     }
   }
@@ -202,8 +203,8 @@ export class LintService {
   private groupByMonthAndAgent(entries: ArchiveEntry[]): Map<string, ArchiveEntry[]> {
     const groups = new Map<string, ArchiveEntry[]>();
     for (const entry of entries) {
-      const normalised = entry.sourcePath.split(path.sep).join('/');
-      const segments = normalised.split('/');
+      const logicalPath = entry.logicalPath ?? entry.sourcePath.replaceAll('\\', '/');
+      const segments = logicalPath.split('/');
       const logIdx = segments.lastIndexOf('log');
       if (logIdx === -1 || segments.length < logIdx + 4) continue;
       const agent = segments[logIdx + 1];
@@ -211,10 +212,10 @@ export class LintService {
       const filename = segments[logIdx + 3] ?? '';
       if (raw !== 'raw') continue;
       const yearMonth = filename.slice(0, 7);
-      const archivePath = `${this.deps.mainRepoRoot}/.archive/${yearMonth}-${agent}.7z`;
-      const bucket = groups.get(archivePath) ?? [];
+      const groupKey = `${yearMonth}|${agent}`;
+      const bucket = groups.get(groupKey) ?? [];
       bucket.push(entry);
-      groups.set(archivePath, bucket);
+      groups.set(groupKey, bucket);
     }
     return groups;
   }
