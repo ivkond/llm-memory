@@ -94,7 +94,9 @@ export class IndexConsistencyReport {
     );
   }
 
-  static deriveStatus(findings: readonly IndexConsistencyFindingData[]): IndexConsistencyStatusValue {
+  static deriveStatus(
+    findings: readonly IndexConsistencyFindingData[],
+  ): IndexConsistencyStatusValue {
     if (findings.length === 0) return IndexConsistencyStatus.Consistent;
     const hasOperationalIssue = findings.some(
       (finding) =>

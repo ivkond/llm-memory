@@ -8,9 +8,7 @@ import {
   type IndexConsistencyFindingData,
 } from '../../src/domain/index-consistency-report.js';
 
-function finding(
-  overrides: Partial<IndexConsistencyFindingData>,
-): IndexConsistencyFindingData {
+function finding(overrides: Partial<IndexConsistencyFindingData>): IndexConsistencyFindingData {
   return {
     type: IndexConsistencyFindingType.RuntimeStateInfo,
     severity: IndexConsistencySeverity.Info,
