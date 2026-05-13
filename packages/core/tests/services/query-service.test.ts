@@ -357,4 +357,62 @@ describe('QueryService', () => {
     expect(response.citations[0].page).toBe('wiki/fresh.md');
     expect(response.citations[0].freshness_status).toBe('fresh');
   });
+
+  it('test_query_excludeStale_allCandidatesStale_throwsSearchEmpty', async () => {
+    searchEngine.documents = [
+      new SearchResult('wiki/stale-a.md', 'StaleA', 'stale body', 0.99, 'hybrid', { confidence: 0.2 }),
+      new SearchResult('wiki/stale-b.md', 'StaleB', 'stale body', 0.95, 'hybrid', { confidence: 0.3 }),
+    ];
+
+    await expect(
+      service.query({ question: 'q', stalenessMode: 'exclude_stale', includeStale: false }),
+    ).rejects.toBeInstanceOf(SearchEmptyError);
+  });
+
+  it('test_query_missingSearchMetadata_hydratesFromPageFrontmatter', async () => {
+    fileStore.files['wiki/legacy.md'] = makePage(
+      'wiki/legacy.md',
+      'Legacy',
+      'legacy body',
+      '2026-04-10T00:00:00Z',
+      0.2,
+      null,
+    );
+    searchEngine.documents = [
+      new SearchResult('wiki/legacy.md', 'Legacy', 'legacy body', 0.99, 'hybrid', {}),
+    ];
+
+    const response = await service.query({ question: 'q' });
+    expect(response.citations[0].confidence).toBe(0.2);
+    expect(response.citations[0].freshness_status).toBe('low_confidence');
+    expect(response.citations[0].freshness_reasons).toContain('low_confidence');
+  });
+
+  it('test_query_supersedesRelativePath_resolvesAgainstPageDirectory', async () => {
+    fileStore.files['wiki/patterns/new.md'] = makePage(
+      'wiki/patterns/new.md',
+      'New',
+      'new body',
+      '2026-04-10T00:00:00Z',
+      0.9,
+      'old.md',
+    );
+    fileStore.files['wiki/patterns/old.md'] = makePage(
+      'wiki/patterns/old.md',
+      'Old',
+      'old body',
+      '2026-04-09T00:00:00Z',
+      0.9,
+      null,
+    );
+    searchEngine.documents = [
+      new SearchResult('wiki/patterns/old.md', 'Old', 'old body', 0.99, 'hybrid', { confidence: 0.9 }),
+      new SearchResult('wiki/patterns/new.md', 'New', 'new body', 0.9, 'hybrid', { confidence: 0.9 }),
+    ];
+
+    const response = await service.query({ question: 'q' });
+    expect(response.citations[0].page).toBe('wiki/patterns/new.md');
+    expect(response.citations[1].freshness_status).toBe('superseded');
+    expect(response.citations[1].superseded_by).toBe('wiki/patterns/new.md');
+  });
 });

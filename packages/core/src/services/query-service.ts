@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { SearchResult } from '../domain/search-result.js';
 import type { FreshnessStatus } from '../domain/search-result.js';
 import { SearchEmptyError } from '../domain/errors.js';
@@ -99,7 +100,11 @@ export class QueryService {
       throw new SearchEmptyError(req.question);
     }
 
-    const filtered = await this.applyStalenessPolicy(results, req, scopeUsed);
+    const hydrated = await this.hydrateResultMetadata(results);
+    const filtered = await this.applyStalenessPolicy(hydrated, req, scopeUsed);
+    if (filtered.length === 0) {
+      throw new SearchEmptyError(req.question);
+    }
     const topForResponse = filtered.slice(0, CITATION_CAP);
     const citations: Citation[] = topForResponse.map((r) => ({
       page: r.path,
@@ -228,12 +233,11 @@ export class QueryService {
     });
 
     if (mode === 'exclude_stale' && !includeStale) {
-      const filtered = classified.filter(
+      return classified.filter(
         (r) =>
           r.metadata.freshness_status !== 'superseded' &&
           r.metadata.freshness_status !== 'low_confidence',
       );
-      if (filtered.length > 0) return filtered;
     }
 
     return [...classified].sort((a, b) => {
@@ -263,14 +267,55 @@ export class QueryService {
         if (!data) continue;
         const page = WikiPage.fromParsedData(file.path, data);
         if (!page.supersedes) continue;
-        map.set(this.normalizePath(page.supersedes), page.path);
+        map.set(this.resolveSupersedesPath(page.path, page.supersedes), page.path);
       }
     }
     return map;
   }
 
+  private async hydrateResultMetadata(results: SearchResult[]): Promise<SearchResult[]> {
+    const hydrated: SearchResult[] = [];
+    for (const result of results) {
+      if (
+        result.metadata.updated &&
+        typeof result.metadata.confidence === 'number' &&
+        result.metadata.supersedes !== undefined
+      ) {
+        hydrated.push(result);
+        continue;
+      }
+      const data = await this.fileStore.readWikiPage(result.path);
+      if (!data) {
+        hydrated.push(result);
+        continue;
+      }
+      const page = WikiPage.fromParsedData(result.path, data);
+      hydrated.push(
+        new SearchResult(result.path, result.title, result.excerpt, result.score, result.source, {
+          ...result.metadata,
+          updated: result.metadata.updated ?? page.updated,
+          confidence:
+            typeof result.metadata.confidence === 'number'
+              ? result.metadata.confidence
+              : page.confidence,
+          supersedes: result.metadata.supersedes ?? page.supersedes,
+        }),
+      );
+    }
+    return hydrated;
+  }
+
+  private resolveSupersedesPath(currentPagePath: string, supersedes: string): string {
+    const normalized = this.normalizePath(supersedes);
+    if (normalized.startsWith('wiki/') || normalized.startsWith('projects/')) {
+      return normalized;
+    }
+    const currentDir = path.posix.dirname(this.normalizePath(currentPagePath));
+    return this.normalizePath(path.posix.join(currentDir, normalized));
+  }
+
   private normalizePath(pathLike: string): string {
-    return pathLike.trim().replace(/^\.\//, '').replace(/\/+/g, '/');
+    return pathLike.trim().replace(/^\.\//, '').replace(/^\/+/, '').replace(/\/+/g, '/');
   }
 
   private buildPrompt(question: string, results: SearchResult[]): string {

@@ -66,6 +66,13 @@ export const searchCommand = new Command()
       if (verbose) console.log(`Query: ${query}`);
 
       try {
+        const stalenessMode = options.stalenessMode ?? 'prefer_fresh';
+        if (stalenessMode !== 'prefer_fresh' && stalenessMode !== 'exclude_stale') {
+          throw new Error(
+            `Invalid --staleness-mode '${stalenessMode}'. Use 'prefer_fresh' or 'exclude_stale'.`,
+          );
+        }
+
         // Load config and build services
         const configLoader = new ConfigLoader(wikiPath);
         const config = await configLoader.load();
@@ -76,8 +83,7 @@ export const searchCommand = new Command()
           question: query,
           maxResults: limit,
           includeStale: options.includeStale ?? false,
-          stalenessMode:
-            options.stalenessMode === 'exclude_stale' ? ('exclude_stale' as const) : 'prefer_fresh',
+          stalenessMode,
         };
         const result = await services.query.query(request);
 

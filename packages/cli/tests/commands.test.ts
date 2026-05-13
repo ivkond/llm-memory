@@ -357,6 +357,36 @@ describe('CLI command coverage', () => {
     expect(tap.stdout[0]).toContain('"citations"');
   });
 
+  it('search: exits on invalid staleness mode', async () => {
+    const wikiPath = await mkdtemp(path.join(tmpdir(), 'cli-search-mode-wiki-'));
+    await writeWikiConfig(wikiPath);
+    const query = vi.fn();
+    const buildContainer = vi.fn(() => ({ query: { query } }));
+
+    vi.doMock('@ivkond-llm-wiki/common', () => ({
+      buildContainer,
+    }));
+
+    const tap = tapConsole();
+    const restoreExit = mockExit();
+
+    await expect(
+      runCommand('../src/commands/search.ts', 'searchCommand', [
+        'testing',
+        '--wiki',
+        wikiPath,
+        '--staleness-mode',
+        'exclude-stale',
+      ]),
+    ).rejects.toMatchObject({ code: 1 });
+
+    restoreExit();
+    tap.restore();
+
+    expect(query).not.toHaveBeenCalled();
+    expect(tap.stderr.join('\n')).toContain('Invalid --staleness-mode');
+  });
+
   it('status: prints health and verbose details from config and service', async () => {
     const wikiPath = await mkdtemp(path.join(tmpdir(), 'cli-status-wiki-'));
     await writeWikiConfig(wikiPath);
