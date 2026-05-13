@@ -125,7 +125,10 @@ export class YamlIdempotencyStore implements IIdempotencyStore {
   }
 
   private async withProcessFileLock<T>(run: () => Promise<T>): Promise<T> {
-    const lockPath = this.lockFilePath!;
+    const lockPath = this.lockFilePath;
+    if (!lockPath) {
+      throw new Error('lock file path is not configured');
+    }
     await mkdir(path.dirname(lockPath), { recursive: true });
 
     const start = Date.now();
@@ -144,7 +147,7 @@ export class YamlIdempotencyStore implements IIdempotencyStore {
           typeof error === 'object' && error !== null && 'code' in error && (error as { code?: string }).code === 'EEXIST';
         if (!isExists) throw error;
         if (Date.now() - start >= LOCK_TIMEOUT_MS) {
-          throw new Error(`Idempotency lock timeout after ${LOCK_TIMEOUT_MS}ms`);
+          throw new Error(`Idempotency lock timeout after ${LOCK_TIMEOUT_MS}ms`, { cause: error });
         }
         await sleep(LOCK_RETRY_MS);
       }
@@ -174,9 +177,9 @@ export class YamlIdempotencyStore implements IIdempotencyStore {
       } catch {
         return null;
       }
-      return await readFile(this.idempotencyFilePath, 'utf8');
+      return readFile(this.idempotencyFilePath, 'utf8');
     }
-    return await this.fileStore.readFile(IDEMPOTENCY_PATH);
+    return this.fileStore.readFile(IDEMPOTENCY_PATH);
   }
 
   private parseRecord(rawRecord: unknown): IdempotencyRecord | null {
@@ -195,7 +198,7 @@ export class YamlIdempotencyStore implements IIdempotencyStore {
       operation: record.operation as IdempotencyOperation,
       key: record.key,
       fingerprint: record.fingerprint,
-      status: record.status as 'in_progress' | 'completed',
+      status: record.status,
       response: record.response,
       startedAt: record.startedAt,
       completedAt: typeof record.completedAt === 'string' ? record.completedAt : undefined,
