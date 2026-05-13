@@ -152,4 +152,32 @@ describe('VerbatimEntry', () => {
     expect(entry.filename).toBe('2025-11-30-sess-deadbeef.md');
     expect(entry.created).toBe('2025-11-30T08:15:30.000Z');
   });
+
+  it('stores RM-0005 metadata plus import-specific fields', () => {
+    const entry = VerbatimEntry.create({
+      content: 'imported fact',
+      agent: 'claude-code',
+      sessionId: 'sess',
+      entryId: 'entry_1',
+      source: {
+        type: 'import',
+        uri: '/tmp/source.md',
+        digest: 'sha256:abc',
+      },
+      operationId: 'op_123',
+      processing: {
+        imported_at: '2026-04-10T12:00:00.000Z',
+      },
+    });
+
+    const data = entry.toData();
+    expect(data.entry_id).toBe('entry_1');
+    expect(data.source?.type).toBe('import');
+    expect(data.source?.uri).toBe('/tmp/source.md');
+    expect(data.source?.digest).toBe('sha256:abc');
+    expect(data.operation_id).toBe('op_123');
+    expect(data.processing?.created_at).toBeDefined();
+    expect(data.processing?.imported_at).toBe('2026-04-10T12:00:00.000Z');
+    expect(data.consolidated).toBe(false);
+  });
 });

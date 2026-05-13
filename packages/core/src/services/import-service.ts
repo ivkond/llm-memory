@@ -41,8 +41,7 @@ export class ImportService {
 
   constructor(private readonly deps: ImportServiceDeps) {
     this.now = deps.now ?? (() => new Date());
-    this.idGen =
-      deps.idGenerator ?? ((item) => ImportService.stableHash(`${item.sourcePath}|${item.mtime}`));
+    this.idGen = deps.idGenerator ?? ((item) => this.stableIdentity(item));
   }
 
   async importAll(req: ImportRequest): Promise<ImportResponse> {
@@ -90,7 +89,17 @@ export class ImportService {
       let imported = 0;
       let skipped = 0;
       for (const item of items) {
-        const entry = this.toVerbatim(item);
+        let entry: VerbatimEntry;
+        try {
+          entry = this.toVerbatim(item);
+        } catch {
+          skipped++;
+          continue;
+        }
+        if (!this.isAllowedImportFilePath(entry.filePath, item.agent)) {
+          skipped++;
+          continue;
+        }
         const existing = await this.deps.verbatimStore.readEntry(entry.filePath);
         if (existing !== null) {
           skipped++;
@@ -119,7 +128,10 @@ export class ImportService {
   }
 
   private toVerbatim(item: AgentMemoryItem): VerbatimEntry {
-    const createdAt = new Date(item.mtime);
+    const createdAt = item.mtime ? new Date(item.mtime) : this.now();
+    const digest =
+      item.sourceDigest ??
+      ImportService.stableHash(`${item.sourceUri}|${item.mtime ?? ''}|${item.content}`);
     return VerbatimEntry.create({
       content: item.content,
       agent: item.agent,
@@ -129,13 +141,28 @@ export class ImportService {
       idGenerator: () => this.idGen(item),
       source: {
         type: 'import',
-        uri: item.sourcePath,
-        digest: ImportService.stableHash(`${item.sourcePath}|${item.mtime}|${item.content}`),
+        uri: item.sourceUri,
+        digest,
       },
       processing: {
         imported_at: this.now().toISOString(),
       },
     });
+  }
+
+  private stableIdentity(item: AgentMemoryItem): string {
+    if (item.sourceDigest) {
+      return ImportService.stableHash(`${item.sourceUri}|${item.sourceDigest}`);
+    }
+    return ImportService.stableHash(`${item.sourceUri}|${item.mtime ?? ''}`);
+  }
+
+  private isAllowedImportFilePath(filePath: string, agent: string): boolean {
+    const expectedPrefix = `log/${agent}/raw/`;
+    if (!filePath.startsWith(expectedPrefix)) return false;
+    if (filePath.includes('/../') || filePath.includes('\\')) return false;
+    if (filePath.startsWith('wiki/') || filePath.startsWith('projects/')) return false;
+    return true;
   }
 
   private static stableHash(input: string): string {
