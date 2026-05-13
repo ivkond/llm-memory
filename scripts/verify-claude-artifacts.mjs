@@ -10,6 +10,32 @@ const FORBIDDEN_ARTIFACTS = [
 
 const FORBIDDEN_ARTIFACT_PREFIXES = ['.claude/hooks/'];
 const SKILL_PACKAGE_PATH = path.join('packages', 'skill', 'llm-memory', 'package.json');
+const RELEASE_WORKFLOW_PATH = path.join('.github', 'workflows', 'release.yml');
+
+function parsePackLoopPackages(workflowContent) {
+  const match = workflowContent.match(/for\s+pkg\s+in\s+([^;]+);/);
+  if (!match) {
+    return [];
+  }
+
+  return match[1].trim().split(/\s+/).filter(Boolean);
+}
+
+function releaseWorkflowIncludesSkill(workflowContent) {
+  const packPackages = parsePackLoopPackages(workflowContent);
+  if (packPackages.includes('skill') || packPackages.includes('llm-memory')) {
+    return true;
+  }
+
+  const publishPackagePaths = workflowContent.match(/publish_package\s+([^\s]+)/g) ?? [];
+  for (const publishCall of publishPackagePaths) {
+    if (publishCall.includes('packages/skill/llm-memory')) {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 async function pathExists(filePath) {
   try {
@@ -23,6 +49,11 @@ async function pathExists(filePath) {
 async function loadSkillPackage(rootDir) {
   const packageJsonPath = path.join(rootDir, SKILL_PACKAGE_PATH);
   return JSON.parse(await readFile(packageJsonPath, 'utf8'));
+}
+
+async function loadReleaseWorkflow(rootDir) {
+  const workflowPath = path.join(rootDir, RELEASE_WORKFLOW_PATH);
+  return readFile(workflowPath, 'utf8');
 }
 
 export async function verifyClaudeArtifacts(rootDir, options = {}) {
@@ -45,6 +76,13 @@ export async function verifyClaudeArtifacts(rootDir, options = {}) {
   const skillPackage = await loadSkillPackage(rootDir);
   if (skillPackage.private !== true) {
     throw new Error(`${SKILL_PACKAGE_PATH} must remain private: true`);
+  }
+
+  const releaseWorkflow = await loadReleaseWorkflow(rootDir);
+  if (releaseWorkflowIncludesSkill(releaseWorkflow)) {
+    throw new Error(
+      `${RELEASE_WORKFLOW_PATH} must not include packages/skill/llm-memory in release pack/publish targets`,
+    );
   }
 }
 

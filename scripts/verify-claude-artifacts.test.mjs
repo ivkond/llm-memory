@@ -18,6 +18,26 @@ async function createFixtureRoot() {
     version: '0.0.0',
     private: true,
   });
+  const releaseWorkflowPath = path.join(rootDir, '.github', 'workflows', 'release.yml');
+  await mkdir(path.dirname(releaseWorkflowPath), { recursive: true });
+  await writeFile(
+    releaseWorkflowPath,
+    [
+      'jobs:',
+      '  release:',
+      '    steps:',
+      '      - name: Pack dry-run',
+      '        run: |',
+      '          for pkg in core infra common cli mcp-server; do',
+      '            echo "${pkg}"',
+      '          done',
+      '      - name: Publish npm packages',
+      '        run: |',
+      '          publish_package packages/cli',
+      '          publish_package packages/mcp-server',
+      '',
+    ].join('\n'),
+  );
   return rootDir;
 }
 
@@ -66,5 +86,28 @@ test('test_verifyClaudeArtifacts_whenSkillPackageNotPrivate_rejects', async () =
   await assert.rejects(
     () => verifyClaudeArtifacts(rootDir),
     /packages\/skill\/llm-memory\/package\.json must remain private: true/,
+  );
+});
+
+test('test_verifyClaudeArtifacts_whenReleaseWorkflowIncludesSkill_rejects', async () => {
+  const rootDir = await createFixtureRoot();
+  const releaseWorkflowPath = path.join(rootDir, '.github', 'workflows', 'release.yml');
+  await writeFile(
+    releaseWorkflowPath,
+    [
+      'jobs:',
+      '  release:',
+      '    steps:',
+      '      - name: Publish npm packages',
+      '        run: |',
+      '          publish_package packages/cli',
+      '          publish_package packages/skill/llm-memory',
+      '',
+    ].join('\n'),
+  );
+
+  await assert.rejects(
+    () => verifyClaudeArtifacts(rootDir),
+    /\.github\/workflows\/release\.yml must not include packages\/skill\/llm-memory in release pack\/publish targets/,
   );
 });
