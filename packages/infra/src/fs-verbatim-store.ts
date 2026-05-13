@@ -87,6 +87,9 @@ export class FsVerbatimStore implements IVerbatimStore {
               digest: (parsed.data.source as Record<string, unknown>).digest
                 ? String((parsed.data.source as Record<string, unknown>).digest)
                 : undefined,
+              adapter: (parsed.data.source as Record<string, unknown>).adapter
+                ? String((parsed.data.source as Record<string, unknown>).adapter)
+                : undefined,
             }
           : undefined,
       model:

@@ -122,6 +122,35 @@ describe('FsVerbatimStore.readEntry', () => {
     }
   });
 
+  it('roundtrips source.adapter through filesystem store', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'vs-read-'));
+    try {
+      const store = new FsVerbatimStore(new FsFileStore(root));
+      const entry = VerbatimEntry.create({
+        content: 'imported fact',
+        agent: 'claude-code',
+        sessionId: 'sess-adapter',
+        idGenerator: () => 'uuid-adapter',
+        source: {
+          type: 'import',
+          uri: '/tmp/source.md',
+          digest: 'digest-1',
+          adapter: 'claude-code',
+        },
+      });
+      await store.writeEntry(entry);
+
+      const roundtrip = await store.readEntry(entry.filePath);
+      expect(roundtrip).not.toBeNull();
+      expect(roundtrip!.source.type).toBe('import');
+      expect(roundtrip!.source.uri).toBe('/tmp/source.md');
+      expect(roundtrip!.source.digest).toBe('digest-1');
+      expect(roundtrip!.source.adapter).toBe('claude-code');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('synthesizes metadata for legacy records without entry_id and processing', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'vs-read-'));
     try {
