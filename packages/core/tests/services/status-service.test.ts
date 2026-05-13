@@ -45,6 +45,20 @@ class FakeVerbatimStore implements IVerbatimStore {
   async countUnconsolidated(): Promise<number> {
     return this.unconsolidated;
   }
+  async listByProcessingStatus(): Promise<FileInfo[]> {
+    return [];
+  }
+  async countByProcessingStatus(): Promise<number> {
+    return 0;
+  }
+  async listAgents(): Promise<string[]> {
+    return [];
+  }
+  async readEntry() {
+    return null;
+  }
+  async markConsolidated(): Promise<void> {}
+  async markProcessingStatus(): Promise<void> {}
 }
 
 class FakeSearchEngine implements ISearchEngine {

@@ -1,4 +1,35 @@
-import { InvalidIdentifierError } from './errors.js';
+import { InvalidIdentifierError, InvalidProcessingStatusError } from './errors.js';
+
+export const PROCESSING_STATUSES = [
+  'new',
+  'seen',
+  'consolidated',
+  'ignored_low_signal',
+  'requires_review',
+  'failed',
+] as const;
+
+export type ProcessingStatus = (typeof PROCESSING_STATUSES)[number];
+
+const PENDING_PROCESSING_STATUSES: ProcessingStatus[] = [
+  'new',
+  'seen',
+  'requires_review',
+  'failed',
+];
+
+export function isProcessingStatus(value: unknown): value is ProcessingStatus {
+  return typeof value === 'string' && PROCESSING_STATUSES.includes(value as ProcessingStatus);
+}
+
+export function parseProcessingStatus(value: unknown): ProcessingStatus {
+  if (isProcessingStatus(value)) return value;
+  throw new InvalidProcessingStatusError(String(value));
+}
+
+export function isPendingProcessingStatus(status: ProcessingStatus): boolean {
+  return PENDING_PROCESSING_STATUSES.includes(status);
+}
 
 export interface CreateVerbatimEntryOptions {
   content: string;
@@ -51,6 +82,7 @@ export interface VerbatimEntryData {
   model?: VerbatimModelMetadata;
   operation_id?: string;
   processing?: VerbatimProcessingMetadata;
+  processingStatus?: ProcessingStatus;
   consolidated: boolean;
   created: string;
   content: string;
@@ -88,6 +120,7 @@ export class VerbatimEntry {
     public readonly model: VerbatimModelMetadata | undefined,
     public readonly operationId: string | undefined,
     public readonly processing: VerbatimProcessingMetadata,
+    public readonly processingStatus: ProcessingStatus,
     public readonly consolidated: boolean,
     public readonly created: string,
     public readonly content: string,
@@ -120,6 +153,7 @@ export class VerbatimEntry {
       opts.model,
       opts.operationId,
       processing,
+      'new',
       false,
       now.toISOString(),
       opts.content,
@@ -133,6 +167,7 @@ export class VerbatimEntry {
     const entryId = data.entry_id ?? fallbackEntryId;
     assertEntryId(entryId);
     const created = data.created || data.processing?.created_at || new Date().toISOString();
+    const processingStatus = data.processingStatus ?? (data.consolidated ? 'consolidated' : 'new');
     const processing: VerbatimProcessingMetadata = {
       created_at: created,
       ...(data.processing ?? {}),
@@ -150,10 +185,19 @@ export class VerbatimEntry {
       data.model,
       data.operation_id,
       processing,
-      data.consolidated ?? false,
+      processingStatus,
+      processingStatus === 'consolidated',
       created,
       data.content.trim(),
     );
+  }
+
+  static fromParsedFrontmatterStatus(data: {
+    processingStatus?: unknown;
+    consolidated?: unknown;
+  }): ProcessingStatus {
+    if (data.processingStatus !== undefined) return parseProcessingStatus(data.processingStatus);
+    return data.consolidated === true ? 'consolidated' : 'new';
   }
 
   get filePath(): string {
@@ -171,7 +215,8 @@ export class VerbatimEntry {
       model: this.model,
       operation_id: this.operationId,
       processing: this.processing,
-      consolidated: this.consolidated,
+      processingStatus: this.processingStatus,
+      consolidated: this.processingStatus === 'consolidated',
       created: this.processing.created_at,
       content: this.content,
     };

@@ -21,14 +21,17 @@ function createMocks() {
     writeEntry: vi.fn(async (entry: any) => {
       files.set(
         entry.filePath,
-        `---\nsession: ${entry.sessionId}\nagent: ${entry.agent}\nconsolidated: false\n---\n${entry.content}`,
+        `---\nsession: ${entry.sessionId}\nagent: ${entry.agent}\nprocessing_status: new\nconsolidated: false\n---\n${entry.content}`,
       );
     }),
     listUnconsolidated: vi.fn(async () => []),
     countUnconsolidated: vi.fn(async () => 0),
+    listByProcessingStatus: vi.fn(async () => []),
+    countByProcessingStatus: vi.fn(async () => 0),
     listAgents: vi.fn(async () => []),
     readEntry: vi.fn(async () => null),
     markConsolidated: vi.fn(async () => undefined),
+    markProcessingStatus: vi.fn(async () => undefined),
   };
 
   return { fileStore, verbatimStore, files };

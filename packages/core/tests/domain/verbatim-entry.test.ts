@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { VerbatimEntry } from '../../src/domain/verbatim-entry.js';
-import { InvalidIdentifierError } from '../../src/domain/errors.js';
+import {
+  isPendingProcessingStatus,
+  isProcessingStatus,
+  parseProcessingStatus,
+  VerbatimEntry,
+} from '../../src/domain/verbatim-entry.js';
+import { InvalidIdentifierError, InvalidProcessingStatusError } from '../../src/domain/errors.js';
 
 describe('VerbatimEntry', () => {
   it('test_create_withRequiredFields_generatesUniqueFilename', () => {
@@ -14,6 +19,7 @@ describe('VerbatimEntry', () => {
     expect(entry.agent).toBe('claude-code');
     expect(entry.project).toBe('cli-relay');
     expect(entry.sessionId).toBe('abc123');
+    expect(entry.processingStatus).toBe('new');
     expect(entry.consolidated).toBe(false);
     expect(entry.content).toContain('pgx pool MaxConns');
     expect(entry.filename).toMatch(/^\d{4}-\d{2}-\d{2}-abc123-[a-f0-9]+\.md$/);
@@ -42,6 +48,7 @@ describe('VerbatimEntry', () => {
     expect(data.session).toBe('abc123');
     expect(data.project).toBe('cli-relay');
     expect(data.agent).toBe('claude-code');
+    expect(data.processingStatus).toBe('new');
     expect(data.consolidated).toBe(false);
     expect(data.content).toContain('- Test fact');
     expect(data.content).toContain('- Another fact');
@@ -58,6 +65,7 @@ describe('VerbatimEntry', () => {
 
     expect(parsed.agent).toBe('cursor');
     expect(parsed.sessionId).toBe('xyz');
+    expect(parsed.processingStatus).toBe('new');
     expect(parsed.consolidated).toBe(false);
     expect(parsed.content).toContain('Fact here');
   });
@@ -151,5 +159,48 @@ describe('VerbatimEntry', () => {
     });
     expect(entry.filename).toBe('2025-11-30-sess-deadbeef.md');
     expect(entry.created).toBe('2025-11-30T08:15:30.000Z');
+  });
+
+  it('maps legacy consolidated true to consolidated status', () => {
+    const entry = VerbatimEntry.fromParsedData('x.md', {
+      session: 'abc',
+      agent: 'claude-code',
+      consolidated: true,
+      created: '2026-01-01T00:00:00.000Z',
+      content: 'fact',
+    });
+    expect(entry.processingStatus).toBe('consolidated');
+    expect(entry.consolidated).toBe(true);
+  });
+
+  it('maps legacy consolidated false to new status', () => {
+    const entry = VerbatimEntry.fromParsedData('x.md', {
+      session: 'abc',
+      agent: 'claude-code',
+      consolidated: false,
+      created: '2026-01-01T00:00:00.000Z',
+      content: 'fact',
+    });
+    expect(entry.processingStatus).toBe('new');
+    expect(entry.consolidated).toBe(false);
+  });
+
+  it('prefers processing_status when both are present', () => {
+    const status = VerbatimEntry.fromParsedFrontmatterStatus({
+      processingStatus: 'requires_review',
+      consolidated: true,
+    });
+    expect(status).toBe('requires_review');
+  });
+
+  it('throws typed error on invalid processing_status', () => {
+    expect(() => parseProcessingStatus('not-a-status')).toThrow(InvalidProcessingStatusError);
+  });
+
+  it('exposes status helper predicates', () => {
+    expect(isProcessingStatus('failed')).toBe(true);
+    expect(isProcessingStatus('bad')).toBe(false);
+    expect(isPendingProcessingStatus('failed')).toBe(true);
+    expect(isPendingProcessingStatus('consolidated')).toBe(false);
   });
 });

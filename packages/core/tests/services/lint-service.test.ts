@@ -87,6 +87,12 @@ class FakeVerbatimStore implements IVerbatimStore {
   async countUnconsolidated(): Promise<number> {
     return this.unconsolidated;
   }
+  async listByProcessingStatus(): Promise<FileInfo[]> {
+    return [];
+  }
+  async countByProcessingStatus(): Promise<number> {
+    return this.unconsolidated;
+  }
   async listAgents(): Promise<string[]> {
     return [];
   }
@@ -96,6 +102,9 @@ class FakeVerbatimStore implements IVerbatimStore {
   async markConsolidated(p: string): Promise<void> {
     this.marked.push(p);
     this.unconsolidated = Math.max(0, this.unconsolidated - 1);
+  }
+  async markProcessingStatus(p: string): Promise<void> {
+    await this.markConsolidated(p);
   }
 }
 
