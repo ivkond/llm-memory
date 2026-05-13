@@ -6,6 +6,7 @@ import type {
   WikiStatusService,
   LintService,
   ImportService,
+  RecoveryDiagnosticsService,
 } from '@ivkond-llm-wiki/core';
 
 /**
@@ -24,4 +25,5 @@ export interface AppServices {
   readonly status: WikiStatusService;
   readonly lint: LintService;
   readonly import_: ImportService;
+  readonly recovery: RecoveryDiagnosticsService;
 }

@@ -25,6 +25,7 @@ import {
   WikiStatusService,
   LintService,
   ImportService,
+  RecoveryDiagnosticsService,
   SanitizationService,
   ConsolidatePhase,
   PromotePhase,
@@ -134,8 +135,9 @@ export function buildContainer(config: WikiConfig): AppServices {
     stateStore,
     agentConfigs: {},
   });
+  const recovery = new RecoveryDiagnosticsService(fileStore, searchEngine, stateStore, versionControl);
 
-  return Object.freeze({ remember, recall, query, ingest, status, lint, import_ });
+  return Object.freeze({ remember, recall, query, ingest, status, lint, import_, recovery });
 }
 
 function expandHome(p: string): string {

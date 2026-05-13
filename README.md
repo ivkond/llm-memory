@@ -23,7 +23,7 @@ At a high level, LLM Memory combines a few simple pieces:
 ```text
 User / Agent
     │
-    ├── CLI commands: llm-wiki init, ingest, search, lint, status
+    ├── CLI commands: llm-wiki init, ingest, search, lint, status, doctor, verify-state, repair-index
     └── MCP tools: wiki_query, wiki_recall, wiki_remember_*, ...
             │
             ▼
@@ -52,13 +52,6 @@ A wiki directory contains:
 ```
 
 The important part: **Markdown files are the source of truth**. Search indexes and runtime state can be rebuilt; the knowledge itself remains readable and editable.
-
-Raw verbatim records in `log/<agent>/raw/*.md` include metadata frontmatter for stable identity and provenance:
-
-- `entry_id` for record identity;
-- `source` (`type`, optional `uri` and `digest`);
-- optional `model` and `operation_id`;
-- `processing` timestamps (`created_at` and lifecycle markers like `imported_at` / `consolidated_at`).
 
 ### Under the hood
 
@@ -199,6 +192,9 @@ By default, the server listens on `127.0.0.1:7849`. You can change this in confi
 | `llm-wiki lint` | Consolidate raw memories, promote shared patterns, and run health checks. |
 | `llm-wiki import --agent claude-code` | Import supported external agent memory sources. |
 | `llm-wiki skill install <name>` | Install packaged agent skills into `.agent_context/skills`. |
+| `llm-wiki doctor` | Run non-mutating diagnostics across wiki markers, git state, index health, and runtime state. |
+| `llm-wiki verify-state` | Validate wiki markers and runtime state readability. |
+| `llm-wiki repair-index` | Rebuild the search index from current wiki/project Markdown pages. |
 
 Useful global options:
 

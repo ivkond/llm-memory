@@ -13,6 +13,9 @@ import { importCommand } from './commands/import-cmd.js';
 import { searchCommand } from './commands/search.js';
 import { statusCommand } from './commands/status.js';
 import { skillCommand } from './commands/skill.js';
+import { doctorCommand } from './commands/doctor.js';
+import { verifyStateCommand } from './commands/verify-state.js';
+import { repairIndexCommand } from './commands/repair-index.js';
 
 void Command; // Type-only import for side effects
 
@@ -27,4 +30,7 @@ await new Command()
   .addCommand(searchCommand)
   .addCommand(statusCommand)
   .addCommand(skillCommand)
+  .addCommand(doctorCommand)
+  .addCommand(verifyStateCommand)
+  .addCommand(repairIndexCommand)
   .parseAsync();
