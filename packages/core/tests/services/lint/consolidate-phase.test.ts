@@ -154,6 +154,8 @@ describe('ConsolidatePhase', () => {
     const req = llm.completeSpy.mock.calls[0][0];
     expect(req.messages[0].content).toContain('entry_id');
     expect(req.messages[0].content).toContain('source');
+    expect(req.system).toContain('"## Unresolved conflicts"');
+    expect(req.system).toContain('instead of silently choosing one side');
   });
 
   it('rejects LLM-returned paths outside wiki/ or projects/', async () => {

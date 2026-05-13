@@ -222,6 +222,8 @@ The MCP server exposes these tools:
 | `wiki_lint` | Run consolidation, promotion, and health phases. |
 | `wiki_status` | Return wiki health and metadata. |
 
+`wiki_lint` health checks now report contradiction issues when a page contains a `## Unresolved conflicts` or `## Conflicts` section with list items. Consolidation is instructed to preserve conflicting claims in an unresolved-conflicts section rather than silently choosing one side.
+
 ## Configuration
 
 Configuration is loaded in this order:
