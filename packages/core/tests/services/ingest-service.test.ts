@@ -101,6 +101,21 @@ class FakeSearchEngine implements ISearchEngine {
     for (const p of paths) result[p] = null;
     return result;
   }
+  async inspectIndex(): Promise<{
+    health: 'ok' | 'stale' | 'missing';
+    bm25Paths: string[];
+    vectorPaths: string[];
+    indexedAt: Record<string, string>;
+    metadataCorrupted: boolean;
+  }> {
+    return {
+      health: 'ok',
+      bm25Paths: [],
+      vectorPaths: [],
+      indexedAt: {},
+      metadataCorrupted: false,
+    };
+  }
 }
 
 class FakeVersionControl implements IVersionControl {
@@ -143,6 +158,9 @@ class FakeVersionControl implements IVersionControl {
   async commitInWorktree(p: string, files: string[], m: string): Promise<string> {
     this.commitInWorktreeSpy(p, files, m);
     return 'wt-sha';
+  }
+  async listTrackedFiles(): Promise<string[]> {
+    return [];
   }
 }
 

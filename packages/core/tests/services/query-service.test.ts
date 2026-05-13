@@ -55,6 +55,25 @@ class FakeSearchEngine implements ISearchEngine {
     for (const p of paths) result[p] = this.lastIndexedMap[p] ?? null;
     return result;
   }
+  async inspectIndex(): Promise<{
+    health: 'ok' | 'stale' | 'missing';
+    bm25Paths: string[];
+    vectorPaths: string[];
+    indexedAt: Record<string, string>;
+    metadataCorrupted: boolean;
+  }> {
+    const indexedAt: Record<string, string> = {};
+    for (const [path, ts] of Object.entries(this.lastIndexedMap)) {
+      if (ts) indexedAt[path] = ts;
+    }
+    return {
+      health: 'ok',
+      bm25Paths: Object.keys(indexedAt),
+      vectorPaths: Object.keys(indexedAt),
+      indexedAt,
+      metadataCorrupted: false,
+    };
+  }
 }
 
 class FakeLlmClient implements ILlmClient {

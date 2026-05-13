@@ -68,6 +68,26 @@ class FakeSearchEngine implements ISearchEngine {
     for (const p of paths) result[p] = this.lastIndexedMap[p] ?? null;
     return result;
   }
+  async inspectIndex(): Promise<{
+    health: IndexHealth;
+    bm25Paths: string[];
+    vectorPaths: string[];
+    indexedAt: Record<string, string>;
+    metadataCorrupted: boolean;
+  }> {
+    const indexedAt: Record<string, string> = {};
+    for (const [path, ts] of Object.entries(this.lastIndexedMap)) {
+      if (ts) indexedAt[path] = ts;
+    }
+    const paths = Object.keys(indexedAt);
+    return {
+      health: this.healthValue,
+      bm25Paths: paths,
+      vectorPaths: paths,
+      indexedAt,
+      metadataCorrupted: false,
+    };
+  }
 }
 
 class FakeStateStore implements IStateStore {

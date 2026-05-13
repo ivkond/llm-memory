@@ -15,6 +15,14 @@ export interface IndexEntry {
 
 export type IndexHealth = 'ok' | 'stale' | 'missing';
 
+export interface IndexConsistencySnapshot {
+  health: IndexHealth;
+  bm25Paths: string[];
+  vectorPaths: string[];
+  indexedAt: Record<string, string>;
+  metadataCorrupted: boolean;
+}
+
 export interface ISearchEngine {
   /** Index or re-index a document. */
   index(entry: IndexEntry): Promise<void>;
@@ -36,4 +44,7 @@ export interface ISearchEngine {
 
   /** Bulk variant of `lastIndexedAt` for query-time staleness checks. */
   lastIndexedAtMany(paths: string[]): Promise<Record<string, string | null>>;
+
+  /** Snapshot index internals for consistency checks and diagnostics. */
+  inspectIndex(): Promise<IndexConsistencySnapshot>;
 }

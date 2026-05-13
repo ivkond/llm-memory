@@ -112,6 +112,7 @@ export class RuVectorSearchEngine implements ISearchEngine {
    * still surfaces via the per-call return value.
    */
   private writeChain: Promise<void> = Promise.resolve();
+  private metadataCorrupted = false;
 
   constructor(
     private readonly dbPath: string,
@@ -182,9 +183,16 @@ export class RuVectorSearchEngine implements ISearchEngine {
         },
       });
       this.indexedAt = parsed.lastIndexedAt ?? {};
+      this.metadataCorrupted = false;
     } catch {
       this.bm25 = this.createMiniSearch();
       this.indexedAt = {};
+      try {
+        await access(this.bm25FilePath());
+        this.metadataCorrupted = true;
+      } catch {
+        this.metadataCorrupted = false;
+      }
     }
 
     this.initialized = true;
@@ -459,6 +467,29 @@ export class RuVectorSearchEngine implements ISearchEngine {
       result[p] = this.indexedAt[p] ?? null;
     }
     return result;
+  }
+
+  async inspectIndex(): Promise<{
+    health: IndexHealth;
+    bm25Paths: string[];
+    vectorPaths: string[];
+    indexedAt: Record<string, string>;
+    metadataCorrupted: boolean;
+  }> {
+    await this.init();
+    const bm25Paths = Object.keys(this.indexedAt);
+    const vectorPaths: string[] = [];
+    for (const docPath of bm25Paths) {
+      const entry = await this.vectorDb!.get(docPath);
+      if (entry) vectorPaths.push(docPath);
+    }
+    return {
+      health: await this.health(),
+      bm25Paths,
+      vectorPaths,
+      indexedAt: { ...this.indexedAt },
+      metadataCorrupted: this.metadataCorrupted,
+    };
   }
 
   private excerpt(content: string): string {

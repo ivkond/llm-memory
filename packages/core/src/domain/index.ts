@@ -16,6 +16,22 @@ export type { LintReportData } from './lint-report.js';
 export { AgentMemoryItem } from './agent-memory-item.js';
 export type { AgentMemoryItemData } from './agent-memory-item.js';
 export {
+  IndexConsistencyStatus,
+  IndexConsistencySeverity,
+  IndexConsistencyComponent,
+  IndexConsistencyFindingType,
+  IndexConsistencyReport,
+} from './index-consistency-report.js';
+export type {
+  IndexConsistencyStatusValue,
+  IndexConsistencySeverityValue,
+  IndexConsistencyComponentValue,
+  IndexConsistencyFindingTypeValue,
+  IndexRepairGuidance,
+  IndexConsistencyFindingData,
+  IndexConsistencyReportData,
+} from './index-consistency-report.js';
+export {
   WikiError,
   ContentEmptyError,
   SanitizationBlockedError,

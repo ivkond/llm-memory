@@ -101,4 +101,14 @@ export class GitVersionControl implements IVersionControl {
     const sha = await this.git.revparse(['HEAD']);
     return sha.trim();
   }
+
+  async listTrackedFiles(patterns?: string[]): Promise<string[]> {
+    const args = ['ls-files', '--'];
+    if (patterns && patterns.length > 0) args.push(...patterns);
+    const output = await this.git.raw(args);
+    return output
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+  }
 }
