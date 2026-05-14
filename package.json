@@ -10,7 +10,7 @@
     "build": "tsc -b",
     "typecheck": "tsc -b",
     "test": "corepack pnpm -r test",
-    "coverage": "vitest run --config vitest.coverage.config.ts",
+    "coverage": "vitest run --config vitest.coverage.config.ts --coverage",
     "test:release-version": "node --test scripts/set-release-version.test.mjs",
     "test:watch": "vitest",
     "lint": "eslint .",
