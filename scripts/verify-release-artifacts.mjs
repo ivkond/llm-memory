@@ -281,12 +281,12 @@ export function validateUndeclaredRuntimeImports({ packageName, packedManifest, 
 
   const unresolved = new Set();
   const importRegex =
-    /(?:import|export)\s+[^'"`]*?from\s*['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)|require\(\s*['"]([^'"]+)['"]\s*\)/g;
+    /(?:^|[;\n\r])\s*import\s+(?:[^'"`;\n]+?\s+from\s*)?['"]([^'"]+)['"]\s*;?|(?:^|[;\n\r])\s*export\s+[^'"`;\n]+?\s+from\s*['"]([^'"]+)['"]\s*;?|import\(\s*['"]([^'"]+)['"]\s*\)|require\(\s*['"]([^'"]+)['"]\s*\)/g;
 
   for (const source of Object.values(jsFiles)) {
     let match = importRegex.exec(source);
     while (match !== null) {
-      const specifier = match[1] ?? match[2] ?? match[3];
+      const specifier = match[1] ?? match[2] ?? match[3] ?? match[4];
       if (!specifier || specifier.startsWith('.') || specifier.startsWith('/')) {
         match = importRegex.exec(source);
         continue;
@@ -310,6 +310,33 @@ export function validateUndeclaredRuntimeImports({ packageName, packedManifest, 
   if (unresolved.size > 0) {
     throw new Error(
       `Packed artifact has undeclared runtime imports for ${packageName}: ${[...unresolved].sort().join(', ')}`,
+    );
+  }
+}
+
+export function validateBuildPreconditions(packageDir, packagePath, sourceManifest) {
+  const requiredTargets = [];
+  if (typeof sourceManifest.main === 'string') {
+    requiredTargets.push(sourceManifest.main);
+  }
+  if (typeof sourceManifest.types === 'string') {
+    requiredTargets.push(sourceManifest.types);
+  }
+  if (sourceManifest.bin && typeof sourceManifest.bin === 'object') {
+    for (const binPath of Object.values(sourceManifest.bin)) {
+      if (typeof binPath === 'string') {
+        requiredTargets.push(binPath);
+      }
+    }
+  }
+
+  const missingTargets = [...new Set(requiredTargets)].filter(
+    (target) => !existsSync(path.join(packagePath, target.replace(/^\.\//, ''))),
+  );
+
+  if (missingTargets.length > 0) {
+    throw new Error(
+      `Build precondition failed for ${packageDir}: missing built targets ${missingTargets.join(', ')}. Run pnpm install && pnpm build before pnpm verify:release-artifacts.`,
     );
   }
 }
@@ -355,6 +382,7 @@ async function verifyReleaseArtifacts(rootDir) {
     for (const packageDir of RELEASE_PACKAGES) {
       const packagePath = getReleasePackagePath(rootDir, packageDir);
       const sourceManifest = manifests.get(packageDir);
+      validateBuildPreconditions(packageDir, packagePath, sourceManifest);
       const output = runCommand(
         'pnpm',
         ['--dir', packagePath, 'pack', '--pack-destination', tempPackDir],

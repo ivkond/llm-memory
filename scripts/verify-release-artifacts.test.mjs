@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
 
 import {
+  loadReleaseManifests,
   validatePackedContract,
   validatePublishManifests,
   validatePublishSet,
@@ -31,6 +35,11 @@ const validManifest = {
 };
 
 const validPackedFiles = ['package/package.json', 'package/dist/index.js', 'package/dist/index.d.ts'];
+
+async function writeJson(filePath, value) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`);
+}
 
 test('test_validateReleaseManifestNames_whenManifestNameDoesNotMatch_throws', () => {
   const manifests = new Map([
@@ -165,6 +174,57 @@ test('test_validateUndeclaredRuntimeImports_whenImportNotInManifestDependencies_
       }),
     /undeclared runtime imports/,
   );
+});
+
+test('test_validateUndeclaredRuntimeImports_whenSideEffectImportIsUndeclared_throws', () => {
+  const packedManifest = {
+    name: '@ivkond-llm-wiki/cli',
+    dependencies: {},
+  };
+
+  const jsFiles = {
+    'package/dist/index.js': "import 'left-pad';\n",
+  };
+
+  assert.throws(
+    () =>
+      validateUndeclaredRuntimeImports({
+        packageName: packedManifest.name,
+        packedManifest,
+        jsFiles,
+      }),
+    /undeclared runtime imports/,
+  );
+});
+
+test('test_loadReleaseManifests_whenReleasePackageDirectoryMissing_throws', async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), 'llm-wiki-release-manifests-'));
+  await writeJson(path.join(rootDir, 'packages', 'core', 'package.json'), {
+    name: '@ivkond-llm-wiki/core',
+    version: '1.2.3',
+  });
+
+  await assert.rejects(
+    () => loadReleaseManifests(rootDir, ['core', 'infra']),
+    /Release package directory is missing: packages\/infra/,
+  );
+});
+
+test('test_loadReleaseManifests_whenReleasePackageManifestExists_returnsManifestMap', async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), 'llm-wiki-release-manifests-'));
+  await writeJson(path.join(rootDir, 'packages', 'core', 'package.json'), {
+    name: '@ivkond-llm-wiki/core',
+    version: '1.2.3',
+  });
+  await writeJson(path.join(rootDir, 'packages', 'mcp-server', 'package.json'), {
+    name: '@ivkond-llm-wiki/mcp-server',
+    version: '1.2.3',
+  });
+
+  const manifests = await loadReleaseManifests(rootDir, ['core', 'mcp-server']);
+  assert.equal(manifests.get('core')?.name, '@ivkond-llm-wiki/core');
+  assert.equal(manifests.get('mcp-server')?.name, '@ivkond-llm-wiki/mcp-server');
+  assert.doesNotThrow(() => validateReleaseManifestNames(manifests));
 });
 
 test('test_validatePackedContract_whenContractIsValid_passes', () => {
