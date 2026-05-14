@@ -1,153 +1,24 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { QueryService } from '../../src/services/query-service.js';
 import { SearchResult } from '../../src/domain/search-result.js';
 import { SearchEmptyError, LlmUnavailableError } from '../../src/domain/errors.js';
 import type {
-  ISearchEngine,
-  ILlmClient,
-  IFileStore,
-  IProjectResolver,
   FileInfo,
-  IndexEntry,
-  SearchQuery,
 } from '../../src/ports/index.js';
-import type { WikiPageData } from '../../src/domain/wiki-page.js';
-
-/**
- * Minimal in-memory ISearchEngine fake.
- *
- * - `documents` drives the search result list per scope prefix.
- * - `lastIndexedMap` backs lastIndexedAt; `indexSpy` records each index() call.
- * - `searchSpy` records the full SearchQuery seen on search() so tests can
- *   assert on scope and ordering.
- */
-class FakeSearchEngine implements ISearchEngine {
-  public readonly indexSpy = vi.fn<(entry: IndexEntry) => void>();
-  public readonly searchSpy = vi.fn<(query: SearchQuery) => void>();
-  public readonly removeSpy = vi.fn<(path: string) => void>();
-  public readonly lastIndexedManySpy = vi.fn<(paths: string[]) => void>();
-  public documents: SearchResult[] = [];
-  public lastIndexedMap: Record<string, string | null> = {};
-
-  async index(entry: IndexEntry): Promise<void> {
-    this.indexSpy(entry);
-    this.lastIndexedMap[entry.path] = new Date().toISOString();
-  }
-  async remove(p: string): Promise<void> {
-    this.removeSpy(p);
-  }
-  async search(query: SearchQuery): Promise<SearchResult[]> {
-    this.searchSpy(query);
-    const scope = query.scope ?? '';
-    const hits = this.documents.filter((d) => (scope ? d.path.startsWith(scope) : true));
-    return hits.slice(0, query.maxResults ?? 10);
-  }
-  async rebuild(): Promise<void> {}
-  async health(): Promise<'ok' | 'stale' | 'missing'> {
-    return 'ok';
-  }
-  async lastIndexedAt(p: string): Promise<string | null> {
-    return this.lastIndexedMap[p] ?? null;
-  }
-  async lastIndexedAtMany(paths: string[]): Promise<Record<string, string | null>> {
-    this.lastIndexedManySpy(paths);
-    const result: Record<string, string | null> = {};
-    for (const p of paths) result[p] = this.lastIndexedMap[p] ?? null;
-    return result;
-  }
-}
-
-class FakeLlmClient implements ILlmClient {
-  public readonly completeSpy = vi.fn();
-  public response: string | Error = 'Generated answer';
-  public lastRequest: {
-    system?: string;
-    messages: Array<{ role: 'user' | 'assistant'; content: string }>;
-    maxTokens?: number;
-    temperature?: number;
-  } | null = null;
-
-  async complete(request: {
-    system?: string;
-    messages: Array<{ role: 'user' | 'assistant'; content: string }>;
-    maxTokens?: number;
-    temperature?: number;
-  }) {
-    this.completeSpy(request);
-    this.lastRequest = request;
-    if (this.response instanceof Error) throw this.response;
-    return {
-      content: this.response,
-      usage: { inputTokens: 10, outputTokens: 20 },
-    };
-  }
-}
-
-class FakeFileStore implements IFileStore {
-  public files: Record<string, { info: FileInfo; page: WikiPageData }> = {};
-
-  async readFile(): Promise<string | null> {
-    return null;
-  }
-  async writeFile(): Promise<void> {}
-  async listFiles(directory: string): Promise<FileInfo[]> {
-    const dir = directory.replace(/\/$/, '');
-    return Object.values(this.files)
-      .map((f) => f.info)
-      .filter((info) => info.path === dir || info.path.startsWith(`${dir}/`));
-  }
-  async exists(): Promise<boolean> {
-    return true;
-  }
-  async readWikiPage(p: string): Promise<WikiPageData | null> {
-    return this.files[p]?.page ?? null;
-  }
-}
-
-class FakeProjectResolver implements IProjectResolver {
-  constructor(public project: string | null = null) {}
-  async resolve(): Promise<string | null> {
-    return this.project;
-  }
-  async getRemoteUrl(): Promise<string | null> {
-    return null;
-  }
-}
-
-function makePage(
-  filePath: string,
-  title: string,
-  content: string,
-  updated: string,
-): { info: FileInfo; page: WikiPageData } {
-  return {
-    info: { path: filePath, updated },
-    page: {
-      frontmatter: {
-        title,
-        created: updated,
-        updated,
-        confidence: 0.9,
-        sources: [],
-        supersedes: null,
-        tags: [],
-      },
-      content,
-    },
-  };
-}
+import { FakeLlmClient, FakePageFileStore, FakeProjectResolver, FakeSearchEngine } from '../_helpers/core-test-fakes.js';
+import { makePageRecord } from '../_helpers/wiki-page-factories.js';
 
 describe('QueryService', () => {
   let searchEngine: FakeSearchEngine;
   let llmClient: FakeLlmClient;
-  let fileStore: FakeFileStore;
+  let fileStore: FakePageFileStore;
   let projectResolver: FakeProjectResolver;
   let service: QueryService;
 
   beforeEach(() => {
     searchEngine = new FakeSearchEngine();
     llmClient = new FakeLlmClient();
-    fileStore = new FakeFileStore();
+    fileStore = new FakePageFileStore();
     projectResolver = new FakeProjectResolver();
     service = new QueryService(searchEngine, llmClient, projectResolver, fileStore);
   });
@@ -247,7 +118,7 @@ describe('QueryService', () => {
 
   it('test_query_staleFile_triggersReindexBeforeSearch', async () => {
     // File is stale: its mtime is AFTER the index's lastIndexedAt
-    fileStore.files['wiki/a.md'] = makePage('wiki/a.md', 'A', 'body', '2026-04-10T12:00:00Z');
+    fileStore.files['wiki/a.md'] = makePageRecord('wiki/a.md', 'A', '2026-04-10T12:00:00Z', 'body');
     searchEngine.lastIndexedMap['wiki/a.md'] = '2026-04-09T00:00:00Z';
     searchEngine.documents = [new SearchResult('wiki/a.md', 'A', 'body', 0.9, 'hybrid')];
 
@@ -264,7 +135,7 @@ describe('QueryService', () => {
   });
 
   it('test_query_freshFile_doesNotReindex', async () => {
-    fileStore.files['wiki/a.md'] = makePage('wiki/a.md', 'A', 'body', '2026-04-09T00:00:00Z');
+    fileStore.files['wiki/a.md'] = makePageRecord('wiki/a.md', 'A', '2026-04-09T00:00:00Z', 'body');
     searchEngine.lastIndexedMap['wiki/a.md'] = '2026-04-10T12:00:00Z';
     searchEngine.documents = [new SearchResult('wiki/a.md', 'A', 'body', 0.9, 'hybrid')];
 
@@ -273,8 +144,8 @@ describe('QueryService', () => {
   });
 
   it('test_query_syncStaleFiles_usesBulkLookupPerDirectory', async () => {
-    fileStore.files['wiki/a.md'] = makePage('wiki/a.md', 'A', 'body', '2026-04-09T00:00:00Z');
-    fileStore.files['wiki/b.md'] = makePage('wiki/b.md', 'B', 'body', '2026-04-09T00:00:00Z');
+    fileStore.files['wiki/a.md'] = makePageRecord('wiki/a.md', 'A', '2026-04-09T00:00:00Z', 'body');
+    fileStore.files['wiki/b.md'] = makePageRecord('wiki/b.md', 'B', '2026-04-09T00:00:00Z', 'body');
     searchEngine.lastIndexedMap['wiki/a.md'] = '2026-04-10T12:00:00Z';
     searchEngine.lastIndexedMap['wiki/b.md'] = '2026-04-10T12:00:00Z';
     searchEngine.documents = [new SearchResult('wiki/a.md', 'A', 'body', 0.9, 'hybrid')];
@@ -287,7 +158,7 @@ describe('QueryService', () => {
   });
 
   it('test_query_unindexedFile_triggersIndexBeforeSearch', async () => {
-    fileStore.files['wiki/new.md'] = makePage('wiki/new.md', 'New', 'body', '2026-04-10T00:00:00Z');
+    fileStore.files['wiki/new.md'] = makePageRecord('wiki/new.md', 'New', '2026-04-10T00:00:00Z', 'body');
     // No lastIndexedMap entry -> null
     searchEngine.documents = [new SearchResult('wiki/new.md', 'New', 'body', 0.9, 'hybrid')];
 

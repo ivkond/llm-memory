@@ -8,223 +8,38 @@ import {
   IngestPathViolationError,
   ProjectScopeUnsupportedError,
 } from '../../src/domain/errors.js';
-import { EMPTY_RUNTIME_STATE, type WikiRuntimeState } from '../../src/domain/runtime-state.js';
 import type {
-  ISearchEngine,
-  ILlmClient,
-  IFileStore,
-  IVersionControl,
-  ISourceReader,
-  SourceContent,
-  IStateStore,
-  WorktreeInfo,
   FileStoreFactory,
-  FileInfo,
-  IndexEntry,
-  SearchQuery,
-  LlmCompletionRequest,
-  LlmCompletionResponse,
 } from '../../src/ports/index.js';
-import type { SearchResult } from '../../src/domain/search-result.js';
-import type { WikiPageData } from '../../src/domain/wiki-page.js';
-
-// ---------------------------------------------------------------------------
-// Lightweight in-memory fakes so IngestService tests can assert orchestration
-// wiring without pulling in any real infra adapters.
-// ---------------------------------------------------------------------------
-
-class FakeSourceReader implements ISourceReader {
-  public readSpy = vi.fn();
-  public response: SourceContent | Error = {
-    uri: '/tmp/src.md',
-    content: '# Source\n\nBody.',
-    mimeType: 'text/markdown',
-    bytes: 20,
-    estimatedTokens: 5,
-  };
-
-  async read(uri: string): Promise<SourceContent> {
-    this.readSpy(uri);
-    if (this.response instanceof Error) throw this.response;
-    return this.response;
-  }
-}
-
-class FakeLlmClient implements ILlmClient {
-  public completeSpy = vi.fn();
-  public response:
-    | LlmCompletionResponse
-    | Error
-    | Array<{ path: string; title: string; content: string }>;
-
-  constructor() {
-    this.response = [
-      {
-        path: 'wiki/tools/postgresql.md',
-        title: 'PostgreSQL',
-        content: '## Summary\nMaxConns rule.',
-      },
-    ];
-  }
-
-  async complete(request: LlmCompletionRequest): Promise<LlmCompletionResponse> {
-    this.completeSpy(request);
-    if (this.response instanceof Error) throw this.response;
-    if (Array.isArray(this.response)) {
-      return {
-        content: JSON.stringify(this.response),
-        usage: { inputTokens: 10, outputTokens: 20 },
-      };
-    }
-    return this.response;
-  }
-}
-
-class FakeSearchEngine implements ISearchEngine {
-  public indexSpy = vi.fn<(entry: IndexEntry) => void>();
-  async index(entry: IndexEntry): Promise<void> {
-    this.indexSpy(entry);
-  }
-  async remove(): Promise<void> {}
-  async search(_q: SearchQuery): Promise<SearchResult[]> {
-    return [];
-  }
-  async rebuild(): Promise<void> {}
-  async health(): Promise<'ok' | 'stale' | 'missing'> {
-    return 'ok';
-  }
-  async lastIndexedAt(): Promise<string | null> {
-    return null;
-  }
-  async lastIndexedAtMany(paths: string[]): Promise<Record<string, string | null>> {
-    const result: Record<string, string | null> = {};
-    for (const p of paths) result[p] = null;
-    return result;
-  }
-}
-
-class FakeVersionControl implements IVersionControl {
-  public createSpy = vi.fn();
-  public removeSpy = vi.fn<(p: string, force?: boolean) => void>();
-  public commitInWorktreeSpy = vi.fn();
-  public squashSpy = vi.fn();
-  public mergeSpy = vi.fn<(p: string) => void>();
-  public mergeResponse: string | Error = 'abc1234567';
-  public onMergeSuccess: (worktreePath: string) => void = () => {};
-  private worktreeCounter = 0;
-
-  async commit(): Promise<string> {
-    return 'main-sha';
-  }
-  async hasUncommittedChanges(): Promise<boolean> {
-    return false;
-  }
-  async createWorktree(name: string): Promise<WorktreeInfo> {
-    this.worktreeCounter += 1;
-    this.createSpy(name);
-    return {
-      path: `/tmp/repo/.worktrees/${name}-${this.worktreeCounter}`,
-      branch: `${name}-${this.worktreeCounter}`,
-    };
-  }
-  async removeWorktree(p: string, force?: boolean): Promise<void> {
-    this.removeSpy(p, force);
-  }
-  async squashWorktree(p: string, m: string): Promise<string> {
-    this.squashSpy(p, m);
-    return 'squash-sha';
-  }
-  async mergeWorktree(p: string): Promise<string> {
-    this.mergeSpy(p);
-    if (this.mergeResponse instanceof Error) throw this.mergeResponse;
-    this.onMergeSuccess(p);
-    return this.mergeResponse;
-  }
-  async commitInWorktree(p: string, files: string[], m: string): Promise<string> {
-    this.commitInWorktreeSpy(p, files, m);
-    return 'wt-sha';
-  }
-}
-
-/** An in-memory file store whose parent dir can be anywhere — suitable for
- *  both the main store and a per-test fileStoreFactory. */
-class FakeFileStore implements IFileStore {
-  constructor(public readonly root: string) {}
-  public files: Record<string, string> = {};
-  public writeSpy = vi.fn<(p: string, c: string) => void>();
-
-  async readFile(p: string): Promise<string | null> {
-    return this.files[p] ?? null;
-  }
-  async writeFile(p: string, c: string): Promise<void> {
-    this.writeSpy(p, c);
-    this.files[p] = c;
-  }
-  async listFiles(directory: string): Promise<FileInfo[]> {
-    const dir = directory.replace(/\/$/, '');
-    return Object.keys(this.files)
-      .filter((p) => p === dir || p.startsWith(`${dir}/`))
-      .map((p) => ({ path: p, updated: '2026-04-10T00:00:00Z' }));
-  }
-  async exists(p: string): Promise<boolean> {
-    return p in this.files;
-  }
-  async readWikiPage(p: string): Promise<WikiPageData | null> {
-    if (!(p in this.files)) return null;
-    return {
-      frontmatter: {
-        title: 'T',
-        created: '2026-04-10',
-        updated: '2026-04-10',
-        confidence: 0.9,
-        sources: [],
-        supersedes: null,
-        tags: [],
-      },
-      content: this.files[p],
-    };
-  }
-}
-
-class FakeStateStore implements IStateStore {
-  public state: WikiRuntimeState = structuredClone(EMPTY_RUNTIME_STATE);
-  public updateSpy = vi.fn<(patch: Partial<WikiRuntimeState>) => void>();
-
-  async load(): Promise<WikiRuntimeState> {
-    return structuredClone(this.state);
-  }
-  async save(s: WikiRuntimeState): Promise<void> {
-    this.state = structuredClone(s);
-  }
-  async update(patch: Partial<WikiRuntimeState>): Promise<WikiRuntimeState> {
-    this.updateSpy(patch);
-    this.state = { ...this.state, ...patch };
-    return structuredClone(this.state);
-  }
-}
-
-// ---------------------------------------------------------------------------
+import {
+  FakeIngestLlmClient,
+  FakeSearchEngine,
+  FakeSourceReader,
+  FakeStateStore,
+  FakeVersionControl,
+  FakeWorktreeFileStore,
+} from '../_helpers/core-test-fakes.js';
 
 describe('IngestService', () => {
   let sourceReader: FakeSourceReader;
-  let llm: FakeLlmClient;
+  let llm: FakeIngestLlmClient;
   let search: FakeSearchEngine;
   let vcs: FakeVersionControl;
-  let mainStore: FakeFileStore;
-  let worktreeStores: FakeFileStore[];
+  let mainStore: FakeWorktreeFileStore;
+  let worktreeStores: FakeWorktreeFileStore[];
   let factory: FileStoreFactory;
   let stateStore: FakeStateStore;
   let service: IngestService;
 
   beforeEach(() => {
     sourceReader = new FakeSourceReader();
-    llm = new FakeLlmClient();
+    llm = new FakeIngestLlmClient();
     search = new FakeSearchEngine();
     vcs = new FakeVersionControl();
-    mainStore = new FakeFileStore('/tmp/repo');
+    mainStore = new FakeWorktreeFileStore('/tmp/repo');
     worktreeStores = [];
     factory = (root: string) => {
-      const s = new FakeFileStore(root);
+      const s = new FakeWorktreeFileStore(root);
       worktreeStores.push(s);
       return s;
     };
