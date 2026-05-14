@@ -101,10 +101,10 @@ describe('buildContainer', () => {
     expect(typeof (services.operationJournal as IOperationJournal).append).toBe('function');
     expect(typeof (services.operationJournal as IOperationJournal).load).toBe('function');
 
-    const keys = Object.keys(services).sort();
+    const keys = Object.keys(services).sort((a, b) => a.localeCompare(b));
     expect(keys).toEqual(
       ['import_', 'ingest', 'lint', 'operationJournal', 'query', 'recall', 'remember', 'status']
-        .sort(),
+        .sort((a, b) => a.localeCompare(b)),
     );
     expect(keys).toHaveLength(8);
   });

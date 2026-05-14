@@ -117,9 +117,7 @@ export class FsOperationJournal implements IOperationJournal {
   }
 
   private async getCanonicalRoot(): Promise<string> {
-    if (this.canonicalRootCache === undefined) {
-      this.canonicalRootCache = await realpath(this.normalizedRoot);
-    }
+    this.canonicalRootCache ??= await realpath(this.normalizedRoot);
     return this.canonicalRootCache;
   }
 
