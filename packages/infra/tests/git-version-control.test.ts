@@ -122,6 +122,24 @@ describe('GitVersionControl', () => {
     await vcs.removeWorktree(info.path, true);
   });
 
+  it('test_listManagedWorktrees_afterMergeWorktreeConflict_marksPreservedWorktreeConflicted', async () => {
+    const info = await vcs.createWorktree('ingest');
+
+    await writeFile(path.join(repo, 'conflict.md'), 'main-version');
+    await vcs.commit(['conflict.md'], 'main change');
+
+    await writeFile(path.join(info.path, 'conflict.md'), 'worktree-version');
+    await vcs.commitInWorktree(info.path, ['conflict.md'], 'worktree change');
+
+    await expect(vcs.mergeWorktree(info.path)).rejects.toBeInstanceOf(GitConflictError);
+
+    const listed = await vcs.listManagedWorktrees();
+    const found = listed.find((w) => w.path === info.path);
+    expect(found?.status).toBe('conflicted');
+
+    await vcs.removeWorktree(info.path, true);
+  });
+
   it('test_removeWorktree_cleansUpDirectory', async () => {
     const info = await vcs.createWorktree('ingest');
     await vcs.removeWorktree(info.path);

@@ -584,4 +584,46 @@ describe('CLI command coverage', () => {
     expect(removeWorktree).not.toHaveBeenCalled();
     expect(tap.stdout.join('\n')).toContain('Main repository is dirty');
   });
+
+  it('recover-worktrees: prune-clean preserves conflicted worktrees by default', async () => {
+    const removeWorktree = vi.fn();
+    const listManagedWorktrees = vi.fn().mockResolvedValue([
+      {
+        path: '/wiki/.worktrees/ingest-1',
+        branch: 'ingest-1',
+        status: 'conflicted',
+        isManaged: true,
+      },
+    ]);
+    const hasUncommittedChanges = vi.fn().mockResolvedValue(false);
+
+    vi.doMock('@ivkond-llm-wiki/infra', () => ({
+      ConfigLoader: class {
+        constructor(_root: string) {}
+        async load() {
+          return { wiki: { path: '/wiki' } };
+        }
+      },
+      GitVersionControl: class {
+        listManagedWorktrees = listManagedWorktrees;
+        hasUncommittedChanges = hasUncommittedChanges;
+        removeWorktree = removeWorktree;
+      },
+    }));
+
+    const tap = tapConsole();
+    const restoreExit = mockExit();
+
+    await runCommand('../src/commands/recover-worktrees.ts', 'recoverWorktreesCommand', [
+      '--wiki',
+      '/fake',
+      '--prune-clean',
+    ]);
+
+    restoreExit();
+    tap.restore();
+
+    expect(removeWorktree).not.toHaveBeenCalled();
+    expect(tap.stdout.join('\n')).toContain('Planned cleanup actions:\n  none');
+  });
 });

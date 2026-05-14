@@ -139,15 +139,34 @@ export class GitVersionControl implements IVersionControl {
 
       const wtGit = simpleGit(absPath);
       const status = await wtGit.status();
-      const classified = status.conflicted.length
-        ? 'conflicted'
-        : status.isClean()
-          ? 'clean'
-          : 'dirty';
+      let classified: ManagedWorktreeInfo['status'] = 'clean';
+      if (status.conflicted.length > 0) {
+        classified = 'conflicted';
+      } else if (!status.isClean()) {
+        classified = 'dirty';
+      } else if (branch && (await this.isDivergedFromMain(branch))) {
+        // Production conflict path can leave the preserved worktree index
+        // clean while main rejects `--ff-only` due to branch divergence.
+        classified = 'conflicted';
+      }
 
       entries.push({ path: absPath, branch, status: classified, isManaged: true });
     }
 
     return entries;
+  }
+
+  private async isDivergedFromMain(branch: string): Promise<boolean> {
+    const [mainSha, branchSha, mergeBase] = await Promise.all([
+      this.git.revparse(['main']),
+      this.git.revparse([branch]),
+      this.git.raw(['merge-base', 'main', branch]),
+    ]);
+    const main = mainSha.trim();
+    const wt = branchSha.trim();
+    const base = mergeBase.trim();
+
+    // True divergence: both branches have unique commits since split.
+    return base !== main && base !== wt;
   }
 }
