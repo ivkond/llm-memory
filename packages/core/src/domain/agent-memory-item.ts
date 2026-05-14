@@ -14,7 +14,10 @@ export interface AgentMemoryItemData {
   sessionId: string;
   project?: string;
   content: string;
-  mtime: string;
+  mtime?: string;
+  sourceUri?: string;
+  sourceDigest?: string;
+  sourceType?: string;
 }
 
 export class AgentMemoryItem {
@@ -24,7 +27,10 @@ export class AgentMemoryItem {
     public readonly sessionId: string,
     public readonly project: string | undefined,
     public readonly content: string,
-    public readonly mtime: string,
+    public readonly mtime: string | undefined,
+    public readonly sourceUri: string,
+    public readonly sourceDigest: string | undefined,
+    public readonly sourceType: string,
   ) {}
 
   static create(data: AgentMemoryItemData): AgentMemoryItem {
@@ -32,7 +38,9 @@ export class AgentMemoryItem {
     assertIdentifier('sessionId', data.sessionId);
     if (!data.sourcePath) throw new Error('AgentMemoryItem.sourcePath required');
     if (!data.content) throw new Error('AgentMemoryItem.content required');
-    if (!data.mtime) throw new Error('AgentMemoryItem.mtime required');
+    if (!data.mtime && !data.sourceDigest) {
+      throw new Error('AgentMemoryItem requires mtime or sourceDigest');
+    }
     return new AgentMemoryItem(
       data.agent,
       data.sourcePath,
@@ -40,10 +48,16 @@ export class AgentMemoryItem {
       data.project,
       data.content,
       data.mtime,
+      data.sourceUri ?? data.sourcePath,
+      data.sourceDigest,
+      data.sourceType ?? data.agent,
     );
   }
 
   get dedupeKey(): string {
-    return `${this.agent}:${this.sessionId}:${this.sourcePath}`;
+    if (this.sourceDigest) {
+      return `${this.agent}:${this.sessionId}:${this.sourceUri}:${this.sourceDigest}`;
+    }
+    return `${this.agent}:${this.sessionId}:${this.sourceUri}:${this.mtime ?? ''}`;
   }
 }
