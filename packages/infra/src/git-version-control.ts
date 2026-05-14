@@ -12,10 +12,10 @@ import { GitConflictError } from '@ivkond-llm-wiki/core';
  * so a failure anywhere in the pipeline can be undone by a single
  * `removeWorktree` call.
  *
- * On merge conflicts, simple-git surfaces a `GitError` whose message
- * mentions `CONFLICT` — this adapter translates it into the domain-level
- * `GitConflictError` without removing the worktree, so `IngestService` /
- * `LintService` can decide what to do with the in-progress work.
+ * On non-fast-forward worktree merges, this adapter checks machine-readable
+ * git state and translates recoverable divergence into `GitConflictError`
+ * without removing the worktree, so `IngestService` / `LintService` can
+ * decide what to do with the in-progress work.
  */
 export class GitVersionControl implements IVersionControl {
   private readonly git: SimpleGit;
@@ -85,20 +85,22 @@ export class GitVersionControl implements IVersionControl {
     const branchInfo = await wtGit.revparse(['--abbrev-ref', 'HEAD']);
     const branch = branchInfo.trim();
 
-    try {
-      // simple-git's high-level `merge` throws on conflict. We explicitly
-      // request a fast-forward merge; IngestService always squashes first,
-      // so the worktree branch is always a linear descendant of main.
-      await this.git.merge([branch, '--ff-only']);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (/conflict|CONFLICT|not possible to fast-forward|Merge conflict/i.test(message)) {
-        throw new GitConflictError(worktreePath, message);
-      }
-      throw err;
+    // If merge-base(HEAD, branch) is not HEAD, main cannot be fast-forwarded
+    // to the worktree branch and we preserve the worktree for recovery.
+    const canFastForward = await this.canFastForwardBranch(branch);
+    if (!canFastForward) {
+      throw new GitConflictError(worktreePath, `Branch "${branch}" is not fast-forwardable into main`);
     }
+
+    await this.git.merge([branch, '--ff-only']);
 
     const sha = await this.git.revparse(['HEAD']);
     return sha.trim();
+  }
+
+  private async canFastForwardBranch(branch: string): Promise<boolean> {
+    const head = (await this.git.revparse(['HEAD'])).trim();
+    const mergeBase = (await this.git.raw(['merge-base', 'HEAD', branch])).trim();
+    return mergeBase === head;
   }
 }
