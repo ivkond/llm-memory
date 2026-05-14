@@ -5,7 +5,8 @@
 - Area: UX
 - Source roadmap item: `../ROADMAP.md`
 - Related ADRs:
-  - None
+  - [ADR-0015](../adr/0015-seven-mcp-tools.md)
+  - [ADR-0023](../adr/0023-local-review-proposals-and-seven-tool-schema-evolution.md)
 - Related items:
   - None
 

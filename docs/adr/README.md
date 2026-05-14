@@ -35,3 +35,4 @@ This directory contains accepted and proposed architecture decision records for 
 | [0020](0020-adrs-as-canonical-decision-home.md)                 | ADRs as canonical decision home                     | Accepted |
 | [0021](0021-verbatim-entry-metadata-schema.md)                  | Verbatim entry metadata schema                      | Accepted |
 | [0022](0022-local-operation-journal-runtime-state.md)           | Local operation journal runtime state               | Accepted |
+| [0023](0023-local-review-proposals-and-seven-tool-schema-evolution.md) | Local review proposals and seven-tool schema evolution | Accepted |
