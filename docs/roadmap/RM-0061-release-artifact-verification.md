@@ -1,6 +1,6 @@
 # RM-0061: Release artifact verification
 
-- Status: Proposed
+- Status: In Progress
 - Priority: P2
 - Area: release
 - Source roadmap item: `../ROADMAP.md`
@@ -39,6 +39,12 @@ The roadmap concern is tracked independently with enough context to design, prio
 ## Design notes
 
 RM-0061 remains a concrete artifact verification child item under RM-0060, linked to npm publishing.
+
+Implementation links:
+- Shared metadata: `scripts/release-metadata.mjs`
+- Artifact verifier: `scripts/verify-release-artifacts.mjs`
+- Verifier tests: `scripts/verify-release-artifacts.test.mjs`
+- Release workflow gate: `.github/workflows/release.yml` (`Verify release artifacts` step)
 
 ## Dependencies
 
