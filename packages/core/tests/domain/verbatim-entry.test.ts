@@ -36,6 +36,20 @@ describe('VerbatimEntry', () => {
       agent: 'claude-code',
       project: 'cli-relay',
       sessionId: 'abc123',
+      source: {
+        type: 'import',
+        uri: '/tmp/memory.md',
+        digest: 'sha256:abc',
+        mime_type: 'text/markdown',
+        bytes: 123,
+      },
+      model: {
+        provider: 'openai',
+        model: 'gpt-5',
+        call_id: 'call_123',
+        tool_call_id: 'tool_456',
+      },
+      operationId: 'op_789',
     });
     const data = entry.toData();
 
@@ -43,6 +57,23 @@ describe('VerbatimEntry', () => {
     expect(data.project).toBe('cli-relay');
     expect(data.agent).toBe('claude-code');
     expect(data.consolidated).toBe(false);
+    expect(data.entry_id).toBe(entry.entryId);
+    expect(data.source).toEqual({
+      type: 'import',
+      uri: '/tmp/memory.md',
+      digest: 'sha256:abc',
+      mime_type: 'text/markdown',
+      bytes: 123,
+    });
+    expect(data.model).toEqual({
+      provider: 'openai',
+      model: 'gpt-5',
+      call_id: 'call_123',
+      tool_call_id: 'tool_456',
+    });
+    expect(data.operation_id).toBe('op_789');
+    expect(data.processing?.created_at).toBe(entry.created);
+    expect(data.created).toBe(entry.processing.created_at);
     expect(data.content).toContain('- Test fact');
     expect(data.content).toContain('- Another fact');
   });
@@ -151,5 +182,53 @@ describe('VerbatimEntry', () => {
     });
     expect(entry.filename).toBe('2025-11-30-sess-deadbeef.md');
     expect(entry.created).toBe('2025-11-30T08:15:30.000Z');
+    expect(entry.processing.created_at).toBe('2025-11-30T08:15:30.000Z');
+  });
+
+  it('fromParsedData uses processing.created_at when created is absent', () => {
+    const entry = VerbatimEntry.fromParsedData('2026-04-10-abc-1111.md', {
+      session: 'abc',
+      agent: 'claude-code',
+      consolidated: false,
+      processing: { created_at: '2026-04-10T00:00:00Z' },
+      content: 'x',
+    });
+
+    expect(entry.created).toBe('2026-04-10T00:00:00Z');
+    expect(entry.processing.created_at).toBe('2026-04-10T00:00:00Z');
+  });
+
+  it('fromParsedData synthesizes entry_id from filename for legacy records', () => {
+    const entry = VerbatimEntry.fromParsedData('2026-04-10-abc-1111.md', {
+      session: 'abc',
+      agent: 'claude-code',
+      consolidated: false,
+      created: '2026-04-10T00:00:00Z',
+      content: 'x',
+    });
+
+    expect(entry.entryId).toBe('2026-04-10-abc-1111');
+  });
+
+  it('rejects invalid metadata identifiers', () => {
+    expect(() =>
+      VerbatimEntry.create({
+        content: 'x',
+        agent: 'claude-code',
+        sessionId: 'sess',
+        model: { call_id: '../bad' },
+      }),
+    ).toThrow(InvalidIdentifierError);
+
+    expect(() =>
+      VerbatimEntry.fromParsedData('2026-04-10-abc-1111.md', {
+        session: 'abc',
+        agent: 'claude-code',
+        consolidated: false,
+        created: '2026-04-10T00:00:00Z',
+        operation_id: '../bad',
+        content: 'x',
+      }),
+    ).toThrow(InvalidIdentifierError);
   });
 });
