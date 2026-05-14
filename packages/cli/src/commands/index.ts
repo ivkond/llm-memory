@@ -10,6 +10,7 @@ export { lintCommand } from './lint.js';
 export { importCommand } from './import-cmd.js';
 export { searchCommand } from './search.js';
 export { statusCommand } from './status.js';
+export { repairIndexCommand } from './repair-index.js';
 export { skillCommand } from './skill.js';
 
 /**

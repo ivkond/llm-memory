@@ -352,6 +352,43 @@ describe('CLI command coverage', () => {
     expect(tap.stdout[0]).toContain('"citations"');
   });
 
+  it('repair-index: emits json output and calls repair service', async () => {
+    const wikiPath = await mkdtemp(path.join(tmpdir(), 'cli-repair-index-wiki-'));
+    await writeWikiConfig(wikiPath);
+    const repair = vi.fn().mockResolvedValue({
+      status: 'planned',
+      dry_run: true,
+      candidates: 2,
+      indexed: 0,
+      skipped: 0,
+      paths: ['wiki/a.md', 'projects/app/b.md'],
+    });
+    const buildContainer = vi.fn(() => ({ repairIndex: { repair } }));
+
+    vi.doMock('@ivkond-llm-wiki/common', () => ({
+      buildContainer,
+    }));
+
+    const tap = tapConsole();
+    const restoreExit = mockExit();
+
+    await runCommand('../src/commands/repair-index.ts', 'repairIndexCommand', [
+      '--wiki',
+      wikiPath,
+      '--dry-run',
+      '--format',
+      'json',
+    ]);
+
+    restoreExit();
+    tap.restore();
+
+    expect(repair).toHaveBeenCalledWith({ dryRun: true });
+    expect(buildContainer.mock.calls[0]?.[0].wiki.path).toBe(wikiPath);
+    expect(tap.stdout[0]).toContain('"status": "planned"');
+    expect(tap.stdout[0]).toContain('"candidates": 2');
+  });
+
   it('status: prints health and verbose details from config and service', async () => {
     const wikiPath = await mkdtemp(path.join(tmpdir(), 'cli-status-wiki-'));
     await writeWikiConfig(wikiPath);

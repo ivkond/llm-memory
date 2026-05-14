@@ -435,6 +435,11 @@ export class RuVectorSearchEngine implements ISearchEngine {
       for (const entry of entries) {
         await this.indexUnsafe(entry);
       }
+      // Persist empty-state rebuilds too. Without this, rebuild([]) clears
+      // only in-memory structures and leaves stale on-disk BM25 metadata.
+      if (entries.length === 0) {
+        await this.persist();
+      }
     });
   }
 

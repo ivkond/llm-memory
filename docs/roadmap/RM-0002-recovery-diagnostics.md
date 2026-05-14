@@ -42,6 +42,13 @@ The memory system handles this concern as a first-class product capability rathe
 
 RM-0002 owns actionable recovery commands and repair flows, not the status aggregation surface.
 
+### Slice status
+
+- Implemented slice: `llm-wiki repair-index`.
+- Behavior: rebuilds derived search index from canonical `wiki/` + `projects/` Markdown pages.
+- Safety: excludes operational paths (`log/`, `.local/`, `.archive/`, `.worktrees/`) and never mutates source Markdown.
+- Modes: supports `--dry-run`, machine-readable JSON output, and concise human summary output.
+
 ## Dependencies
 
 Depends on RM-0001 for operation history. Consumes health signals from RM-0014/RM-0026 but owns recovery and repair commands.

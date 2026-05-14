@@ -13,6 +13,7 @@ import { importCommand } from './commands/import-cmd.js';
 import { searchCommand } from './commands/search.js';
 import { statusCommand } from './commands/status.js';
 import { skillCommand } from './commands/skill.js';
+import { repairIndexCommand } from './commands/repair-index.js';
 
 void Command; // Type-only import for side effects
 
@@ -26,5 +27,6 @@ await new Command()
   .addCommand(importCommand)
   .addCommand(searchCommand)
   .addCommand(statusCommand)
+  .addCommand(repairIndexCommand)
   .addCommand(skillCommand)
   .parseAsync();
