@@ -3,6 +3,15 @@ export interface WorktreeInfo {
   branch: string;
 }
 
+export type ManagedWorktreeStatus = 'clean' | 'dirty' | 'conflicted' | 'stale';
+
+export interface ManagedWorktreeInfo {
+  path: string;
+  branch: string | null;
+  status: ManagedWorktreeStatus;
+  isManaged: boolean;
+}
+
 export interface IVersionControl {
   /** Commit specific files with a message. */
   commit(files: string[], message: string): Promise<string>;
@@ -24,4 +33,7 @@ export interface IVersionControl {
 
   /** Add specific changes in a worktree and commit. */
   commitInWorktree(worktreePath: string, files: string[], message: string): Promise<string>;
+
+  /** List and classify managed worktrees under this repository. */
+  listManagedWorktrees(): Promise<ManagedWorktreeInfo[]>;
 }

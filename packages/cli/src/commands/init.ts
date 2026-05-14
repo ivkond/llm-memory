@@ -105,6 +105,9 @@ export const initCommand = new Command()
       // Ensure .local and .config directories exist by writing placeholder files
       // The fileStore.writeFile will create parent directories automatically
       await fileStore.writeFile('.local/.gitkeep', '');
+      // Managed operation worktrees live under `.worktrees/`; keep them
+      // ignored so cleanup guards can still detect real main-repo dirtiness.
+      await fileStore.writeFile('.gitignore', '.worktrees/\n');
 
       // Create default config
       const configContent = `# LLM Wiki Configuration
