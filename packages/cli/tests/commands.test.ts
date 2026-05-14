@@ -118,9 +118,11 @@ describe('CLI command coverage', () => {
     await access(path.join(wikiPath, 'wiki', '.gitkeep'));
     await access(path.join(wikiPath, 'projects', '.gitkeep'));
     await access(path.join(wikiPath, '.local', '.gitkeep'));
+    const gitignore = await readFile(path.join(wikiPath, '.gitignore'), 'utf-8');
     const config = await readFile(path.join(wikiPath, '.config', 'settings.shared.yaml'), 'utf-8');
     expect(git.init).toHaveBeenCalled();
     expect(git.commit).toHaveBeenCalledWith('Initial commit');
+    expect(gitignore).toContain('.worktrees/');
     expect(config).toContain(`path: ${wikiPath}`);
     expect(config).toContain('model: gpt-4o-mini');
     expect(tap.stdout.join('\n')).toContain('Wiki initialized successfully');
