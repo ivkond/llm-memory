@@ -118,4 +118,30 @@ describe('FsOperationJournal', () => {
       await rm(outside, { recursive: true, force: true });
     }
   });
+
+  it('test_append_preexistingJournalSymlinkOutsideRoot_rejectedOutsideFileUnchanged', async () => {
+    const outsideDir = await mkdtemp(path.join(tmpdir(), 'llm-wiki-operation-outside-file-'));
+    const outsideFile = path.join(outsideDir, 'outside-journal.jsonl');
+    await writeFile(outsideFile, 'outside-original\n', 'utf-8');
+    await mkdir(path.join(dir, '.local/operations'), { recursive: true });
+    await symlink(outsideFile, path.join(dir, '.local/operations/journal.jsonl'), 'file');
+
+    try {
+      await expect(
+        journal.append({
+          id: 'op-escape',
+          type: 'archive',
+          status: 'running',
+          startedAt: '2026-05-14T00:00:00Z',
+          updatedAt: '2026-05-14T00:00:00Z',
+          metadata: { touchedPaths: [] },
+        }),
+      ).rejects.toThrow();
+
+      const outsideBody = await readFile(outsideFile, 'utf-8');
+      expect(outsideBody).toBe('outside-original\n');
+    } finally {
+      await rm(outsideDir, { recursive: true, force: true });
+    }
+  });
 });

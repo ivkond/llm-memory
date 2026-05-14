@@ -28,11 +28,13 @@ export class FsOperationJournal implements IOperationJournal {
       const canonicalParent = await this.assertUnderRoot(parent, JOURNAL_PATH);
       if (canonicalParent === null) throw new PathEscapeError(JOURNAL_PATH);
       const targetPath = path.join(canonicalParent, path.basename(safePath));
+      const existingCanonical = await this.assertUnderRoot(targetPath, JOURNAL_PATH);
+      const appendTarget = existingCanonical ?? targetPath;
       const sanitizedRecord: OperationJournalRecord = {
         ...record,
         metadata: sanitizeOperationMetadata(record.metadata),
       };
-      await appendFile(targetPath, `${JSON.stringify(sanitizedRecord)}\n`, 'utf-8');
+      await appendFile(appendTarget, `${JSON.stringify(sanitizedRecord)}\n`, 'utf-8');
     } catch (error) {
       this.disabledReason = `operation journal append disabled: ${this.toReason(error)}`;
       throw error;
