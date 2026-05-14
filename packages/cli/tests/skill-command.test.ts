@@ -141,13 +141,12 @@ describe('skill command', () => {
     expect(tap.stderr.join('\n')).toContain("Failed to uninstall skill: Skill 'llm-memory' is not installed.");
   });
 
-  it('rejects invalid skill names for install and uninstall', async () => {
+  it.each(['../escape', '..\\escape', 'foo\\bar', 'C:\\\\escape', '\\\\server\\share'])(
+    'rejects invalid skill name %s for install and uninstall',
+    async (invalidName) => {
     const sourceRoot = await mkdtemp(path.join(tmpdir(), 'cli-skill-source-'));
     process.env.LLM_WIKI_SKILL_SOURCE_ROOT = sourceRoot;
 
-    const invalidNames = ['../escape', '..\\escape', 'foo\\bar', 'C:\\\\escape', '\\\\server\\share'];
-
-    for (const invalidName of invalidNames) {
       const installTap = tapConsole();
       const restoreInstallExit = mockExit();
       await expect(runSkillCommand(['install', invalidName])).rejects.toMatchObject({ code: 1 });
@@ -161,10 +160,10 @@ describe('skill command', () => {
       restoreUninstallExit();
       uninstallTap.restore();
       expect(uninstallTap.stderr.join('\n')).toContain('Invalid skill name');
-    }
 
-    await expect(access(path.join(cwd, '.agent_context'))).rejects.toBeTruthy();
-  });
+      await expect(access(path.join(cwd, '.agent_context'))).rejects.toBeTruthy();
+    },
+  );
 
   it('list shows empty state when no skills installed', async () => {
     const tap = tapConsole();

@@ -74,47 +74,16 @@ describe('VerbatimEntry', () => {
   describe('identifier validation', () => {
     const baseOpts = { content: 'x', agent: 'claude-code', sessionId: 'abc' };
 
-    it('test_create_agentWithSlash_throwsInvalidIdentifier', () => {
-      expect(() => VerbatimEntry.create({ ...baseOpts, agent: '../other' })).toThrow(
-        InvalidIdentifierError,
-      );
-    });
-
-    it('test_create_agentWithDotDot_throwsInvalidIdentifier', () => {
-      expect(() => VerbatimEntry.create({ ...baseOpts, agent: '..' })).toThrow(
-        InvalidIdentifierError,
-      );
-    });
-
-    it('test_create_sessionIdWithSlash_throwsInvalidIdentifier', () => {
-      expect(() => VerbatimEntry.create({ ...baseOpts, sessionId: 'abc/def' })).toThrow(
-        InvalidIdentifierError,
-      );
-    });
-
-    it('test_create_emptyAgent_throwsInvalidIdentifier', () => {
-      expect(() => VerbatimEntry.create({ ...baseOpts, agent: '' })).toThrow(
-        InvalidIdentifierError,
-      );
-    });
-
-    it('test_create_agentWithBackslash_throwsInvalidIdentifier', () => {
-      expect(() => VerbatimEntry.create({ ...baseOpts, agent: String.raw`evil\agent` })).toThrow(
-        InvalidIdentifierError,
-      );
-    });
-
-    it('test_create_agentStartingWithDash_throwsInvalidIdentifier', () => {
-      // First character must be alphanumeric (prevents CLI-style arg confusion).
-      expect(() => VerbatimEntry.create({ ...baseOpts, agent: '-evil' })).toThrow(
-        InvalidIdentifierError,
-      );
-    });
-
-    it('test_create_agentExceeds64Chars_throwsInvalidIdentifier', () => {
-      expect(() => VerbatimEntry.create({ ...baseOpts, agent: 'a'.repeat(65) })).toThrow(
-        InvalidIdentifierError,
-      );
+    it.each([
+      { name: 'agent with slash', opts: { agent: '../other' } },
+      { name: 'agent as dot-dot', opts: { agent: '..' } },
+      { name: 'session id with slash', opts: { sessionId: 'abc/def' } },
+      { name: 'empty agent', opts: { agent: '' } },
+      { name: 'agent with backslash', opts: { agent: String.raw`evil\agent` } },
+      { name: 'agent starting with dash', opts: { agent: '-evil' } },
+      { name: 'agent exceeding 64 chars', opts: { agent: 'a'.repeat(65) } },
+    ])('test_create_$name_throwsInvalidIdentifier', ({ opts }) => {
+      expect(() => VerbatimEntry.create({ ...baseOpts, ...opts })).toThrow(InvalidIdentifierError);
     });
 
     it('test_create_validSlugStyleIdentifiers_work', () => {

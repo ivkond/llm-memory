@@ -2,22 +2,24 @@ import { describe, it, expect } from 'vitest';
 import { SanitizationResult } from '../../src/domain/sanitization-result.js';
 
 describe('SanitizationResult', () => {
-  it('test_isBlocked_over50percent_returnsTrue', () => {
-    const result = new SanitizationResult(
-      'redacted',
-      [{ type: 'api_key', position: 0, original_length: 100 }],
-      0.6,
-    );
-    expect(result.isBlocked).toBe(true);
-  });
-
-  it('test_isBlocked_under50percent_returnsFalse', () => {
-    const result = new SanitizationResult(
-      'mostly clean',
-      [{ type: 'api_key', position: 5, original_length: 10 }],
-      0.1,
-    );
-    expect(result.isBlocked).toBe(false);
+  it.each([
+    {
+      content: 'redacted',
+      warnings: [{ type: 'api_key', position: 0, original_length: 100 }],
+      redactionRatio: 0.6,
+      expected: true,
+      name: 'over 50 percent',
+    },
+    {
+      content: 'mostly clean',
+      warnings: [{ type: 'api_key', position: 5, original_length: 10 }],
+      redactionRatio: 0.1,
+      expected: false,
+      name: 'under 50 percent',
+    },
+  ])('test_isBlocked_$name_returns$expected', ({ content, warnings, redactionRatio, expected }) => {
+    const result = new SanitizationResult(content, warnings, redactionRatio);
+    expect(result.isBlocked).toBe(expected);
   });
 
   it('test_isClean_noWarnings_returnsTrue', () => {

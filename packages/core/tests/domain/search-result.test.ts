@@ -18,19 +18,13 @@ describe('SearchResult', () => {
     expect(result.source).toBe('hybrid');
   });
 
-  it('test_isHighConfidence_above08_returnsTrue', () => {
-    const result = new SearchResult('p', 't', 'e', 0.9, 'hybrid');
-    expect(result.isHighConfidence).toBe(true);
-  });
-
-  it('test_isHighConfidence_exactly08_returnsTrue', () => {
-    const result = new SearchResult('p', 't', 'e', 0.8, 'hybrid');
-    expect(result.isHighConfidence).toBe(true);
-  });
-
-  it('test_isHighConfidence_below08_returnsFalse', () => {
-    const result = new SearchResult('p', 't', 'e', 0.5, 'hybrid');
-    expect(result.isHighConfidence).toBe(false);
+  it.each([
+    { score: 0.9, expected: true, name: 'above 0.8' },
+    { score: 0.8, expected: true, name: 'exactly 0.8' },
+    { score: 0.5, expected: false, name: 'below 0.8' },
+  ])('test_isHighConfidence_$name_returns$expected', ({ score, expected }) => {
+    const result = new SearchResult('p', 't', 'e', score, 'hybrid');
+    expect(result.isHighConfidence).toBe(expected);
   });
 
   it('test_sortByScoreDesc_correctOrder', () => {

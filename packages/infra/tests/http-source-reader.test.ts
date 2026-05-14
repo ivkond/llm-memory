@@ -77,17 +77,13 @@ describe('HttpSourceReader', () => {
 
   // ---- Scheme allowlist (SSRF defence) ------------------------------------
 
-  it('test_read_nonHttpScheme_throwsSourceParseError', async () => {
+  it.each([
+    { name: 'non-http scheme', url: 'ftp://example.com/data' },
+    { name: 'file scheme', url: 'file:///etc/passwd' },
+  ])('test_read_$name_throwsSourceParseError', async ({ url }) => {
     const fetchImpl = vi.fn();
     const reader = new HttpSourceReader({ dnsLookup: mkDns(), fetchImpl });
-    await expect(reader.read('ftp://example.com/data')).rejects.toBeInstanceOf(SourceParseError);
-    expect(fetchImpl).not.toHaveBeenCalled();
-  });
-
-  it('test_read_fileScheme_throwsSourceParseError', async () => {
-    const fetchImpl = vi.fn();
-    const reader = new HttpSourceReader({ dnsLookup: mkDns(), fetchImpl });
-    await expect(reader.read('file:///etc/passwd')).rejects.toBeInstanceOf(SourceParseError);
+    await expect(reader.read(url)).rejects.toBeInstanceOf(SourceParseError);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
@@ -98,36 +94,17 @@ describe('HttpSourceReader', () => {
 
   // ---- Host blocklist (SSRF defence) --------------------------------------
 
-  it('test_read_loopbackIpLiteral_throwsSourceParseError', async () => {
+  it.each([
+    { name: 'loopback ipv4 literal', url: 'http://127.0.0.1:8080/' },
+    { name: 'loopback ipv6 literal', url: 'http://[::1]/' },
+    { name: 'aws metadata ip literal', url: 'http://169.254.169.254/latest/meta-data/' },
+    { name: 'private ip literal 10.0.0.5', url: 'http://10.0.0.5/' },
+    { name: 'private ip literal 192.168.1.1', url: 'http://192.168.1.1/' },
+    { name: 'private ip literal 172.20.0.1', url: 'http://172.20.0.1/' },
+  ])('test_read_$name_throwsSourceParseError', async ({ url }) => {
     const fetchImpl = vi.fn();
     const reader = new HttpSourceReader({ dnsLookup: mkDns(), fetchImpl });
-    await expect(reader.read('http://127.0.0.1:8080/')).rejects.toBeInstanceOf(SourceParseError);
-    expect(fetchImpl).not.toHaveBeenCalled();
-  });
-
-  it('test_read_ipv6LoopbackLiteral_throwsSourceParseError', async () => {
-    const fetchImpl = vi.fn();
-    const reader = new HttpSourceReader({ dnsLookup: mkDns(), fetchImpl });
-    await expect(reader.read('http://[::1]/')).rejects.toBeInstanceOf(SourceParseError);
-    expect(fetchImpl).not.toHaveBeenCalled();
-  });
-
-  it('test_read_awsMetadataIpLiteral_throwsSourceParseError', async () => {
-    const fetchImpl = vi.fn();
-    const reader = new HttpSourceReader({ dnsLookup: mkDns(), fetchImpl });
-    // 169.254.169.254 is the AWS / GCP / Azure instance-metadata IP.
-    await expect(reader.read('http://169.254.169.254/latest/meta-data/')).rejects.toBeInstanceOf(
-      SourceParseError,
-    );
-    expect(fetchImpl).not.toHaveBeenCalled();
-  });
-
-  it('test_read_privateIpLiteral_throwsSourceParseError', async () => {
-    const fetchImpl = vi.fn();
-    const reader = new HttpSourceReader({ dnsLookup: mkDns(), fetchImpl });
-    await expect(reader.read('http://10.0.0.5/')).rejects.toBeInstanceOf(SourceParseError);
-    await expect(reader.read('http://192.168.1.1/')).rejects.toBeInstanceOf(SourceParseError);
-    await expect(reader.read('http://172.20.0.1/')).rejects.toBeInstanceOf(SourceParseError);
+    await expect(reader.read(url)).rejects.toBeInstanceOf(SourceParseError);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
@@ -165,20 +142,14 @@ describe('HttpSourceReader', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('test_read_literalLocalhostName_throwsSourceParseError', async () => {
+  it.each([
+    { name: 'literal localhost name', url: 'http://localhost:3000/' },
+    { name: 'metadata hostname', url: 'http://metadata.google.internal/computeMetadata/v1/' },
+  ])('test_read_$name_throwsSourceParseError', async ({ url }) => {
     const fetchImpl = vi.fn();
     const reader = new HttpSourceReader({ dnsLookup: mkDns(), fetchImpl });
-    await expect(reader.read('http://localhost:3000/')).rejects.toBeInstanceOf(SourceParseError);
+    await expect(reader.read(url)).rejects.toBeInstanceOf(SourceParseError);
     // The forbidden-hostname list short-circuits before DNS is consulted.
-    expect(fetchImpl).not.toHaveBeenCalled();
-  });
-
-  it('test_read_metadataHostname_throwsSourceParseError', async () => {
-    const fetchImpl = vi.fn();
-    const reader = new HttpSourceReader({ dnsLookup: mkDns(), fetchImpl });
-    await expect(
-      reader.read('http://metadata.google.internal/computeMetadata/v1/'),
-    ).rejects.toBeInstanceOf(SourceParseError);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 

@@ -78,18 +78,12 @@ describe('FsFileStore', () => {
   });
 
   describe('path traversal defense', () => {
-    it('test_readFile_parentEscape_throwsPathEscape', async () => {
-      await expect(store.readFile('../outside.md')).rejects.toBeInstanceOf(PathEscapeError);
-    });
-
-    it('test_readFile_deepParentEscape_throwsPathEscape', async () => {
-      await expect(store.readFile('wiki/../../../etc/passwd')).rejects.toBeInstanceOf(
-        PathEscapeError,
-      );
-    });
-
-    it('test_readFile_absolutePath_throwsPathEscape', async () => {
-      await expect(store.readFile('/etc/passwd')).rejects.toBeInstanceOf(PathEscapeError);
+    it.each([
+      { name: 'parent escape', path: '../outside.md' },
+      { name: 'deep parent escape', path: 'wiki/../../../etc/passwd' },
+      { name: 'absolute path', path: '/etc/passwd' },
+    ])('test_readFile_$name_throwsPathEscape', async ({ path: unsafePath }) => {
+      await expect(store.readFile(unsafePath)).rejects.toBeInstanceOf(PathEscapeError);
     });
 
     it('test_writeFile_parentEscape_throwsPathEscape', async () => {
