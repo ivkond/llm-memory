@@ -260,6 +260,8 @@ describe('ImportService', () => {
     await expect(service.importAll({ agents: ['ghost'] })).rejects.toBeInstanceOf(
       ImportReaderNotRegisteredError,
     );
+    expect(operationJournal.append).toHaveBeenCalledTimes(2);
+    expect(operationJournal.append.mock.calls[1][0].status).toBe('failed');
   });
 
   it('journals import operation start and completion', async () => {

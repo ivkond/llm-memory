@@ -53,13 +53,12 @@ export class ImportService {
       request: { source: 'cli_or_mcp', actor: 'import-service' },
     });
     await appendOperation(this.deps.operationJournal, op, 'running');
-    const selected = this.resolveAgents(req.agents);
-
-    const state = await this.deps.stateStore.load();
-    const results: AgentImportResult[] = [];
-    const stateUpdates: Record<string, { last_import: string }> = {};
-
     try {
+      const selected = this.resolveAgents(req.agents);
+      const state = await this.deps.stateStore.load();
+      const results: AgentImportResult[] = [];
+      const stateUpdates: Record<string, { last_import: string }> = {};
+
       for (const agent of selected) {
         const reader = this.readerForEnabledAgent(agent);
         if (!reader) continue;

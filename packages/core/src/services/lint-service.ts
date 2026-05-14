@@ -201,7 +201,14 @@ export class LintService {
     if (phaseSet.has('consolidate')) {
       const consolidateOp = createOperationContext('consolidate');
       await appendOperation(this.deps.operationJournal, consolidateOp, 'running');
-      consolidateResult = await this.deps.makeConsolidatePhase(wtFileStore, wtVerbatimStore).run();
+      try {
+        consolidateResult = await this.deps.makeConsolidatePhase(wtFileStore, wtVerbatimStore).run();
+      } catch (err) {
+        await appendOperation(this.deps.operationJournal, consolidateOp, 'failed', {
+          error: journalErrorMetadata(err),
+        });
+        throw err;
+      }
       for (const p of consolidateResult.touchedPaths) touchedPaths.add(p);
       touchedPaths.add('log');
       await appendOperation(this.deps.operationJournal, consolidateOp, 'succeeded', {
@@ -220,7 +227,15 @@ export class LintService {
     if (phaseSet.has('promote')) {
       const promoteOp = createOperationContext('promote');
       await appendOperation(this.deps.operationJournal, promoteOp, 'running');
-      const result = await this.deps.makePromotePhase(wtFileStore).run();
+      let result: PromoteRunResult;
+      try {
+        result = await this.deps.makePromotePhase(wtFileStore).run();
+      } catch (err) {
+        await appendOperation(this.deps.operationJournal, promoteOp, 'failed', {
+          error: journalErrorMetadata(err),
+        });
+        throw err;
+      }
       for (const p of result.touchedPaths) touchedPaths.add(p);
       await appendOperation(this.deps.operationJournal, promoteOp, 'succeeded', {
         touchedPaths: result.touchedPaths,

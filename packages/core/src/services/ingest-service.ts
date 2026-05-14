@@ -86,19 +86,24 @@ export class IngestService {
       request: { source: req.source, actor: 'ingest-service' },
     });
     await appendOperation(this.operationJournal, op, 'running');
-    if (req.project) {
+    let source: { uri: string; content: string; estimatedTokens: number };
+    try {
+      if (req.project) {
+        throw new ProjectScopeUnsupportedError('ingest', req.project);
+      }
+      // -- Pre-worktree checks ------------------------------------------------
+      source = await this.sourceReader.read(req.source); // may throw SourceNotFoundError / SourceParseError
+      if (source.estimatedTokens > MAX_SOURCE_TOKENS) {
+        throw new SourceParseError(
+          source.uri,
+          `source is ${source.estimatedTokens} tokens, exceeds limit of ${MAX_SOURCE_TOKENS}`,
+        );
+      }
+    } catch (err) {
       await appendOperation(this.operationJournal, op, 'failed', {
-        error: { name: 'ProjectScopeUnsupportedError', message: 'project scope unsupported', code: 'PROJECT_SCOPE_UNSUPPORTED', category: 'wiki' },
+        error: journalErrorMetadata(err),
       });
-      throw new ProjectScopeUnsupportedError('ingest', req.project);
-    }
-    // -- Pre-worktree checks --------------------------------------------------
-    const source = await this.sourceReader.read(req.source); // may throw SourceNotFoundError / SourceParseError
-    if (source.estimatedTokens > MAX_SOURCE_TOKENS) {
-      throw new SourceParseError(
-        source.uri,
-        `source is ${source.estimatedTokens} tokens, exceeds limit of ${MAX_SOURCE_TOKENS}`,
-      );
+      throw err;
     }
 
     // -- Worktree-scoped ingest ----------------------------------------------

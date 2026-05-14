@@ -272,6 +272,8 @@ describe('IngestService', () => {
       SourceParseError,
     );
     expect(vcs.createSpy).not.toHaveBeenCalled();
+    expect(operationJournal.append).toHaveBeenCalledTimes(2);
+    expect(operationJournal.append.mock.calls[1][0].status).toBe('failed');
   });
 
   it('test_ingest_projectScopeProvided_throwsProjectScopeUnsupported', async () => {
@@ -280,6 +282,8 @@ describe('IngestService', () => {
     );
     expect(sourceReader.readSpy).not.toHaveBeenCalled();
     expect(vcs.createSpy).not.toHaveBeenCalled();
+    expect(operationJournal.append).toHaveBeenCalledTimes(2);
+    expect(operationJournal.append.mock.calls[1][0].status).toBe('failed');
   });
 
   it('test_ingest_sourceMissing_throwsSourceNotFoundError', async () => {
@@ -288,6 +292,8 @@ describe('IngestService', () => {
       SourceNotFoundError,
     );
     expect(vcs.createSpy).not.toHaveBeenCalled();
+    expect(operationJournal.append).toHaveBeenCalledTimes(2);
+    expect(operationJournal.append.mock.calls[1][0].status).toBe('failed');
   });
 
   it('test_ingest_llmFails_worktreeDiscarded_mainBranchUntouched_stateUnchanged', async () => {
@@ -431,5 +437,17 @@ describe('IngestService', () => {
     // reported as updated, not created, and must appear exactly once.
     expect(result.pages_created).toEqual([]);
     expect(result.pages_updated).toEqual(['wiki/tools/postgresql.md']);
+  });
+
+  it('test_ingest_journalAppendFailsAfterMerge_surfacesErrorWithoutRollback', async () => {
+    operationJournal.append.mockImplementation(async (record: { status: string; type: string }) => {
+      if (record.type === 'ingest' && record.status === 'succeeded') {
+        throw new Error('journal post-merge failure');
+      }
+    });
+
+    await expect(service.ingest({ source: '/tmp/src.md' })).rejects.toThrow('journal post-merge failure');
+    expect(vcs.mergeSpy).toHaveBeenCalledTimes(1);
+    expect(stateStore.updateSpy).toHaveBeenCalledTimes(1);
   });
 });

@@ -277,6 +277,10 @@ describe('LintService', () => {
     expect(vc.removeSpy).toHaveBeenCalledWith(vc.createdWorktree!.path, true);
     expect(vc.mergeSpy).not.toHaveBeenCalled();
     expect(state.saved).toEqual([]);
+    const failedConsolidate = operationJournal.append.mock.calls.find(
+      (c) => c[0].type === 'consolidate' && c[0].status === 'failed',
+    );
+    expect(failedConsolidate).toBeTruthy();
   });
 
   it('preserves worktree on GitConflictError and does NOT stamp state', async () => {

@@ -149,4 +149,17 @@ describe('RememberService', () => {
     expect(append.mock.calls[0][0].status).toBe('running');
     expect(append.mock.calls[1][0].status).toBe('succeeded');
   });
+
+  it('test_rememberFact_journalAppendFailsBeforeWrite_failsClosed', async () => {
+    const append = operationJournal.append as ReturnType<typeof vi.fn>;
+    append.mockRejectedValueOnce(new Error('journal down'));
+    await expect(
+      service.rememberFact({
+        content: 'fact',
+        agent: 'claude-code',
+        sessionId: 's1',
+      }),
+    ).rejects.toThrow('journal down');
+    expect(verbatimStore.writeEntry).not.toHaveBeenCalled();
+  });
 });
