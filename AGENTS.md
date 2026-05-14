@@ -49,10 +49,13 @@ pnpm build
 pnpm typecheck
 pnpm lint
 pnpm test
+pnpm coverage
 pnpm format:check
 ```
 
 Use focused package/test commands while iterating, then run the relevant broader gates before completion.
+
+Coverage thresholds are baseline-preserving: set global statements/branches/functions/lines to the latest measured baseline rounded down to the nearest whole number, and only ratchet upward when meaningful test additions justify it.
 
 ## Verification Before Completion
 

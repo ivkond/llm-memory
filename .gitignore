@@ -2,6 +2,7 @@
 .uv-cache
 node_modules
 dist
+coverage
 *.tsbuildinfo
 .local/
 .worktrees/
