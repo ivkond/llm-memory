@@ -197,7 +197,7 @@ By default, the server listens on `127.0.0.1:7849`. You can change this in confi
 | `llm-wiki ingest <file-or-url>` | Convert a file or URL into structured wiki pages. |
 | `llm-wiki search <query>` | Search the wiki and optionally generate an answer. |
 | `llm-wiki lint` | Consolidate raw memories, promote shared patterns, and run health checks. |
-| `llm-wiki import --agent claude-code` | Import supported external agent memory sources. |
+| `llm-wiki import --agent qwen-code` | Import supported external agent memory sources. |
 | `llm-wiki skill install <name>` | Install packaged agent skills into `.agent_context/skills`. |
 
 Useful global options:
@@ -207,6 +207,11 @@ llm-wiki status --wiki ./my-wiki
 llm-wiki search "query" --limit 5 --format json
 llm-wiki ingest ./doc.md --verbose
 ```
+
+Import readers currently discover local files from:
+
+- `claude-code`: `~/.claude/projects/*/memory/**/*.md`
+- `qwen-code`: `~/.qwen/projects/*/memory/**/*.md`
 
 ## MCP tools
 

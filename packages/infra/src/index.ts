@@ -14,3 +14,4 @@ export { YamlStateStore } from './yaml-state-store.js';
 export { FsOperationJournal } from './fs-operation-journal.js';
 export { SevenZipArchiver } from './seven-zip-archiver.js';
 export { ClaudeCodeMemoryReader } from './claude-code-memory-reader.js';
+export { QwenCodeMemoryReader } from './qwen-code-memory-reader.js';

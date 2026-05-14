@@ -281,6 +281,7 @@ describe('CLI command coverage', () => {
     tap.restore();
 
     expect(tap.stderr.join('\n')).toContain('Unknown agent');
+    expect(tap.stderr.join('\n')).toContain('qwen-code');
   });
 
   it('import: runs service and reports totals', async () => {
@@ -313,6 +314,35 @@ describe('CLI command coverage', () => {
     expect(buildContainer.mock.calls[0]?.[0].wiki.path).toBe(wikiPath);
     expect(buildContainer.mock.calls[0]?.[0].llm.model).toBe('local-model');
     expect(tap.stdout.join('\n')).toContain('Total: 2 imported, 1 skipped');
+  });
+
+  it('import: supports qwen-code and all modes', async () => {
+    const wikiPath = await mkdtemp(path.join(tmpdir(), 'cli-import-qwen-wiki-'));
+    await writeWikiConfig(wikiPath);
+    const importAll = vi.fn().mockResolvedValue({
+      agents: [{ agent: 'qwen-code', imported: 0, skipped: 0, discovered: 0, error: null }],
+    });
+    const buildContainer = vi.fn(() => ({ import_: { importAll } }));
+
+    vi.doMock('@ivkond-llm-wiki/common', () => ({
+      buildContainer,
+    }));
+
+    await runCommand('../src/commands/import-cmd.ts', 'importCommand', [
+      '--wiki',
+      wikiPath,
+      '--agent',
+      'qwen-code',
+    ]);
+    expect(importAll).toHaveBeenLastCalledWith({ agents: ['qwen-code'] });
+
+    await runCommand('../src/commands/import-cmd.ts', 'importCommand', [
+      '--wiki',
+      wikiPath,
+      '--agent',
+      'all',
+    ]);
+    expect(importAll).toHaveBeenLastCalledWith({ agents: undefined });
   });
 
   it('search: emits json output with parsed limit', async () => {

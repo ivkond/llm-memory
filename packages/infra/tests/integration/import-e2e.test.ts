@@ -7,6 +7,7 @@ import {
   FsVerbatimStore,
   YamlStateStore,
   ClaudeCodeMemoryReader,
+  QwenCodeMemoryReader,
 } from '../../src/index.js';
 import { ImportService } from '@ivkond-llm-wiki/core';
 
@@ -108,5 +109,41 @@ describe('Import E2E', () => {
 
     const result = await service.importAll({});
     expect(result.agents[0].imported).toBe(1);
+  });
+
+  it('imports qwen raw markdown into log/qwen-code/raw without canonical writes', async () => {
+    const qwenRoot = await mkdtemp(path.join(tmpdir(), 'qwen-memory-'));
+    try {
+      const qwenFile = path.join(qwenRoot, 'projects', 'cli-relay', 'memory', 'sessions', 'a.md');
+      await mkdir(path.dirname(qwenFile), { recursive: true });
+      await writeFile(qwenFile, '---\ncustom: true\n---\n\nRaw qwen note\n');
+      await utimes(qwenFile, new Date('2026-04-09T10:00:00Z'), new Date('2026-04-09T10:00:00Z'));
+
+      const mainFs = new FsFileStore(wiki);
+      const verbatim = new FsVerbatimStore(mainFs);
+      const state = new YamlStateStore(new FsFileStore(wiki));
+      const reader = new QwenCodeMemoryReader();
+      const service = new ImportService({
+        readers: new Map([['qwen-code', reader]]),
+        verbatimStore: verbatim,
+        stateStore: state,
+        agentConfigs: {
+          'qwen-code': {
+            enabled: true,
+            paths: [path.join(qwenRoot, 'projects', '*', 'memory', '**', '*.md').replaceAll('\\', '/')],
+          },
+        },
+      });
+
+      const result = await service.importAll({});
+      expect(result.agents[0].imported).toBe(1);
+
+      const rawDir = path.join(wiki, 'log', 'qwen-code', 'raw');
+      const files = await readdir(rawDir);
+      expect(files).toHaveLength(1);
+      expect(await mainFs.exists(path.join('wiki', 'qwen-code.md'))).toBe(false);
+    } finally {
+      await rm(qwenRoot, { recursive: true, force: true });
+    }
   });
 });
