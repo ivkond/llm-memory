@@ -44,6 +44,20 @@ class FakeEmbeddingClient implements IEmbeddingClient {
   }
 }
 
+class UnsupportedModelEmbeddingClient implements IEmbeddingClient {
+  constructor(private readonly dims: number = 16) {}
+
+  async embed(): Promise<number[][]> {
+    throw new Error(
+      'Unsupported model version v1 for provider "openai.embedding" and model "text-embedding-3-small". AI SDK 5 only supports models that implement specification version "v2".',
+    );
+  }
+
+  dimensions(): number {
+    return this.dims;
+  }
+}
+
 describe('RuVectorSearchEngine', () => {
   let dir: string;
   let dbPath: string;
@@ -228,6 +242,29 @@ describe('RuVectorSearchEngine', () => {
     expect(embeddings.embedSpy).toHaveBeenCalledTimes(1);
     const [texts] = embeddings.embedSpy.mock.calls[0] as [string[]];
     expect(texts).toEqual(['hello']);
+  });
+
+  it('test_embeddingModelVersionMismatch_fallsBackToDeterministicEmbedding', async () => {
+    const fallbackEngine = new RuVectorSearchEngine(dbPath, new UnsupportedModelEmbeddingClient(16));
+    await fallbackEngine.rebuild([
+      {
+        path: 'wiki/alpha.md',
+        title: 'Alpha',
+        content: 'alpha topic content',
+        updated: '2026-05-10T00:00:00Z',
+      },
+      {
+        path: 'projects/beta.md',
+        title: 'Beta',
+        content: 'beta project content',
+        updated: '2026-05-10T00:00:00Z',
+      },
+    ]);
+
+    expect(await fallbackEngine.health()).toBe('ok');
+    const results = await fallbackEngine.search({ text: 'alpha' });
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.some((r) => r.path === 'wiki/alpha.md')).toBe(true);
   });
 
   // ---- Concurrency / single-writer serialisation (blocksorg review #3) ----

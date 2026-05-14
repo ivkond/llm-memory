@@ -11,6 +11,9 @@ export { importCommand } from './import-cmd.js';
 export { searchCommand } from './search.js';
 export { statusCommand } from './status.js';
 export { skillCommand } from './skill.js';
+export { doctorCommand } from './doctor.js';
+export { verifyStateCommand } from './verify-state.js';
+export { repairIndexCommand } from './repair-index.js';
 
 /**
  * CommandModule type for cliffy subcommands

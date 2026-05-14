@@ -506,4 +506,73 @@ describe('CLI command coverage', () => {
     expect(ingest).toHaveBeenCalledWith({ source: 'file.md' });
     expect(buildContainer.mock.calls[0]?.[0].wiki.path).toBe('/fake/wiki');
   });
+
+  it('doctor: exits with nonzero when errors are reported', async () => {
+    const wikiPath = await mkdtemp(path.join(tmpdir(), 'cli-doctor-wiki-'));
+    await writeWikiConfig(wikiPath);
+    const doctor = vi.fn().mockResolvedValue({
+      ok: false,
+      findings: [{ severity: 'error', component: 'wiki', code: 'missing', message: 'missing path' }],
+    });
+    vi.doMock('@ivkond-llm-wiki/common', () => ({
+      buildContainer: () => ({ recovery: { doctor } }),
+    }));
+
+    const tap = tapConsole();
+    const restoreExit = mockExit();
+
+    await expect(
+      runCommand('../src/commands/doctor.ts', 'doctorCommand', ['--wiki', wikiPath]),
+    ).rejects.toMatchObject({ code: 1 });
+
+    restoreExit();
+    tap.restore();
+    expect(tap.stdout.join('\n')).toContain('missing path');
+  });
+
+  it('verify-state: prints json output', async () => {
+    const wikiPath = await mkdtemp(path.join(tmpdir(), 'cli-verify-state-wiki-'));
+    await writeWikiConfig(wikiPath);
+    const verifyState = vi.fn().mockResolvedValue({ ok: true, findings: [] });
+    vi.doMock('@ivkond-llm-wiki/common', () => ({
+      buildContainer: () => ({ recovery: { verifyState } }),
+    }));
+
+    const tap = tapConsole();
+    const restoreExit = mockExit();
+
+    await runCommand('../src/commands/verify-state.ts', 'verifyStateCommand', [
+      '--wiki',
+      wikiPath,
+      '--format',
+      'json',
+    ]);
+
+    restoreExit();
+    tap.restore();
+    expect(tap.stdout[0]).toContain('"ok"');
+  });
+
+  it('repair-index: passes dry-run flag to service', async () => {
+    const wikiPath = await mkdtemp(path.join(tmpdir(), 'cli-repair-index-wiki-'));
+    await writeWikiConfig(wikiPath);
+    const repairIndex = vi.fn().mockResolvedValue({ dry_run: true, indexed: 2, paths: [] });
+    vi.doMock('@ivkond-llm-wiki/common', () => ({
+      buildContainer: () => ({ recovery: { repairIndex } }),
+    }));
+
+    const tap = tapConsole();
+    const restoreExit = mockExit();
+
+    await runCommand('../src/commands/repair-index.ts', 'repairIndexCommand', [
+      '--wiki',
+      wikiPath,
+      '--dry-run',
+    ]);
+
+    restoreExit();
+    tap.restore();
+    expect(repairIndex).toHaveBeenCalledWith({ dryRun: true });
+    expect(tap.stdout.join('\n')).toContain('Dry run index entries: 2');
+  });
 });

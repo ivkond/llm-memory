@@ -40,3 +40,12 @@ export type {
   AgentImportResult,
   AgentConfig,
 } from './import-service.js';
+export { RecoveryDiagnosticsService } from './recovery-diagnostics-service.js';
+export type {
+  DiagnosticSeverity,
+  DiagnosticFinding,
+  DoctorResponse,
+  VerifyStateResponse,
+  RepairIndexRequest,
+  RepairIndexResponse,
+} from './recovery-diagnostics-service.js';
