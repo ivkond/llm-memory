@@ -157,10 +157,13 @@ export class GitVersionControl implements IVersionControl {
   }
 
   private async isDivergedFromMain(branch: string): Promise<boolean> {
+    const baseBranch = await this.resolveMergeBaseBranch();
+    if (branch === baseBranch) return false;
+
     const [mainSha, branchSha, mergeBase] = await Promise.all([
-      this.git.revparse(['main']),
+      this.git.revparse([baseBranch]),
       this.git.revparse([branch]),
-      this.git.raw(['merge-base', 'main', branch]),
+      this.git.raw(['merge-base', baseBranch, branch]),
     ]);
     const main = mainSha.trim();
     const wt = branchSha.trim();
@@ -168,5 +171,15 @@ export class GitVersionControl implements IVersionControl {
 
     // True divergence: both branches have unique commits since split.
     return base !== main && base !== wt;
+  }
+
+  private async resolveMergeBaseBranch(): Promise<string> {
+    try {
+      await this.git.revparse(['--verify', 'main']);
+      return 'main';
+    } catch {
+      const head = await this.git.revparse(['--abbrev-ref', 'HEAD']);
+      return head.trim();
+    }
   }
 }

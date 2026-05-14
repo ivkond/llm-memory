@@ -183,4 +183,16 @@ describe('GitVersionControl', () => {
 
     execSync('git worktree prune', { cwd: repo });
   });
+
+  it('test_listManagedWorktrees_noMainBranch_doesNotCrashAndClassifiesClean', async () => {
+    execSync('git branch -m main master', { cwd: repo });
+    const wtPath = path.join(repo, '.worktrees', 'clean-master');
+    execSync(`git worktree add -b clean-master ${wtPath} HEAD`, { cwd: repo });
+
+    const listed = await vcs.listManagedWorktrees();
+    const found = listed.find((w) => w.path === wtPath);
+    expect(found?.status).toBe('clean');
+
+    await vcs.removeWorktree(wtPath);
+  });
 });
