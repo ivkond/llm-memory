@@ -145,6 +145,22 @@ function doc(path: string, title: string, body: string, score: number, confidenc
   });
 }
 
+function seedSupersessionScenario(
+  fileStore: FakeFileStore,
+  searchEngine: FakeSearchEngine,
+  opts: { dir: string; supersedesValue: string },
+): string {
+  const oldPath = `${opts.dir}/old.md`;
+  const newPath = `${opts.dir}/new.md`;
+  fileStore.files[newPath] = makePage(newPath, 'New', 'new body', '2026-04-10T00:00:00Z', 0.9, opts.supersedesValue);
+  fileStore.files[oldPath] = makePage(oldPath, 'Old', 'old body', '2026-04-09T00:00:00Z', 0.9);
+  searchEngine.documents = [
+    doc(oldPath, 'Old', 'old body', 0.99, 0.9),
+    doc(newPath, 'New', 'new body', 0.9, 0.9),
+  ];
+  return newPath;
+}
+
 describe('QueryService', () => {
   let searchEngine: FakeSearchEngine;
   let llmClient: FakeLlmClient;
@@ -323,19 +339,17 @@ describe('QueryService', () => {
     expect(llmClient.lastRequest!.maxTokens).toBe(512);
   });
 
-  it('test_query_supersededPage_isDownRankedAndAnnotated', async () => {
-    fileStore.files['wiki/new.md'] = makePage('wiki/new.md', 'New', 'new body', '2026-04-10T00:00:00Z', 0.9, 'wiki/old.md');
-    fileStore.files['wiki/old.md'] = makePage('wiki/old.md', 'Old', 'old body', '2026-04-09T00:00:00Z', 0.9);
-    searchEngine.documents = [
-      doc('wiki/old.md', 'Old', 'old body', 0.99, 0.9),
-      doc('wiki/new.md', 'New', 'new body', 0.9, 0.9),
-    ];
+  it.each([
+    { name: 'absolute supersedes path', dir: 'wiki', supersedesValue: 'wiki/old.md' },
+    { name: 'relative supersedes path', dir: 'wiki/patterns', supersedesValue: 'old.md' },
+  ])('test_query_supersededPage_isDownRankedAndAnnotated ($name)', async ({ dir, supersedesValue }) => {
+    const newPath = seedSupersessionScenario(fileStore, searchEngine, { dir, supersedesValue });
 
     const response = await service.query({ question: 'q' });
-    expect(response.citations[0].page).toBe('wiki/new.md');
+    expect(response.citations[0].page).toBe(newPath);
     expect(response.citations[1].freshness_status).toBe('superseded');
     expect(response.citations[1].freshness_reasons).toContain('superseded');
-    expect(response.citations[1].superseded_by).toBe('wiki/new.md');
+    expect(response.citations[1].superseded_by).toBe(newPath);
   });
 
   it('test_query_excludeStale_filtersLowConfidence', async () => {
@@ -362,14 +376,7 @@ describe('QueryService', () => {
   });
 
   it('test_query_missingSearchMetadata_hydratesFromPageFrontmatter', async () => {
-    fileStore.files['wiki/legacy.md'] = makePage(
-      'wiki/legacy.md',
-      'Legacy',
-      'legacy body',
-      '2026-04-10T00:00:00Z',
-      0.2,
-      null,
-    );
+    fileStore.files['wiki/legacy.md'] = makePage('wiki/legacy.md', 'Legacy', 'legacy body', '2026-04-10T00:00:00Z', 0.2);
     searchEngine.documents = [
       new SearchResult('wiki/legacy.md', 'Legacy', 'legacy body', 0.99, 'hybrid', {}),
     ];
@@ -380,30 +387,4 @@ describe('QueryService', () => {
     expect(response.citations[0].freshness_reasons).toContain('low_confidence');
   });
 
-  it('test_query_supersedesRelativePath_resolvesAgainstPageDirectory', async () => {
-    fileStore.files['wiki/patterns/new.md'] = makePage(
-      'wiki/patterns/new.md',
-      'New',
-      'new body',
-      '2026-04-10T00:00:00Z',
-      0.9,
-      'old.md',
-    );
-    fileStore.files['wiki/patterns/old.md'] = makePage(
-      'wiki/patterns/old.md',
-      'Old',
-      'old body',
-      '2026-04-09T00:00:00Z',
-      0.9,
-    );
-    searchEngine.documents = [
-      doc('wiki/patterns/old.md', 'Old', 'old body', 0.99, 0.9),
-      doc('wiki/patterns/new.md', 'New', 'new body', 0.9, 0.9),
-    ];
-
-    const response = await service.query({ question: 'q' });
-    expect(response.citations[0].page).toBe('wiki/patterns/new.md');
-    expect(response.citations[1].freshness_status).toBe('superseded');
-    expect(response.citations[1].superseded_by).toBe('wiki/patterns/new.md');
-  });
 });
