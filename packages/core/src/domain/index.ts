@@ -16,6 +16,23 @@ export type { LintReportData } from './lint-report.js';
 export { AgentMemoryItem } from './agent-memory-item.js';
 export type { AgentMemoryItemData } from './agent-memory-item.js';
 export {
+  OPERATION_TYPES,
+  OPERATION_STATUSES,
+  transitionOperationStatus,
+  sanitizeOperationMetadata,
+  isTerminalOperationStatus,
+} from './operation-journal.js';
+export type {
+  OperationType,
+  OperationStatus,
+  OperationRequestMetadata,
+  OperationWorktreeMetadata,
+  OperationErrorMetadata,
+  OperationMetadata,
+  OperationJournalRecord,
+  OperationJournalSnapshot,
+} from './operation-journal.js';
+export {
   WikiError,
   ContentEmptyError,
   SanitizationBlockedError,

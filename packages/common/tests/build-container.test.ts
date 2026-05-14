@@ -10,6 +10,7 @@ import {
   WikiStatusService,
   LintService,
   ImportService,
+  type IOperationJournal,
 } from '@ivkond-llm-wiki/core';
 import type { WikiConfig } from '@ivkond-llm-wiki/infra';
 import { buildContainer } from '../src/build-container.js';
@@ -92,15 +93,19 @@ describe('buildContainer', () => {
     expect(() => buildContainer(config)).not.toThrow();
   });
 
-  it('test_appServices_exportsExactlySevenFields', () => {
+  it('test_appServices_exportsOperationJournal', () => {
     const config = makeTestConfig(tempDir);
 
     const services = buildContainer(config);
 
+    expect(typeof (services.operationJournal as IOperationJournal).append).toBe('function');
+    expect(typeof (services.operationJournal as IOperationJournal).load).toBe('function');
+
     const keys = Object.keys(services).sort();
     expect(keys).toEqual(
-      ['import_', 'ingest', 'lint', 'query', 'recall', 'remember', 'status'].sort(),
+      ['import_', 'ingest', 'lint', 'operationJournal', 'query', 'recall', 'remember', 'status']
+        .sort(),
     );
-    expect(keys).toHaveLength(7);
+    expect(keys).toHaveLength(8);
   });
 });

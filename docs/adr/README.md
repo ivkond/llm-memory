@@ -33,3 +33,5 @@ This directory contains accepted and proposed architecture decision records for 
 | [0018](0018-unified-commander-cli.md)                           | Unified Commander CLI                               | Accepted |
 | [0019](0019-claude-code-hooks-over-mcp-http.md)                 | Claude Code hooks over MCP HTTP                     | Accepted |
 | [0020](0020-adrs-as-canonical-decision-home.md)                 | ADRs as canonical decision home                     | Accepted |
+| [0021](0021-verbatim-entry-metadata-schema.md)                  | Verbatim entry metadata schema                      | Accepted |
+| [0022](0022-local-operation-journal-runtime-state.md)           | Local operation journal runtime state               | Accepted |
