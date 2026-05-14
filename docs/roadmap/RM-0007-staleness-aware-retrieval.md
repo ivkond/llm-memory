@@ -53,3 +53,11 @@ Depends on page/claim metadata from RM-0005/RM-0006 and any accepted RM-0009 cla
 ## Open questions
 
 None.
+
+## Implementation status (2026-05-13)
+
+- Page-level staleness-aware retrieval is implemented:
+  - query-time freshness policy supports `prefer_fresh` and `exclude_stale`;
+  - citations include freshness metadata (`freshness_status`, `freshness_reasons`, `confidence`, `supersedes`);
+  - adapter metadata propagation and CLI/MCP query controls are in place.
+- Claim-level staleness-aware retrieval remains deferred pending RM-0009.

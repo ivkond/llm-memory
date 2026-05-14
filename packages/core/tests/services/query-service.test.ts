@@ -119,6 +119,8 @@ function makePage(
   title: string,
   content: string,
   updated: string,
+  confidence = 0.9,
+  supersedes: string | null = null,
 ): { info: FileInfo; page: WikiPageData } {
   return {
     info: { path: filePath, updated },
@@ -127,14 +129,36 @@ function makePage(
         title,
         created: updated,
         updated,
-        confidence: 0.9,
+        confidence,
         sources: [],
-        supersedes: null,
+        supersedes,
         tags: [],
       },
       content,
     },
   };
+}
+
+function doc(path: string, title: string, body: string, score: number, confidence?: number): SearchResult {
+  return new SearchResult(path, title, body, score, 'hybrid', {
+    confidence,
+  });
+}
+
+function seedSupersessionScenario(
+  fileStore: FakeFileStore,
+  searchEngine: FakeSearchEngine,
+  opts: { dir: string; supersedesValue: string },
+): string {
+  const oldPath = `${opts.dir}/old.md`;
+  const newPath = `${opts.dir}/new.md`;
+  fileStore.files[newPath] = makePage(newPath, 'New', 'new body', '2026-04-10T00:00:00Z', 0.9, opts.supersedesValue);
+  fileStore.files[oldPath] = makePage(oldPath, 'Old', 'old body', '2026-04-09T00:00:00Z', 0.9);
+  searchEngine.documents = [
+    doc(oldPath, 'Old', 'old body', 0.99, 0.9),
+    doc(newPath, 'New', 'new body', 0.9, 0.9),
+  ];
+  return newPath;
 }
 
 describe('QueryService', () => {
@@ -314,4 +338,53 @@ describe('QueryService', () => {
     expect(llmClient.lastRequest).not.toBeNull();
     expect(llmClient.lastRequest!.maxTokens).toBe(512);
   });
+
+  it.each([
+    { name: 'absolute supersedes path', dir: 'wiki', supersedesValue: 'wiki/old.md' },
+    { name: 'relative supersedes path', dir: 'wiki/patterns', supersedesValue: 'old.md' },
+  ])('test_query_supersededPage_isDownRankedAndAnnotated ($name)', async ({ dir, supersedesValue }) => {
+    const newPath = seedSupersessionScenario(fileStore, searchEngine, { dir, supersedesValue });
+
+    const response = await service.query({ question: 'q' });
+    expect(response.citations[0].page).toBe(newPath);
+    expect(response.citations[1].freshness_status).toBe('superseded');
+    expect(response.citations[1].freshness_reasons).toContain('superseded');
+    expect(response.citations[1].superseded_by).toBe(newPath);
+  });
+
+  it('test_query_excludeStale_filtersLowConfidence', async () => {
+    searchEngine.documents = [
+      doc('wiki/stale.md', 'Stale', 'stale body', 0.99, 0.2),
+      doc('wiki/fresh.md', 'Fresh', 'fresh body', 0.6, 0.95),
+    ];
+
+    const response = await service.query({ question: 'q', stalenessMode: 'exclude_stale' });
+    expect(response.citations).toHaveLength(1);
+    expect(response.citations[0].page).toBe('wiki/fresh.md');
+    expect(response.citations[0].freshness_status).toBe('fresh');
+  });
+
+  it('test_query_excludeStale_allCandidatesStale_throwsSearchEmpty', async () => {
+    searchEngine.documents = [
+      doc('wiki/stale-a.md', 'StaleA', 'stale body', 0.99, 0.2),
+      doc('wiki/stale-b.md', 'StaleB', 'stale body', 0.95, 0.3),
+    ];
+
+    await expect(
+      service.query({ question: 'q', stalenessMode: 'exclude_stale', includeStale: false }),
+    ).rejects.toBeInstanceOf(SearchEmptyError);
+  });
+
+  it('test_query_missingSearchMetadata_hydratesFromPageFrontmatter', async () => {
+    fileStore.files['wiki/legacy.md'] = makePage('wiki/legacy.md', 'Legacy', 'legacy body', '2026-04-10T00:00:00Z', 0.2);
+    searchEngine.documents = [
+      new SearchResult('wiki/legacy.md', 'Legacy', 'legacy body', 0.99, 'hybrid', {}),
+    ];
+
+    const response = await service.query({ question: 'q' });
+    expect(response.citations[0].confidence).toBe(0.2);
+    expect(response.citations[0].freshness_status).toBe('low_confidence');
+    expect(response.citations[0].freshness_reasons).toContain('low_confidence');
+  });
+
 });

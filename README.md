@@ -178,6 +178,14 @@ For machine-readable output:
 llm-wiki search "release process" --format json
 ```
 
+To control staleness handling at query time:
+
+```bash
+llm-wiki search "release process" --staleness-mode exclude_stale
+```
+
+JSON citations now include freshness metadata (`freshness_status`, `freshness_reasons`, `confidence`, `supersedes`) so clients can inspect why a result was down-ranked or filtered.
+
 ### 8. Run the MCP server
 
 Start the server for MCP-compatible clients:

@@ -346,10 +346,45 @@ describe('CLI command coverage', () => {
     restoreExit();
     tap.restore();
 
-    expect(query).toHaveBeenCalledWith({ question: 'testing', maxResults: 3 });
+    expect(query).toHaveBeenCalledWith({
+      question: 'testing',
+      maxResults: 3,
+      includeStale: false,
+      stalenessMode: 'prefer_fresh',
+    });
     expect(buildContainer.mock.calls[0]?.[0].wiki.path).toBe(wikiPath);
     expect(buildContainer.mock.calls[0]?.[0].llm.model).toBe('local-model');
     expect(tap.stdout[0]).toContain('"citations"');
+  });
+
+  it('search: exits on invalid staleness mode', async () => {
+    const wikiPath = await mkdtemp(path.join(tmpdir(), 'cli-search-mode-wiki-'));
+    await writeWikiConfig(wikiPath);
+    const query = vi.fn();
+    const buildContainer = vi.fn(() => ({ query: { query } }));
+
+    vi.doMock('@ivkond-llm-wiki/common', () => ({
+      buildContainer,
+    }));
+
+    const tap = tapConsole();
+    const restoreExit = mockExit();
+
+    await expect(
+      runCommand('../src/commands/search.ts', 'searchCommand', [
+        'testing',
+        '--wiki',
+        wikiPath,
+        '--staleness-mode',
+        'exclude-stale',
+      ]),
+    ).rejects.toMatchObject({ code: 1 });
+
+    restoreExit();
+    tap.restore();
+
+    expect(query).not.toHaveBeenCalled();
+    expect(tap.stderr.join('\n')).toContain('Invalid --staleness-mode');
   });
 
   it('status: prints health and verbose details from config and service', async () => {

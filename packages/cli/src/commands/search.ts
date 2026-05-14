@@ -8,6 +8,16 @@ import path from 'node:path';
 import { ConfigLoader } from '@ivkond-llm-wiki/infra';
 import { buildContainer } from '@ivkond-llm-wiki/common';
 
+type StalenessMode = 'prefer_fresh' | 'exclude_stale';
+
+function parseStalenessMode(input: string | undefined): StalenessMode {
+  const mode = input ?? 'prefer_fresh';
+  if (mode === 'prefer_fresh' || mode === 'exclude_stale') {
+    return mode;
+  }
+  throw new Error(`Invalid --staleness-mode '${mode}'. Use 'prefer_fresh' or 'exclude_stale'.`);
+}
+
 async function findWikiRoot(): Promise<string | null> {
   const candidates = [process.cwd(), path.join(process.env.HOME ?? '', '.llm-wiki')];
   for (const candidate of candidates) {
@@ -28,13 +38,26 @@ export const searchCommand = new Command()
   .description('Search the wiki')
   .option('-l, --limit <limit>', 'Maximum results (default: 10)', '10')
   .option('-f, --format <format>', 'Output format (rich, json)', 'rich')
+  .option('--include-stale', 'Include stale citations when staleness exclusion is enabled', false)
+  .option(
+    '--staleness-mode <mode>',
+    'Staleness behavior: prefer_fresh or exclude_stale (default: prefer_fresh)',
+    'prefer_fresh',
+  )
   .option('-w, --wiki <path>', 'Wiki directory path')
   .option('-v, --verbose', 'Verbose output', false)
   .argument('<query>', 'Search query')
   .action(
     async (
       query: string,
-      options: { limit?: string; format?: string; wiki?: string; verbose?: boolean },
+      options: {
+        limit?: string;
+        format?: string;
+        wiki?: string;
+        verbose?: boolean;
+        includeStale?: boolean;
+        stalenessMode?: string;
+      },
     ) => {
       const limit = parseInt(options.limit ?? '10', 10);
       const format = options.format ?? 'rich';
@@ -53,13 +76,21 @@ export const searchCommand = new Command()
       if (verbose) console.log(`Query: ${query}`);
 
       try {
+        const stalenessMode = parseStalenessMode(options.stalenessMode);
+
         // Load config and build services
         const configLoader = new ConfigLoader(wikiPath);
         const config = await configLoader.load();
         const services = buildContainer(config);
 
         const startTime = Date.now();
-        const result = await services.query.query({ question: query, maxResults: limit });
+        const request = {
+          question: query,
+          maxResults: limit,
+          includeStale: options.includeStale ?? false,
+          stalenessMode,
+        };
+        const result = await services.query.query(request);
 
         const elapsed = Date.now() - startTime;
 
@@ -85,6 +116,13 @@ export const searchCommand = new Command()
               `   ${citation.excerpt.slice(0, 200)}${citation.excerpt.length > 200 ? '...' : ''}`,
             );
             console.log(`   Score: ${citation.score.toFixed(2)}`);
+            if (citation.freshness_status !== 'fresh') {
+              const reasons =
+                citation.freshness_reasons.length > 0
+                  ? ` (${citation.freshness_reasons.join(', ')})`
+                  : '';
+              console.log(`   Freshness: ${citation.freshness_status}${reasons}`);
+            }
           }
 
           if (result.answer) {

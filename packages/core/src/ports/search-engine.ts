@@ -11,6 +11,8 @@ export interface IndexEntry {
   title: string;
   content: string;
   updated: string;
+  confidence?: number;
+  supersedes?: string | null;
 }
 
 export type IndexHealth = 'ok' | 'stale' | 'missing';

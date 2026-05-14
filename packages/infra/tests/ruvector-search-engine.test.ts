@@ -67,6 +67,8 @@ describe('RuVectorSearchEngine', () => {
       title: 'Testing Patterns',
       content: 'Use testcontainers for integration tests.',
       updated: '2026-04-09',
+      confidence: 0.82,
+      supersedes: 'wiki/patterns/legacy.md',
     });
 
     const results = await engine.search({ text: 'testcontainers' });
@@ -74,6 +76,8 @@ describe('RuVectorSearchEngine', () => {
     expect(results[0].path).toBe('wiki/patterns/testing.md');
     expect(results[0].title).toBe('Testing Patterns');
     expect(results[0].excerpt).toContain('testcontainers');
+    expect(results[0].metadata.confidence).toBe(0.82);
+    expect(results[0].metadata.supersedes).toBe('wiki/patterns/legacy.md');
   });
 
   it('test_search_noMatches_returnsEmptyArray', async () => {

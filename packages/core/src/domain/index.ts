@@ -6,7 +6,7 @@ export { Project } from './project.js';
 export { SanitizationResult } from './sanitization-result.js';
 export type { RedactionWarning } from './sanitization-result.js';
 export { SearchResult } from './search-result.js';
-export type { SearchSource } from './search-result.js';
+export type { SearchSource, FreshnessStatus, SearchResultMetadata } from './search-result.js';
 export { EMPTY_RUNTIME_STATE } from './runtime-state.js';
 export type { WikiRuntimeState, ImportState } from './runtime-state.js';
 export { HealthIssue, HealthIssueType } from './health-issue.js';

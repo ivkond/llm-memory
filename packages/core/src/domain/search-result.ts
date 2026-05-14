@@ -1,4 +1,14 @@
 export type SearchSource = 'bm25' | 'vector' | 'hybrid';
+export type FreshnessStatus = 'fresh' | 'low_confidence' | 'superseded';
+
+export interface SearchResultMetadata {
+  updated?: string;
+  confidence?: number;
+  supersedes?: string | null;
+  freshness_status?: FreshnessStatus;
+  freshness_reasons?: string[];
+  superseded_by?: string;
+}
 
 export class SearchResult {
   constructor(
@@ -7,6 +17,7 @@ export class SearchResult {
     public readonly excerpt: string,
     public readonly score: number,
     public readonly source: SearchSource,
+    public readonly metadata: SearchResultMetadata = {},
   ) {}
 
   get isHighConfidence(): boolean {
