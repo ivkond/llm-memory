@@ -92,6 +92,7 @@ describe('tools/call (integration)', () => {
       sessionId: 's1',
       project: 'proj',
       tags: ['a', 'b'],
+      sourceType: 'mcp_fact',
       sourceUri: undefined,
       sourceDigest: undefined,
       operationId: undefined,

@@ -39,6 +39,7 @@ export function createWikiRememberFactHandler(services: AppServices) {
         content,
         ...common,
         tags,
+        sourceType: 'mcp_fact',
       });
 
       return {

@@ -10,6 +10,7 @@ export interface RememberFactRequest {
   sessionId: string;
   project?: string;
   tags?: string[];
+  sourceType?: 'manual' | 'mcp_fact';
   sourceUri?: string;
   sourceDigest?: string;
   operationId?: string;
@@ -67,7 +68,7 @@ export class RememberService {
       sessionId: req.sessionId,
       project: req.project,
       tags: req.tags,
-      source: { type: 'mcp_fact', uri: req.sourceUri, digest: req.sourceDigest },
+      source: { type: req.sourceType ?? 'manual', uri: req.sourceUri, digest: req.sourceDigest },
       operationId: req.operationId,
       model,
     });
@@ -86,12 +87,15 @@ export class RememberService {
       if (existing) {
         const storedContent = await this.fileStore.readFile(existing);
         const storedEntry = await this.verbatimStore.readEntry(existing);
+        if (!storedEntry) {
+          throw new Error(`Stored session metadata unavailable for ${existing}`);
+        }
         const factsCount = storedContent ? this.countFacts(storedContent) : 1;
         return {
           ok: true,
           file: existing,
-          entry_id: storedEntry?.entryId ?? existing.split('/').pop() ?? existing,
-          created_at: storedEntry?.processing.created_at ?? new Date().toISOString(),
+          entry_id: storedEntry.entryId,
+          created_at: storedEntry.processing.created_at,
           facts_count: factsCount,
         };
       }

@@ -58,6 +58,39 @@ describe('RememberService', () => {
     expect(result.ok).toBe(true);
     expect(result.file).toMatch(/^log\/claude-code\/raw\//);
     expect(verbatimStore.writeEntry).toHaveBeenCalledOnce();
+    const entry = (verbatimStore.writeEntry as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(entry.source.type).toBe('manual');
+    expect(entry.processing.created_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('test_rememberFact_metadata_populatesSourceAndModel', async () => {
+    await service.rememberFact({
+      content: '- fact with metadata',
+      agent: 'claude-code',
+      sessionId: 'meta1',
+      sourceType: 'mcp_fact',
+      sourceUri: 'https://example.com/source',
+      sourceDigest: 'sha256:abc',
+      operationId: 'op-123',
+      modelProvider: 'openai',
+      modelName: 'gpt-5',
+      callId: 'call-1',
+      toolCallId: 'tool-1',
+    });
+
+    const entry = (verbatimStore.writeEntry as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(entry.source).toEqual({
+      type: 'mcp_fact',
+      uri: 'https://example.com/source',
+      digest: 'sha256:abc',
+    });
+    expect(entry.operationId).toBe('op-123');
+    expect(entry.model).toEqual({
+      provider: 'openai',
+      model: 'gpt-5',
+      call_id: 'call-1',
+      tool_call_id: 'tool-1',
+    });
   });
 
   it('test_rememberFact_emptyContent_throwsContentEmpty', async () => {
@@ -119,6 +152,10 @@ describe('RememberService', () => {
         return '---\nsession: dedup-session\nagent: claude-code\nconsolidated: false\n---\nfacts here';
       return null;
     });
+    (verbatimStore.readEntry as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      entryId: first.entry_id,
+      processing: { created_at: first.created_at },
+    });
 
     const second = await service.rememberSession({
       summary: '- totally different\n- three lines\n- of content',
@@ -127,6 +164,8 @@ describe('RememberService', () => {
     });
 
     expect(second.file).toBe(first.file);
+    expect(second.entry_id).toBe(first.entry_id);
+    expect(second.created_at).toBe(first.created_at);
     expect(second.facts_count).toBe(first.facts_count);
     expect(verbatimStore.writeEntry).toHaveBeenCalledOnce();
   });
