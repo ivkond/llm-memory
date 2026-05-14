@@ -75,29 +75,13 @@ const TERMINAL_OPERATION_STATUSES = new Set<OperationStatus>([
   'interrupted',
   'blocked_or_conflict',
 ]);
-const MAX_FREEFORM_JOURNAL_TEXT_LENGTH = 256;
+const REDACTED_ERROR_MESSAGE = '[REDACTED_ERROR_MESSAGE]';
+const REDACTED_REASON = '[REDACTED_REASON]';
 
-function sanitizeFreeformJournalText(value: string | undefined): string | undefined {
-  if (value === undefined) return undefined;
+function hasFreeformText(value: string | undefined): boolean {
+  if (value === undefined) return false;
   const trimmed = value.trim();
-  if (trimmed === '') return undefined;
-
-  let next = trimmed.replace(/\s+/g, ' ');
-  // Redact common secret-like token formats before persistence.
-  next = next.replace(
-    /\b(?:sk-[A-Za-z0-9]{16,}|(?:ghp|gho|ghu|github_pat)_[A-Za-z0-9_\-]{8,})\b/g,
-    '[REDACTED_SECRET]',
-  );
-  next = next.replace(/AKIA[A-Z0-9]{16}/g, '[REDACTED_SECRET]');
-  next = next.replace(
-    /\b[A-Za-z][A-Za-z0-9+.-]*:\/\/[^/\s:@]+:([^@\s]+)@/g,
-    (match, password) => match.replace(password, '[REDACTED_SECRET]'),
-  );
-
-  if (next.length > MAX_FREEFORM_JOURNAL_TEXT_LENGTH) {
-    next = `${next.slice(0, MAX_FREEFORM_JOURNAL_TEXT_LENGTH)}...[TRUNCATED]`;
-  }
-  return next;
+  return trimmed !== '';
 }
 
 export function transitionOperationStatus(
@@ -127,13 +111,13 @@ export function sanitizeOperationMetadata(metadata: Partial<OperationMetadata>):
     error: metadata.error
       ? {
           name: metadata.error.name,
-          message: sanitizeFreeformJournalText(metadata.error.message) ?? '[REDACTED]',
+          message: REDACTED_ERROR_MESSAGE,
           code: metadata.error.code,
           category: metadata.error.category,
         }
       : undefined,
-    disabledReason: sanitizeFreeformJournalText(metadata.disabledReason),
-    resumeReason: sanitizeFreeformJournalText(metadata.resumeReason),
+    disabledReason: hasFreeformText(metadata.disabledReason) ? REDACTED_REASON : undefined,
+    resumeReason: hasFreeformText(metadata.resumeReason) ? REDACTED_REASON : undefined,
   };
 }
 

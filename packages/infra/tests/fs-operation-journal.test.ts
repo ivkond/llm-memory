@@ -96,7 +96,7 @@ describe('FsOperationJournal', () => {
     expect(body).toContain('"requestId":"req-3"');
   });
 
-  it('test_append_redactsUnsafeErrorAndReasonMetadataFields', async () => {
+  it('test_append_dropsFreeformErrorAndReasonText', async () => {
     await journal.append({
       id: 'op-err',
       type: 'lint',
@@ -107,17 +107,18 @@ describe('FsOperationJournal', () => {
         touchedPaths: [],
         error: {
           name: 'ExampleError',
-          message: 'prompt body leaked sk-abc123def456ghi789jkl012mno345pqr678',
+          message: "prompt: remember Alice's private address is 123 Main St",
         },
-        disabledReason: 'token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij detected',
-        resumeReason: 'retry db://user:s3cretPass@localhost:5432/app',
+        disabledReason: 'prompt body leaked to stderr',
+        resumeReason: 'external file content excerpt from /tmp/private.txt',
       },
     });
     const body = await readFile(path.join(dir, '.local/operations/journal.jsonl'), 'utf-8');
-    expect(body).not.toContain('sk-abc123def456ghi789jkl012mno345pqr678');
-    expect(body).not.toContain('ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij');
-    expect(body).not.toContain('s3cretPass');
-    expect(body).toContain('[REDACTED_SECRET]');
+    expect(body).not.toContain("Alice's private address");
+    expect(body).not.toContain('prompt body leaked');
+    expect(body).not.toContain('external file content excerpt');
+    expect(body).toContain('[REDACTED_ERROR_MESSAGE]');
+    expect(body).toContain('[REDACTED_REASON]');
   });
 
   it('test_load_symlinkedLocalDirOutsideRoot_setsDisabledReason', async () => {
