@@ -139,6 +139,12 @@ function makePage(
   };
 }
 
+function doc(path: string, title: string, body: string, score: number, confidence?: number): SearchResult {
+  return new SearchResult(path, title, body, score, 'hybrid', {
+    confidence,
+  });
+}
+
 describe('QueryService', () => {
   let searchEngine: FakeSearchEngine;
   let llmClient: FakeLlmClient;
@@ -318,25 +324,11 @@ describe('QueryService', () => {
   });
 
   it('test_query_supersededPage_isDownRankedAndAnnotated', async () => {
-    fileStore.files['wiki/new.md'] = makePage(
-      'wiki/new.md',
-      'New',
-      'new body',
-      '2026-04-10T00:00:00Z',
-      0.9,
-      'wiki/old.md',
-    );
-    fileStore.files['wiki/old.md'] = makePage(
-      'wiki/old.md',
-      'Old',
-      'old body',
-      '2026-04-09T00:00:00Z',
-      0.9,
-      null,
-    );
+    fileStore.files['wiki/new.md'] = makePage('wiki/new.md', 'New', 'new body', '2026-04-10T00:00:00Z', 0.9, 'wiki/old.md');
+    fileStore.files['wiki/old.md'] = makePage('wiki/old.md', 'Old', 'old body', '2026-04-09T00:00:00Z', 0.9);
     searchEngine.documents = [
-      new SearchResult('wiki/old.md', 'Old', 'old body', 0.99, 'hybrid', { confidence: 0.9 }),
-      new SearchResult('wiki/new.md', 'New', 'new body', 0.9, 'hybrid', { confidence: 0.9 }),
+      doc('wiki/old.md', 'Old', 'old body', 0.99, 0.9),
+      doc('wiki/new.md', 'New', 'new body', 0.9, 0.9),
     ];
 
     const response = await service.query({ question: 'q' });
@@ -348,8 +340,8 @@ describe('QueryService', () => {
 
   it('test_query_excludeStale_filtersLowConfidence', async () => {
     searchEngine.documents = [
-      new SearchResult('wiki/stale.md', 'Stale', 'stale body', 0.99, 'hybrid', { confidence: 0.2 }),
-      new SearchResult('wiki/fresh.md', 'Fresh', 'fresh body', 0.6, 'hybrid', { confidence: 0.95 }),
+      doc('wiki/stale.md', 'Stale', 'stale body', 0.99, 0.2),
+      doc('wiki/fresh.md', 'Fresh', 'fresh body', 0.6, 0.95),
     ];
 
     const response = await service.query({ question: 'q', stalenessMode: 'exclude_stale' });
@@ -360,8 +352,8 @@ describe('QueryService', () => {
 
   it('test_query_excludeStale_allCandidatesStale_throwsSearchEmpty', async () => {
     searchEngine.documents = [
-      new SearchResult('wiki/stale-a.md', 'StaleA', 'stale body', 0.99, 'hybrid', { confidence: 0.2 }),
-      new SearchResult('wiki/stale-b.md', 'StaleB', 'stale body', 0.95, 'hybrid', { confidence: 0.3 }),
+      doc('wiki/stale-a.md', 'StaleA', 'stale body', 0.99, 0.2),
+      doc('wiki/stale-b.md', 'StaleB', 'stale body', 0.95, 0.3),
     ];
 
     await expect(
@@ -403,11 +395,10 @@ describe('QueryService', () => {
       'old body',
       '2026-04-09T00:00:00Z',
       0.9,
-      null,
     );
     searchEngine.documents = [
-      new SearchResult('wiki/patterns/old.md', 'Old', 'old body', 0.99, 'hybrid', { confidence: 0.9 }),
-      new SearchResult('wiki/patterns/new.md', 'New', 'new body', 0.9, 'hybrid', { confidence: 0.9 }),
+      doc('wiki/patterns/old.md', 'Old', 'old body', 0.99, 0.9),
+      doc('wiki/patterns/new.md', 'New', 'new body', 0.9, 0.9),
     ];
 
     const response = await service.query({ question: 'q' });
