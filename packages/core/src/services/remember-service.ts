@@ -1,8 +1,10 @@
 import { VerbatimEntry } from '../domain/verbatim-entry.js';
 import { ContentEmptyError, SanitizationBlockedError } from '../domain/errors.js';
 import type { IFileStore } from '../ports/file-store.js';
+import type { IIdempotencyStore } from '../ports/idempotency-store.js';
 import type { IVerbatimStore } from '../ports/verbatim-store.js';
 import type { SanitizationService } from './sanitization-service.js';
+import { runWithIdempotency } from './idempotency.js';
 
 export interface RememberFactRequest {
   content: string;
@@ -10,6 +12,7 @@ export interface RememberFactRequest {
   sessionId: string;
   project?: string;
   tags?: string[];
+  idempotencyKey?: string;
   sourceUri?: string;
   sourceDigest?: string;
   operationId?: string;
@@ -23,6 +26,7 @@ export interface RememberFactResponse {
   ok: true;
   file: string;
   entry_id: string;
+  idempotency_replayed?: boolean;
 }
 
 export interface RememberSessionRequest {
@@ -30,6 +34,7 @@ export interface RememberSessionRequest {
   agent: string;
   sessionId: string;
   project?: string;
+  idempotencyKey?: string;
   sourceUri?: string;
   sourceDigest?: string;
   operationId?: string;
@@ -45,6 +50,7 @@ export interface RememberSessionResponse {
   entry_id: string;
   created_at: string;
   facts_count: number;
+  idempotency_replayed?: boolean;
 }
 
 export class RememberService {
@@ -52,6 +58,7 @@ export class RememberService {
     private readonly fileStore: IFileStore,
     private readonly verbatimStore: IVerbatimStore,
     private readonly sanitizer: SanitizationService,
+    private readonly idempotencyStore: IIdempotencyStore,
   ) {}
 
   async rememberFact(req: RememberFactRequest): Promise<RememberFactResponse> {
@@ -60,66 +67,109 @@ export class RememberService {
     const sanitized = this.sanitizer.sanitize(req.content);
     if (sanitized.isBlocked) throw new SanitizationBlockedError(sanitized.redactedRatio);
 
-    const model = this.buildModelMetadata(req);
-    const entry = VerbatimEntry.create({
-      content: sanitized.content,
-      agent: req.agent,
-      sessionId: req.sessionId,
-      project: req.project,
-      tags: req.tags,
-      source: { type: 'mcp_fact', uri: req.sourceUri, digest: req.sourceDigest },
-      operationId: req.operationId,
-      model,
-    });
+    const { result, replayed } = await runWithIdempotency(
+      this.idempotencyStore,
+      'remember_fact',
+      req.idempotencyKey,
+      {
+        content: sanitized.content,
+        agent: req.agent,
+        sessionId: req.sessionId,
+        project: req.project,
+        tags: req.tags ?? [],
+        sourceUri: req.sourceUri ?? null,
+        sourceDigest: req.sourceDigest ?? null,
+        operationId: req.operationId ?? null,
+        modelProvider: req.modelProvider ?? null,
+        modelName: req.modelName ?? null,
+        callId: req.callId ?? null,
+        toolCallId: req.toolCallId ?? null,
+      },
+      async () => {
+        const model = this.buildModelMetadata(req);
+        const entry = VerbatimEntry.create({
+          content: sanitized.content,
+          agent: req.agent,
+          sessionId: req.sessionId,
+          project: req.project,
+          tags: req.tags,
+          source: { type: 'mcp_fact', uri: req.sourceUri, digest: req.sourceDigest },
+          operationId: req.operationId,
+          model,
+        });
 
-    await this.verbatimStore.writeEntry(entry);
+        await this.verbatimStore.writeEntry(entry);
 
-    return { ok: true, file: entry.filePath, entry_id: entry.entryId };
+        return { ok: true as const, file: entry.filePath, entry_id: entry.entryId };
+      },
+    );
+    return replayed ? { ...result, idempotency_replayed: true } : result;
   }
 
   async rememberSession(req: RememberSessionRequest): Promise<RememberSessionResponse> {
     if (!req.summary.trim()) throw new ContentEmptyError();
 
-    // Deduplication by session_id — return stored entry metadata, not new request data
-    if (req.sessionId) {
-      const existing = await this.findExistingSession(req.agent, req.sessionId);
-      if (existing) {
-        const storedContent = await this.fileStore.readFile(existing);
-        const storedEntry = await this.verbatimStore.readEntry(existing);
-        const factsCount = storedContent ? this.countFacts(storedContent) : 1;
+    const { result, replayed } = await runWithIdempotency(
+      this.idempotencyStore,
+      'remember_session',
+      req.idempotencyKey,
+      {
+        summary: req.summary,
+        agent: req.agent,
+        sessionId: req.sessionId,
+        project: req.project,
+        sourceUri: req.sourceUri ?? null,
+        sourceDigest: req.sourceDigest ?? null,
+        operationId: req.operationId ?? null,
+        modelProvider: req.modelProvider ?? null,
+        modelName: req.modelName ?? null,
+        callId: req.callId ?? null,
+        toolCallId: req.toolCallId ?? null,
+      },
+      async () => {
+        // Deduplication by session_id — return stored entry metadata, not new request data
+        if (req.sessionId) {
+          const existing = await this.findExistingSession(req.agent, req.sessionId);
+          if (existing) {
+            const storedContent = await this.fileStore.readFile(existing);
+            const storedEntry = await this.verbatimStore.readEntry(existing);
+            const factsCount = storedContent ? this.countFacts(storedContent) : 1;
+            return {
+              ok: true as const,
+              file: existing,
+              entry_id: storedEntry?.entryId ?? existing.split('/').pop() ?? existing,
+              created_at: storedEntry?.processing.created_at ?? new Date().toISOString(),
+              facts_count: factsCount,
+            };
+          }
+        }
+
+        const sanitized = this.sanitizer.sanitize(req.summary);
+        if (sanitized.isBlocked) throw new SanitizationBlockedError(sanitized.redactedRatio);
+
+        const model = this.buildModelMetadata(req);
+        const entry = VerbatimEntry.create({
+          content: sanitized.content,
+          agent: req.agent,
+          sessionId: req.sessionId,
+          project: req.project,
+          source: { type: 'session', uri: req.sourceUri, digest: req.sourceDigest },
+          operationId: req.operationId,
+          model,
+        });
+
+        await this.verbatimStore.writeEntry(entry);
+
         return {
-          ok: true,
-          file: existing,
-          entry_id: storedEntry?.entryId ?? existing.split('/').pop() ?? existing,
-          created_at: storedEntry?.processing.created_at ?? new Date().toISOString(),
-          facts_count: factsCount,
+          ok: true as const,
+          file: entry.filePath,
+          entry_id: entry.entryId,
+          created_at: entry.processing.created_at,
+          facts_count: this.countFacts(sanitized.content),
         };
-      }
-    }
-
-    const sanitized = this.sanitizer.sanitize(req.summary);
-    if (sanitized.isBlocked) throw new SanitizationBlockedError(sanitized.redactedRatio);
-
-    const model = this.buildModelMetadata(req);
-    const entry = VerbatimEntry.create({
-      content: sanitized.content,
-      agent: req.agent,
-      sessionId: req.sessionId,
-      project: req.project,
-      source: { type: 'session', uri: req.sourceUri, digest: req.sourceDigest },
-      operationId: req.operationId,
-      model,
-    });
-
-    await this.verbatimStore.writeEntry(entry);
-
-    return {
-      ok: true,
-      file: entry.filePath,
-      entry_id: entry.entryId,
-      created_at: entry.processing.created_at,
-      facts_count: this.countFacts(sanitized.content),
-    };
+      },
+    );
+    return replayed ? { ...result, idempotency_replayed: true } : result;
   }
 
   private async findExistingSession(agent: string, sessionId: string): Promise<string | null> {

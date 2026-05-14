@@ -29,10 +29,13 @@ export function createWikiRememberSessionHandler(services: AppServices) {
 
       const summary = params.summary != null ? String(params.summary) : '';
       const common = readCommonRememberParams(params);
+      const idempotencyKey =
+        params.idempotencyKey != null ? String(params.idempotencyKey) : undefined;
 
       const result = await rememberService.rememberSession({
         summary,
         ...common,
+        idempotencyKey,
       });
 
       return {

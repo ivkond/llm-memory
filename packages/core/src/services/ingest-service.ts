@@ -12,6 +12,8 @@ import type { ISearchEngine } from '../ports/search-engine.js';
 import type { IVersionControl } from '../ports/version-control.js';
 import type { IFileStore, FileStoreFactory } from '../ports/file-store.js';
 import type { IStateStore } from '../ports/state-store.js';
+import type { IIdempotencyStore } from '../ports/idempotency-store.js';
+import { runWithIdempotency } from './idempotency.js';
 
 /** Spec bound for wiki_ingest: max 100K tokens after extraction. */
 export const MAX_SOURCE_TOKENS = 100_000;
@@ -23,12 +25,14 @@ export interface IngestRequest {
   source: string;
   hint?: string;
   project?: string;
+  idempotencyKey?: string;
 }
 
 export interface IngestResponse {
   pages_created: string[];
   pages_updated: string[];
   commit_sha: string;
+  idempotency_replayed?: boolean;
 }
 
 interface ExtractedPage {
@@ -76,20 +80,27 @@ export class IngestService {
     private readonly mainFileStore: IFileStore,
     private readonly fileStoreFactory: FileStoreFactory,
     private readonly stateStore: IStateStore,
+    private readonly idempotencyStore: IIdempotencyStore,
   ) {}
 
   async ingest(req: IngestRequest): Promise<IngestResponse> {
     if (req.project) {
       throw new ProjectScopeUnsupportedError('ingest', req.project);
     }
-    // -- Pre-worktree checks --------------------------------------------------
-    const source = await this.sourceReader.read(req.source); // may throw SourceNotFoundError / SourceParseError
-    if (source.estimatedTokens > MAX_SOURCE_TOKENS) {
-      throw new SourceParseError(
-        source.uri,
-        `source is ${source.estimatedTokens} tokens, exceeds limit of ${MAX_SOURCE_TOKENS}`,
-      );
-    }
+    const { result, replayed } = await runWithIdempotency(
+      this.idempotencyStore,
+      'ingest',
+      req.idempotencyKey,
+      { source: req.source, hint: req.hint ?? null, project: req.project ?? null },
+      async () => {
+        // -- Pre-worktree checks --------------------------------------------------
+        const source = await this.sourceReader.read(req.source); // may throw SourceNotFoundError / SourceParseError
+        if (source.estimatedTokens > MAX_SOURCE_TOKENS) {
+          throw new SourceParseError(
+            source.uri,
+            `source is ${source.estimatedTokens} tokens, exceeds limit of ${MAX_SOURCE_TOKENS}`,
+          );
+        }
 
     // -- Worktree-scoped ingest ----------------------------------------------
     const worktree = await this.versionControl.createWorktree('ingest');
@@ -163,11 +174,14 @@ export class IngestService {
     await this.safeRemoveWorktree(worktree.path);
     await this.stateStore.update({ last_ingest: new Date().toISOString() });
 
-    return {
-      pages_created: pagesCreated,
-      pages_updated: pagesUpdated,
-      commit_sha: commitSha,
-    };
+        return {
+          pages_created: pagesCreated,
+          pages_updated: pagesUpdated,
+          commit_sha: commitSha,
+        };
+      },
+    );
+    return replayed ? { ...result, idempotency_replayed: true } : result;
   }
 
   /**

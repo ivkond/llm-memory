@@ -14,6 +14,7 @@ import {
   AiSdkLlmClient,
   AiSdkEmbeddingClient,
   RuVectorSearchEngine,
+  YamlIdempotencyStore,
 } from '../../src/index.js';
 import {
   LintService,
@@ -140,6 +141,7 @@ describe('Lint E2E', () => {
       verbatimStoreFactory: (fs) => new FsVerbatimStore(fs),
       stateStore,
       archiver,
+      idempotencyStore: new YamlIdempotencyStore(mainFs),
       makeConsolidatePhase: (fs, vs) => new ConsolidatePhase(fs, vs, llm, wiki),
       makePromotePhase: (fs) => new PromotePhase(fs, llm),
       makeHealthPhase: (fs) => new HealthPhase(fs),
@@ -210,5 +212,21 @@ describe('Lint E2E', () => {
 
     const state = await new YamlStateStore(new FsFileStore(wiki)).load();
     expect(state.last_lint).toBeNull();
+  });
+
+  it('idempotency key replay returns stored lint report without second side effects', async () => {
+    await seedVerbatim(2);
+    const { service } = makeService(false);
+    const first = await service.lint({ idempotencyKey: 'lint-replay-key' });
+    const headAfterFirst = execSync('git rev-parse HEAD', { cwd: wiki }).toString().trim();
+
+    const second = await service.lint({ idempotencyKey: 'lint-replay-key' });
+    const headAfterSecond = execSync('git rev-parse HEAD', { cwd: wiki }).toString().trim();
+
+    expect(second.idempotencyReplayed).toBe(true);
+    expect(second.consolidated).toBe(first.consolidated);
+    expect(second.promoted).toBe(first.promoted);
+    expect(second.commitSha).toBe(first.commitSha);
+    expect(headAfterSecond).toBe(headAfterFirst);
   });
 });

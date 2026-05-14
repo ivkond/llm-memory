@@ -10,6 +10,7 @@ import {
   AiSdkLlmClient,
   AiSdkEmbeddingClient,
   YamlStateStore,
+  YamlIdempotencyStore,
   FsSourceReader,
   HttpSourceReader,
   CompositeSourceReader,
@@ -64,6 +65,7 @@ export function buildContainer(config: WikiConfig): AppServices {
   const projectResolver = new GitProjectResolver(fileStore);
   const versionControl = new GitVersionControl(wikiRoot);
   const stateStore = new YamlStateStore(fileStore);
+  const idempotencyStore = new YamlIdempotencyStore(fileStore, wikiRoot);
   const sourceReader = new CompositeSourceReader(new FsSourceReader(), new HttpSourceReader());
   const archiver = new SevenZipArchiver();
 
@@ -92,7 +94,7 @@ export function buildContainer(config: WikiConfig): AppServices {
     allowlist: config.sanitization.allowlist,
   });
 
-  const remember = new RememberService(fileStore, verbatimStore, sanitizer);
+  const remember = new RememberService(fileStore, verbatimStore, sanitizer, idempotencyStore);
   const recall = new RecallService(fileStore, verbatimStore, projectResolver);
   const query = new QueryService(searchEngine, llmClient, projectResolver, fileStore);
   const status = new WikiStatusService(fileStore, verbatimStore, searchEngine, stateStore);
@@ -104,6 +106,7 @@ export function buildContainer(config: WikiConfig): AppServices {
     fileStore,
     fileStoreFactory,
     stateStore,
+    idempotencyStore,
   );
   const lint = new LintService({
     mainRepoRoot: wikiRoot,
@@ -115,6 +118,7 @@ export function buildContainer(config: WikiConfig): AppServices {
     verbatimStoreFactory,
     stateStore,
     archiver,
+    idempotencyStore,
     makeConsolidatePhase: (fs, vs) => {
       const phase = new ConsolidatePhase(fs, vs, llmClient, wikiRoot);
       return { name: 'consolidate', run: () => phase.run() };
@@ -133,6 +137,7 @@ export function buildContainer(config: WikiConfig): AppServices {
     verbatimStore,
     stateStore,
     agentConfigs: {},
+    idempotencyStore,
   });
 
   return Object.freeze({ remember, recall, query, ingest, status, lint, import_ });

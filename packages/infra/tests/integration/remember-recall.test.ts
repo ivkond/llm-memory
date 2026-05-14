@@ -4,7 +4,12 @@ import { execSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { RememberService, RecallService, SanitizationService } from '@ivkond-llm-wiki/core';
-import { FsFileStore, FsVerbatimStore, GitProjectResolver } from '@ivkond-llm-wiki/infra';
+import {
+  FsFileStore,
+  FsVerbatimStore,
+  GitProjectResolver,
+  YamlIdempotencyStore,
+} from '@ivkond-llm-wiki/infra';
 
 describe('Remember + Recall integration', () => {
   let wikiDir: string;
@@ -42,7 +47,12 @@ describe('Remember + Recall integration', () => {
     const sanitizer = new SanitizationService({ enabled: true, mode: 'redact' });
     const resolver = new GitProjectResolver(fileStore);
 
-    rememberService = new RememberService(fileStore, verbatimStore, sanitizer);
+    rememberService = new RememberService(
+      fileStore,
+      verbatimStore,
+      sanitizer,
+      new YamlIdempotencyStore(fileStore),
+    );
     recallService = new RecallService(fileStore, verbatimStore, resolver);
   });
 

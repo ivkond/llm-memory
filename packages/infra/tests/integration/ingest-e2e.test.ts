@@ -12,6 +12,7 @@ import {
   GitVersionControl,
   FsSourceReader,
   YamlStateStore,
+  YamlIdempotencyStore,
 } from '../../src/index.js';
 import { IngestService } from '@ivkond-llm-wiki/core';
 
@@ -116,6 +117,7 @@ describe('Ingest E2E', () => {
       fs,
       (root) => new FsFileStore(root),
       stateStore,
+      new YamlIdempotencyStore(fs),
     );
   }
 

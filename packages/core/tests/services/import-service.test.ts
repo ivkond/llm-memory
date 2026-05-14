@@ -5,6 +5,7 @@ import { ImportReaderNotRegisteredError } from '../../src/domain/errors.js';
 import { EMPTY_RUNTIME_STATE, type WikiRuntimeState } from '../../src/domain/runtime-state.js';
 import type {
   IAgentMemoryReader,
+  IIdempotencyStore,
   IVerbatimStore,
   IStateStore,
   AgentMemoryDiscoveryOptions,
@@ -67,6 +68,48 @@ class FakeStateStore implements IStateStore {
   }
 }
 
+class FakeIdempotencyStore implements IIdempotencyStore {
+  private records = new Map<string, any>();
+  async acquire(operation: any, key: string, fingerprint: string) {
+    const id = `${operation}:${key}`;
+    const existing = this.records.get(id);
+    if (!existing) {
+      this.records.set(id, {
+        operation,
+        key,
+        fingerprint,
+        status: 'in_progress',
+        startedAt: new Date().toISOString(),
+      });
+      return { kind: 'acquired' as const };
+    }
+    if (existing.fingerprint !== fingerprint) return { kind: 'conflict' as const };
+    if (existing.status === 'completed') return { kind: 'replay' as const, record: existing };
+    return { kind: 'in_progress' as const };
+  }
+  async complete(operation: any, key: string, fingerprint: string, response: unknown) {
+    this.records.set(`${operation}:${key}`, {
+      operation,
+      key,
+      fingerprint,
+      status: 'completed',
+      response,
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+    });
+  }
+  async abort(operation: any, key: string, fingerprint: string) {
+    const id = `${operation}:${key}`;
+    const existing = this.records.get(id);
+    if (existing && existing.fingerprint === fingerprint && existing.status === 'in_progress') {
+      this.records.delete(id);
+    }
+  }
+  async get(operation: any, key: string) {
+    return this.records.get(`${operation}:${key}`) ?? null;
+  }
+}
+
 describe('ImportService', () => {
   let verbatim: FakeVerbatimStore;
   let state: FakeStateStore;
@@ -113,6 +156,7 @@ describe('ImportService', () => {
       verbatimStore: verbatim,
       stateStore: state,
       agentConfigs: configs,
+      idempotencyStore: new FakeIdempotencyStore(),
       now: () => new Date('2026-04-10T12:00:00Z'),
     });
 
@@ -144,6 +188,7 @@ describe('ImportService', () => {
       verbatimStore: verbatim,
       stateStore: state,
       agentConfigs: configs,
+      idempotencyStore: new FakeIdempotencyStore(),
       now: () => new Date(),
     });
     await service.importAll({});
@@ -167,6 +212,7 @@ describe('ImportService', () => {
       verbatimStore: verbatim,
       stateStore: state,
       agentConfigs: configs,
+      idempotencyStore: new FakeIdempotencyStore(),
       now: () => new Date(),
     });
     await service.importAll({});
@@ -192,6 +238,7 @@ describe('ImportService', () => {
       verbatimStore: verbatim,
       stateStore: state,
       agentConfigs: configs,
+      idempotencyStore: new FakeIdempotencyStore(),
       now: () => new Date('2026-04-10T12:00:00Z'),
     });
 
@@ -224,6 +271,7 @@ describe('ImportService', () => {
       verbatimStore: verbatim,
       stateStore: state,
       agentConfigs: { 'claude-code': { enabled: true, paths: ['~/.claude'] } },
+      idempotencyStore: new FakeIdempotencyStore(),
       now: () => new Date('2026-04-10T12:00:00Z'),
     });
 
@@ -244,6 +292,7 @@ describe('ImportService', () => {
       verbatimStore: verbatim,
       stateStore: state,
       agentConfigs: { 'claude-code': { enabled: true, paths: [] } },
+      idempotencyStore: new FakeIdempotencyStore(),
       now: () => new Date(),
     });
     await expect(service.importAll({ agents: ['ghost'] })).rejects.toBeInstanceOf(

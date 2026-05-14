@@ -43,9 +43,13 @@ export const ingestCommand = new Command()
   .option('-v, --verbose', 'Verbose output', false)
   .option('-d, --dry-run', 'Dry run (no changes)', false)
   .option('-w, --wiki <path>', 'Wiki directory path')
+  .option('--idempotency-key <key>', 'Idempotency key for retry-safe ingest')
   .argument('<source>', 'Source to ingest (file path or URL)')
   .action(
-    async (source: string, options: { verbose?: boolean; dryRun?: boolean; wiki?: string }) => {
+    async (
+      source: string,
+      options: { verbose?: boolean; dryRun?: boolean; wiki?: string; idempotencyKey?: string },
+    ) => {
       const verbose = options.verbose ?? false;
       const dryRun = options.dryRun ?? false;
 
@@ -77,7 +81,10 @@ export const ingestCommand = new Command()
         console.log('Ingesting from:', source);
 
         const startTime = Date.now();
-        const result = await services.ingest.ingest({ source });
+        const result = await services.ingest.ingest({
+          source,
+          idempotencyKey: options.idempotencyKey,
+        });
 
         const elapsed = Date.now() - startTime;
 
@@ -94,6 +101,9 @@ export const ingestCommand = new Command()
           }
         }
         console.log(`\nCommit: ${result.commit_sha.slice(0, 7)}`);
+        if (result.idempotency_replayed && options.idempotencyKey) {
+          console.log(`Replayed idempotent result for key ${options.idempotencyKey}`);
+        }
 
         if (verbose) {
           console.log(`Completed in ${elapsed}ms`);

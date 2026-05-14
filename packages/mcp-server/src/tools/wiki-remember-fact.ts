@@ -29,6 +29,8 @@ export function createWikiRememberFactHandler(services: AppServices) {
 
       const content = params.content != null ? String(params.content) : '';
       const common = readCommonRememberParams(params);
+      const idempotencyKey =
+        params.idempotencyKey != null ? String(params.idempotencyKey) : undefined;
       const tags = params.tags
         ? Array.isArray(params.tags)
           ? params.tags.map((t) => String(t))
@@ -39,6 +41,7 @@ export function createWikiRememberFactHandler(services: AppServices) {
         content,
         ...common,
         tags,
+        idempotencyKey,
       });
 
       return {

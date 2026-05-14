@@ -49,6 +49,7 @@ export const wikiRememberFactShape = {
   sessionId: z.string().min(1).describe('Session identifier; facts from the same session coalesce'),
   project: z.string().optional().describe('Project name; defaults to cwd-derived project'),
   tags: z.array(z.string()).optional().describe('Optional list of free-form tags'),
+  idempotencyKey: z.string().optional().describe('Optional idempotency key for safe retries'),
   source_uri: z.string().optional().describe('Optional source URI/path for provenance'),
   source_digest: z.string().optional().describe('Optional source digest for provenance'),
   operation_id: z.string().optional().describe('Optional operation ID for traceability'),
@@ -63,6 +64,7 @@ export const wikiRememberSessionShape = {
   agent: z.string().min(1).describe('Agent identifier'),
   sessionId: z.string().min(1).describe('Session identifier used as the dedup key'),
   project: z.string().optional().describe('Project name; defaults to cwd-derived project'),
+  idempotencyKey: z.string().optional().describe('Optional idempotency key for safe retries'),
   source_uri: z.string().optional().describe('Optional source URI/path for provenance'),
   source_digest: z.string().optional().describe('Optional source digest for provenance'),
   operation_id: z.string().optional().describe('Optional operation ID for traceability'),
@@ -84,6 +86,7 @@ export const wikiIngestShape = {
     .describe(
       'Deprecated/unsupported for now: project-scoped ingest is not implemented and passing this field returns PROJECT_SCOPE_UNSUPPORTED',
     ),
+  idempotencyKey: z.string().optional().describe('Optional idempotency key for safe retries'),
 };
 
 export const wikiLintShape = {
@@ -97,6 +100,7 @@ export const wikiLintShape = {
     .describe(
       'Deprecated/unsupported for now: project-scoped lint is not implemented and passing this field returns PROJECT_SCOPE_UNSUPPORTED',
     ),
+  idempotencyKey: z.string().optional().describe('Optional idempotency key for safe retries'),
 };
 
 export const wikiStatusShape = {};

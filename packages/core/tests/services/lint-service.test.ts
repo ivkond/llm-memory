@@ -13,6 +13,7 @@ import type {
   IVersionControl,
   IStateStore,
   IArchiver,
+  IIdempotencyStore,
   ISearchEngine,
   IndexEntry,
   SearchQuery,
@@ -159,6 +160,59 @@ class FakeArchiver implements IArchiver {
   }
 }
 
+class FakeIdempotencyStore implements IIdempotencyStore {
+  private records = new Map<string, any>();
+  seedCompleted(operation: string, key: string, fingerprint: string, response: unknown): void {
+    this.records.set(`${operation}:${key}`, {
+      operation,
+      key,
+      fingerprint,
+      status: 'completed',
+      response,
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+    });
+  }
+  async acquire(operation: any, key: string, fingerprint: string) {
+    const id = `${operation}:${key}`;
+    const existing = this.records.get(id);
+    if (!existing) {
+      this.records.set(id, {
+        operation,
+        key,
+        fingerprint,
+        status: 'in_progress',
+        startedAt: new Date().toISOString(),
+      });
+      return { kind: 'acquired' as const };
+    }
+    if (existing.fingerprint !== fingerprint) return { kind: 'conflict' as const };
+    if (existing.status === 'completed') return { kind: 'replay' as const, record: existing };
+    return { kind: 'in_progress' as const };
+  }
+  async complete(operation: any, key: string, fingerprint: string, response: unknown) {
+    this.records.set(`${operation}:${key}`, {
+      operation,
+      key,
+      fingerprint,
+      status: 'completed',
+      response,
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+    });
+  }
+  async abort(operation: any, key: string, fingerprint: string) {
+    const id = `${operation}:${key}`;
+    const existing = this.records.get(id);
+    if (existing && existing.fingerprint === fingerprint && existing.status === 'in_progress') {
+      this.records.delete(id);
+    }
+  }
+  async get(operation: any, key: string) {
+    return this.records.get(`${operation}:${key}`) ?? null;
+  }
+}
+
 function stubConsolidate(touched: string[] = []): LintPhase<'consolidate'> {
   return {
     name: 'consolidate',
@@ -220,6 +274,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      idempotencyStore: new FakeIdempotencyStore(),
       makeConsolidatePhase: () => stubConsolidate(consolidatePaths),
       makePromotePhase: () => stubPromote(['wiki/patterns/x.md']),
       makeHealthPhase: () => stubHealth([]),
@@ -249,6 +304,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      idempotencyStore: new FakeIdempotencyStore(),
       makeConsolidatePhase: () => ({
         name: 'consolidate',
         async run() {
@@ -278,6 +334,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      idempotencyStore: new FakeIdempotencyStore(),
       makeConsolidatePhase: () => stubConsolidate(['wiki/x.md']),
       makePromotePhase: () => stubPromote(),
       makeHealthPhase: () => stubHealth(),
@@ -304,6 +361,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      idempotencyStore: new FakeIdempotencyStore(),
       makeConsolidatePhase: () => ({
         name: 'consolidate',
         async run() {
@@ -340,6 +398,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      idempotencyStore: new FakeIdempotencyStore(),
       makeConsolidatePhase: () => stubConsolidate(),
       makePromotePhase: () => stubPromote(),
       makeHealthPhase: () => stubHealth(),
@@ -377,6 +436,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      idempotencyStore: new FakeIdempotencyStore(),
       makeConsolidatePhase: () => phase,
       makePromotePhase: () => stubPromote(),
       makeHealthPhase: () => stubHealth(),
@@ -426,6 +486,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      idempotencyStore: new FakeIdempotencyStore(),
       makeConsolidatePhase: () => stubConsolidate(['wiki/tools/postgresql.md']),
       makePromotePhase: () => stubPromote(['wiki/patterns/no-db-mocking.md']),
       makeHealthPhase: () => stubHealth(),
@@ -450,6 +511,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      idempotencyStore: new FakeIdempotencyStore(),
       makeConsolidatePhase: () => stubConsolidate(),
       makePromotePhase: () => stubPromote(),
       makeHealthPhase: () => stubHealth([]),
@@ -459,5 +521,45 @@ describe('LintService', () => {
     await service.lint({ phases: ['health'] });
 
     expect(searchEngine.indexed).toEqual([]);
+  });
+
+  it('replays lint result when store returns completed plain object response', async () => {
+    const idempotency = new FakeIdempotencyStore();
+    idempotency.seedCompleted('lint', 'lint-key', JSON.stringify({ phases: ['health'], project: null }), {
+      consolidated: 2,
+      promoted: 1,
+      issues: [],
+      commitSha: 'abc123',
+    });
+    const consolidateSpy = vi.fn();
+    const service = new LintService({
+      mainRepoRoot: '/main',
+      mainFileStore: mainFs,
+      mainVerbatimStore: vs,
+      versionControl: vc,
+      searchEngine,
+      fileStoreFactory: fsFactory,
+      verbatimStoreFactory: () => vs,
+      stateStore: state,
+      archiver,
+      idempotencyStore: idempotency,
+      makeConsolidatePhase: () => ({
+        name: 'consolidate',
+        async run() {
+          consolidateSpy();
+          return { consolidatedCount: 1, touchedPaths: [] };
+        },
+      }),
+      makePromotePhase: () => stubPromote(),
+      makeHealthPhase: () => stubHealth(),
+      now: () => new Date('2026-04-10T12:00:00Z'),
+    });
+
+    const report = await service.lint({ phases: ['health'], idempotencyKey: 'lint-key' });
+    expect(consolidateSpy).not.toHaveBeenCalled();
+    expect(report.consolidated).toBe(2);
+    expect(report.promoted).toBe(1);
+    expect(report.commitSha).toBe('abc123');
+    expect(report.idempotencyReplayed).toBe(true);
   });
 });

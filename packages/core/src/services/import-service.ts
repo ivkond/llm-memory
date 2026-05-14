@@ -4,6 +4,8 @@ import type { AgentMemoryItem } from '../domain/agent-memory-item.js';
 import type { IAgentMemoryReader } from '../ports/agent-memory-reader.js';
 import type { IVerbatimStore } from '../ports/verbatim-store.js';
 import type { IStateStore } from '../ports/state-store.js';
+import type { IIdempotencyStore } from '../ports/idempotency-store.js';
+import { runWithIdempotency } from './idempotency.js';
 
 export interface AgentConfig {
   enabled: boolean;
@@ -12,6 +14,7 @@ export interface AgentConfig {
 
 export interface ImportRequest {
   agents?: string[];
+  idempotencyKey?: string;
 }
 
 export interface AgentImportResult {
@@ -24,6 +27,7 @@ export interface AgentImportResult {
 
 export interface ImportResponse {
   agents: AgentImportResult[];
+  idempotency_replayed?: boolean;
 }
 
 export interface ImportServiceDeps {
@@ -31,6 +35,7 @@ export interface ImportServiceDeps {
   verbatimStore: IVerbatimStore;
   stateStore: IStateStore;
   agentConfigs: Record<string, AgentConfig>;
+  idempotencyStore: IIdempotencyStore;
   now?: () => Date;
   idGenerator?: (item: AgentMemoryItem) => string;
 }
@@ -47,30 +52,33 @@ export class ImportService {
 
   async importAll(req: ImportRequest): Promise<ImportResponse> {
     const selected = this.resolveAgents(req.agents);
-
-    const state = await this.deps.stateStore.load();
-    const results: AgentImportResult[] = [];
-    const stateUpdates: Record<string, { last_import: string }> = {};
-
-    for (const agent of selected) {
-      const reader = this.readerForEnabledAgent(agent);
-      if (!reader) continue;
-      const config = this.deps.agentConfigs[agent];
-      const since = state.imports[agent]?.last_import ?? null;
-      const result = await this.sweepAgent(agent, reader, config.paths, since);
-      results.push(result);
-      if (!result.error) {
-        stateUpdates[agent] = { last_import: this.now().toISOString() };
-      }
-    }
-
-    if (Object.keys(stateUpdates).length > 0) {
-      await this.deps.stateStore.update({
-        imports: { ...state.imports, ...stateUpdates },
-      });
-    }
-
-    return { agents: results };
+    const { result, replayed } = await runWithIdempotency(
+      this.deps.idempotencyStore,
+      'import',
+      req.idempotencyKey,
+      { agents: selected },
+      async () => {
+        const state = await this.deps.stateStore.load();
+        const results: AgentImportResult[] = [];
+        const stateUpdates: Record<string, { last_import: string }> = {};
+        for (const agent of selected) {
+          const reader = this.readerForEnabledAgent(agent);
+          if (!reader) continue;
+          const config = this.deps.agentConfigs[agent];
+          const since = state.imports[agent]?.last_import ?? null;
+          const sweepResult = await this.sweepAgent(agent, reader, config.paths, since);
+          results.push(sweepResult);
+          if (!sweepResult.error) {
+            stateUpdates[agent] = { last_import: this.now().toISOString() };
+          }
+        }
+        if (Object.keys(stateUpdates).length > 0) {
+          await this.deps.stateStore.update({ imports: { ...state.imports, ...stateUpdates } });
+        }
+        return { agents: results };
+      },
+    );
+    return replayed ? { ...result, idempotency_replayed: true } : result;
   }
 
   private readerForEnabledAgent(agent: string): IAgentMemoryReader | null {

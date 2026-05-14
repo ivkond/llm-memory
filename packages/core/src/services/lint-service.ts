@@ -8,6 +8,8 @@ import type { IStateStore } from '../ports/state-store.js';
 import type { ISearchEngine } from '../ports/search-engine.js';
 import type { IArchiver, ArchiveEntry } from '../ports/archiver.js';
 import type { HealthIssue } from '../domain/health-issue.js';
+import type { IIdempotencyStore } from '../ports/idempotency-store.js';
+import { runWithIdempotency } from './idempotency.js';
 
 export type LintPhaseName = 'consolidate' | 'promote' | 'health';
 
@@ -40,6 +42,7 @@ export interface LintPhase<N extends LintPhaseName> {
 export interface LintRequest {
   phases?: LintPhaseName[];
   project?: string;
+  idempotencyKey?: string;
 }
 
 export type VerbatimStoreFactory = (fileStore: IFileStore) => IVerbatimStore;
@@ -54,6 +57,7 @@ export interface LintServiceDeps {
   verbatimStoreFactory: VerbatimStoreFactory;
   stateStore: IStateStore;
   archiver: IArchiver;
+  idempotencyStore: IIdempotencyStore;
   makeConsolidatePhase: (fs: IFileStore, vs: IVerbatimStore) => LintPhase<'consolidate'>;
   makePromotePhase: (fs: IFileStore) => LintPhase<'promote'>;
   makeHealthPhase: (fs: IFileStore) => LintPhase<'health'>;
@@ -64,52 +68,78 @@ const ALL_PHASES: LintPhaseName[] = ['consolidate', 'promote', 'health'];
 
 export class LintService {
   private readonly now: () => Date;
+  private readonly idempotencyStore: IIdempotencyStore;
 
   constructor(private readonly deps: LintServiceDeps) {
     this.now = deps.now ?? (() => new Date());
+    this.idempotencyStore = deps.idempotencyStore;
   }
 
   async lint(req: LintRequest = {}): Promise<LintReport> {
     if (req.project) {
       throw new ProjectScopeUnsupportedError('lint', req.project);
     }
-    const phaseSet = new Set<LintPhaseName>(req.phases ?? ALL_PHASES);
+    const phaseList = req.phases ?? ALL_PHASES;
+    const { result, replayed } = await runWithIdempotency(
+      this.idempotencyStore,
+      'lint',
+      req.idempotencyKey,
+      { phases: phaseList, project: req.project ?? null },
+      async () => {
+        const phaseSet = new Set<LintPhaseName>(phaseList);
+        const worktree = await this.deps.versionControl.createWorktree('lint');
+        const wtFileStore = this.deps.fileStoreFactory(worktree.path);
+        const wtVerbatimStore = this.deps.verbatimStoreFactory(wtFileStore);
+        const touchedPaths = new Set<string>();
+        let report: LintReport;
+        let consolidateResult: ConsolidateRunResult | null;
+        try {
+          ({ report, consolidateResult } = await this.runPhases(
+            phaseSet,
+            wtFileStore,
+            wtVerbatimStore,
+            touchedPaths,
+          ));
+        } catch (err) {
+          await this.safeRemoveWorktree(worktree.path, true);
+          throw err;
+        }
+        const hasChanges =
+          touchedPaths.size > 0 &&
+          ((consolidateResult?.consolidatedCount ?? 0) > 0 || report.promoted > 0);
+        const commitSha = hasChanges ? await this.commitAndMerge(worktree.path, touchedPaths) : null;
+        if (hasChanges) {
+          await this.reindexTouched(touchedPaths);
+        }
+        await this.deps.stateStore.update({ last_lint: this.now().toISOString() });
+        await this.safeRemoveWorktree(worktree.path);
+        await this.runArchival(consolidateResult);
+        return commitSha ? report.withCommit(commitSha) : report;
+      },
+    );
+    if (!replayed) return result;
+    return LintReport.from({
+      ...this.toLintReportData(result),
+      idempotencyReplayed: true,
+    });
+  }
 
-    const worktree = await this.deps.versionControl.createWorktree('lint');
-    const wtFileStore = this.deps.fileStoreFactory(worktree.path);
-    const wtVerbatimStore = this.deps.verbatimStoreFactory(wtFileStore);
-
-    const touchedPaths = new Set<string>();
-    let report: LintReport;
-    let consolidateResult: ConsolidateRunResult | null;
-    try {
-      ({ report, consolidateResult } = await this.runPhases(
-        phaseSet,
-        wtFileStore,
-        wtVerbatimStore,
-        touchedPaths,
-      ));
-    } catch (err) {
-      await this.safeRemoveWorktree(worktree.path, true);
-      throw err;
+  private toLintReportData(result: unknown): {
+    consolidated: number;
+    promoted: number;
+    issues: HealthIssue[];
+    commitSha: string | null;
+  } {
+    if (result instanceof LintReport) {
+      return result.toData();
     }
-
-    const hasChanges =
-      touchedPaths.size > 0 &&
-      ((consolidateResult?.consolidatedCount ?? 0) > 0 || report.promoted > 0);
-
-    const commitSha = hasChanges ? await this.commitAndMerge(worktree.path, touchedPaths) : null;
-
-    if (hasChanges) {
-      await this.reindexTouched(touchedPaths);
-    }
-
-    await this.deps.stateStore.update({ last_lint: this.now().toISOString() });
-    await this.safeRemoveWorktree(worktree.path);
-
-    await this.runArchival(consolidateResult);
-
-    return commitSha ? report.withCommit(commitSha) : report;
+    const data = (result ?? {}) as Record<string, unknown>;
+    return {
+      consolidated: Number(data.consolidated ?? 0),
+      promoted: Number(data.promoted ?? 0),
+      issues: Array.isArray(data.issues) ? (data.issues as HealthIssue[]) : [],
+      commitSha: typeof data.commitSha === 'string' ? data.commitSha : null,
+    };
   }
 
   private async runPhases(

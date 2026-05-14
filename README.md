@@ -205,7 +205,7 @@ Useful global options:
 ```bash
 llm-wiki status --wiki ./my-wiki
 llm-wiki search "query" --limit 5 --format json
-llm-wiki ingest ./doc.md --verbose
+llm-wiki ingest ./doc.md --idempotency-key ingest-doc-20260510 --verbose
 ```
 
 ## MCP tools
@@ -221,6 +221,9 @@ The MCP server exposes these tools:
 | `wiki_ingest` | Ingest a file path or URL into wiki pages. |
 | `wiki_lint` | Run consolidation, promotion, and health phases. |
 | `wiki_status` | Return wiki health and metadata. |
+
+Write operations accept an optional `idempotencyKey` (MCP) or `--idempotency-key` (CLI for `ingest`, `lint`, and `import`).
+Retries with the same key and identical request replay the previous result. Reusing a key with different input returns an idempotency conflict.
 
 ## Configuration
 
