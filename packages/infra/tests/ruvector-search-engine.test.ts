@@ -111,6 +111,26 @@ describe('RuVectorSearchEngine', () => {
     expect(cherry.map((r) => r.path)).toContain('wiki/b.md');
   });
 
+  it('test_rebuild_emptyEntries_persistsClearedIndexState', async () => {
+    await engine.index({
+      path: 'wiki/a.md',
+      title: 'A',
+      content: 'apple banana',
+      updated: '2026-04-09',
+    });
+
+    await engine.rebuild([]);
+
+    expect(await engine.lastIndexedAt('wiki/a.md')).toBeNull();
+    expect(await engine.search({ text: 'apple' })).toEqual([]);
+    expect(await engine.health()).toBe('ok');
+
+    const reopened = new RuVectorSearchEngine(dbPath, embeddings);
+    expect(await reopened.health()).toBe('ok');
+    expect(await reopened.search({ text: 'apple' })).toEqual([]);
+    expect(await reopened.lastIndexedAt('wiki/a.md')).toBeNull();
+  });
+
   it('test_health_returnsMissingBeforeIndex_okAfter', async () => {
     expect(await engine.health()).toBe('missing');
     await engine.index({

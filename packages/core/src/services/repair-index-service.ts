@@ -41,12 +41,12 @@ export class RepairIndexService {
       });
     }
 
-    if (!dryRun && entries.length > 0) {
+    if (!dryRun) {
       await this.searchEngine.rebuild(entries);
     }
 
     const status: RepairIndexStatus =
-      entries.length === 0 ? 'noop' : dryRun ? 'planned' : 'rebuilt';
+      dryRun ? (entries.length === 0 ? 'noop' : 'planned') : 'rebuilt';
 
     return {
       status,

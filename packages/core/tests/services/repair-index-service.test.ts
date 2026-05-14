@@ -120,4 +120,17 @@ describe('RepairIndexService', () => {
     expect(result.indexed).toBe(0);
     expect(searchEngine.rebuildSpy).not.toHaveBeenCalled();
   });
+
+  it('empty canonical set still triggers durable rebuild with empty entries', async () => {
+    fileStore.listedWiki = [];
+    fileStore.listedProjects = [];
+
+    const result = await service.repair();
+
+    expect(result.status).toBe('rebuilt');
+    expect(result.candidates).toBe(0);
+    expect(result.indexed).toBe(0);
+    expect(searchEngine.rebuildSpy).toHaveBeenCalledTimes(1);
+    expect(searchEngine.rebuildSpy).toHaveBeenCalledWith([]);
+  });
 });
