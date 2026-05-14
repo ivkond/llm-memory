@@ -1,4 +1,3 @@
-import path from 'node:path';
 import { GitConflictError, ProjectScopeUnsupportedError } from '../domain/errors.js';
 import { LintReport } from '../domain/lint-report.js';
 import type { IFileStore, FileStoreFactory } from '../ports/file-store.js';
@@ -202,8 +201,7 @@ export class LintService {
   private groupByMonthAndAgent(entries: ArchiveEntry[]): Map<string, ArchiveEntry[]> {
     const groups = new Map<string, ArchiveEntry[]>();
     for (const entry of entries) {
-      const normalised = entry.sourcePath.split(path.sep).join('/');
-      const segments = normalised.split('/');
+      const segments = entry.sourcePath.split(/[\\/]+/);
       const logIdx = segments.lastIndexOf('log');
       if (logIdx === -1 || segments.length < logIdx + 4) continue;
       const agent = segments[logIdx + 1];

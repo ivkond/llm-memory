@@ -390,6 +390,43 @@ describe('LintService', () => {
     expect(archiver.calls[0].path).toBe('/main/.archive/2026-04-claude-code.7z');
   });
 
+  it('groups Windows-style archived source paths by month and agent', async () => {
+    const phase: LintPhase<'consolidate'> = {
+      name: 'consolidate',
+      async run() {
+        return {
+          consolidatedCount: 2,
+          touchedPaths: ['wiki/x.md'],
+          archivedEntries: [
+            { sourcePath: 'C:\\main\\log\\claude-code\\raw\\2026-04-09-sessA-uuid1.md' },
+            { sourcePath: 'C:\\main\\log\\claude-code\\raw\\2026-04-21-sessB-uuid2.md' },
+          ],
+        };
+      },
+    };
+    const service = new LintService({
+      mainRepoRoot: '/main',
+      mainFileStore: mainFs,
+      mainVerbatimStore: vs,
+      versionControl: vc,
+      searchEngine,
+      fileStoreFactory: fsFactory,
+      verbatimStoreFactory: () => vs,
+      stateStore: state,
+      archiver,
+      makeConsolidatePhase: () => phase,
+      makePromotePhase: () => stubPromote(),
+      makeHealthPhase: () => stubHealth(),
+      now: () => new Date('2026-04-10T12:00:00Z'),
+    });
+
+    await service.lint({});
+
+    expect(archiver.calls).toHaveLength(1);
+    expect(archiver.calls[0].entries).toHaveLength(2);
+    expect(archiver.calls[0].path).toBe('/main/.archive/2026-04-claude-code.7z');
+  });
+
   it('reindexes wiki + projects pages touched by lint, skipping log wildcard', async () => {
     mainFs.pages['wiki/tools/postgresql.md'] = {
       frontmatter: {
