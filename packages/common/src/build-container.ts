@@ -25,6 +25,7 @@ import {
   WikiStatusService,
   LintService,
   ImportService,
+  RepairIndexService,
   SanitizationService,
   ConsolidatePhase,
   PromotePhase,
@@ -96,6 +97,7 @@ export function buildContainer(config: WikiConfig): AppServices {
   const recall = new RecallService(fileStore, verbatimStore, projectResolver);
   const query = new QueryService(searchEngine, llmClient, projectResolver, fileStore);
   const status = new WikiStatusService(fileStore, verbatimStore, searchEngine, stateStore);
+  const repairIndex = new RepairIndexService(fileStore, searchEngine);
   const ingest = new IngestService(
     sourceReader,
     llmClient,
@@ -135,7 +137,7 @@ export function buildContainer(config: WikiConfig): AppServices {
     agentConfigs: {},
   });
 
-  return Object.freeze({ remember, recall, query, ingest, status, lint, import_ });
+  return Object.freeze({ remember, recall, query, ingest, status, lint, import_, repairIndex });
 }
 
 function expandHome(p: string): string {

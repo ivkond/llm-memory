@@ -194,6 +194,7 @@ By default, the server listens on `127.0.0.1:7849`. You can change this in confi
 | --- | --- |
 | `llm-wiki init [directory]` | Create a new wiki directory and Git repository. |
 | `llm-wiki status` | Show wiki health, page counts, index status, and recent activity. |
+| `llm-wiki repair-index` | Rebuild derived search index from canonical `wiki/` and `projects/` Markdown pages. |
 | `llm-wiki ingest <file-or-url>` | Convert a file or URL into structured wiki pages. |
 | `llm-wiki search <query>` | Search the wiki and optionally generate an answer. |
 | `llm-wiki lint` | Consolidate raw memories, promote shared patterns, and run health checks. |
@@ -206,6 +207,16 @@ Useful global options:
 llm-wiki status --wiki ./my-wiki
 llm-wiki search "query" --limit 5 --format json
 llm-wiki ingest ./doc.md --verbose
+llm-wiki repair-index --dry-run --format json
+
+### Repairing search index
+
+Use `repair-index` when search cache files are missing, stale, or corrupt.
+
+- Source of truth: only Markdown pages under `wiki/` and `projects/` are used.
+- Safety boundary: `repair-index` never edits canonical Markdown files.
+- Exclusions: operational paths (`log/`, `.local/`, `.archive/`, `.worktrees/`) and non-Markdown files are ignored.
+- Dry run: `--dry-run` reports candidate counts and status without mutating index files.
 ```
 
 ## MCP tools

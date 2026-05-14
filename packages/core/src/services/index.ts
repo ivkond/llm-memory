@@ -15,6 +15,12 @@ export { IngestService, MAX_SOURCE_TOKENS } from './ingest-service.js';
 export type { IngestRequest, IngestResponse } from './ingest-service.js';
 export { WikiStatusService } from './status-service.js';
 export type { StatusResponse } from './status-service.js';
+export { RepairIndexService } from './repair-index-service.js';
+export type {
+  RepairIndexRequest,
+  RepairIndexResponse,
+  RepairIndexStatus,
+} from './repair-index-service.js';
 export { LintService } from './lint-service.js';
 export type {
   LintPhase,
