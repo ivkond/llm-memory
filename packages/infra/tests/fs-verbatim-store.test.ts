@@ -122,6 +122,66 @@ describe('FsVerbatimStore.readEntry', () => {
     }
   });
 
+  it('roundtrips full nested metadata in frontmatter', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'vs-read-'));
+    try {
+      const store = new FsVerbatimStore(new FsFileStore(root));
+      const entry = VerbatimEntry.create({
+        content: 'metadata-rich entry',
+        agent: 'claude-code',
+        sessionId: 'sess2',
+        project: 'llm-memory',
+        tags: ['rm-0005', 'infra'],
+        idGenerator: () => 'uuid-full',
+        source: {
+          type: 'import',
+          uri: 'file:///tmp/input.md',
+          digest: 'sha256:deadbeef',
+        },
+        model: {
+          provider: 'anthropic',
+          model: 'claude-sonnet',
+          call_id: 'call-123',
+          tool_call_id: 'tool-456',
+        },
+        operationId: 'op-123',
+        processing: {
+          ingested_at: '2026-05-13T01:02:03.000Z',
+          imported_at: '2026-05-13T01:03:03.000Z',
+          updated_at: '2026-05-13T01:04:03.000Z',
+        },
+      });
+      await store.writeEntry(entry);
+
+      const raw = await new FsFileStore(root).readFile(entry.filePath);
+      expect(raw).toContain('source:');
+      expect(raw).toContain('model:');
+      expect(raw).toContain('processing:');
+      expect(raw).toContain('operation_id: op-123');
+
+      const roundtrip = await store.readEntry(entry.filePath);
+      expect(roundtrip).not.toBeNull();
+      expect(roundtrip!.entryId).toBe('uuid-full');
+      expect(roundtrip!.source).toEqual({
+        type: 'import',
+        uri: 'file:///tmp/input.md',
+        digest: 'sha256:deadbeef',
+      });
+      expect(roundtrip!.model).toEqual({
+        provider: 'anthropic',
+        model: 'claude-sonnet',
+        call_id: 'call-123',
+        tool_call_id: 'tool-456',
+      });
+      expect(roundtrip!.operationId).toBe('op-123');
+      expect(roundtrip!.processing.ingested_at).toBe('2026-05-13T01:02:03.000Z');
+      expect(roundtrip!.processing.imported_at).toBe('2026-05-13T01:03:03.000Z');
+      expect(roundtrip!.processing.updated_at).toBe('2026-05-13T01:04:03.000Z');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('synthesizes metadata for legacy records without entry_id and processing', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'vs-read-'));
     try {
@@ -190,6 +250,33 @@ describe('FsVerbatimStore.markConsolidated', () => {
       await store.writeEntry(entry);
       await store.markConsolidated(entry.filePath);
       await expect(store.markConsolidated(entry.filePath)).resolves.toBeUndefined();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('writes consolidated_at exactly once when transitioning to consolidated', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'vs-mark-'));
+    try {
+      const fs = new FsFileStore(root);
+      const store = new FsVerbatimStore(fs);
+      const entry = VerbatimEntry.create({
+        content: 'once-only timestamp',
+        agent: 'claude-code',
+        sessionId: 's',
+        idGenerator: () => 'uuid-once',
+      });
+      await store.writeEntry(entry);
+
+      await store.markConsolidated(entry.filePath);
+      const once = await store.readEntry(entry.filePath);
+      expect(once).not.toBeNull();
+      const firstTimestamp = once!.processing.consolidated_at;
+      expect(firstTimestamp).toBeTruthy();
+
+      await store.markConsolidated(entry.filePath);
+      const twice = await store.readEntry(entry.filePath);
+      expect(twice!.processing.consolidated_at).toBe(firstTimestamp);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
