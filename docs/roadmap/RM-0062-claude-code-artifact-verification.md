@@ -1,11 +1,11 @@
 # RM-0062: Claude Code artifact verification
 
-- Status: Proposed
+- Status: Implemented
 - Priority: P2
 - Area: release
 - Source roadmap item: `../ROADMAP.md`
 - Related ADRs:
-  - None
+  - `../adr/0019-claude-code-hooks-over-mcp-http.md`
 - Related items:
   - RM-0060 (release checklist aggregator)
   - RM-0061 (release artifact verification)
@@ -39,6 +39,13 @@ The roadmap concern is tracked independently with enough context to design, prio
 ## Design notes
 
 RM-0062 remains a concrete Claude Code artifact verification child item under RM-0060 unless later merged with RM-0061.
+
+## Implementation traceability
+
+- Verification script: `scripts/verify-claude-artifacts.mjs`
+- Verification tests: `scripts/verify-claude-artifacts.test.mjs`
+- Release workflow gate: `.github/workflows/release.yml` (`Verify Claude artifact release policy` step)
+- Root script entrypoint: `package.json` (`test:claude-artifacts`)
 
 ## Dependencies
 

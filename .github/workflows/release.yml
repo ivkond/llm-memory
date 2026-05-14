@@ -66,6 +66,11 @@ jobs:
       - name: Run release version tooling tests
         run: pnpm test:release-version
 
+      - name: Verify Claude artifact release policy
+        run: |
+          node scripts/verify-claude-artifacts.mjs
+          pnpm test:claude-artifacts
+
       - name: Set package versions from release tag
         run: node scripts/set-release-version.mjs "${{ steps.vars.outputs.version }}"
 
