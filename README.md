@@ -208,6 +208,7 @@ llm-wiki status --wiki ./my-wiki
 llm-wiki search "query" --limit 5 --format json
 llm-wiki ingest ./doc.md --verbose
 llm-wiki repair-index --dry-run --format json
+```
 
 ### Repairing search index
 
@@ -217,7 +218,6 @@ Use `repair-index` when search cache files are missing, stale, or corrupt.
 - Safety boundary: `repair-index` never edits canonical Markdown files.
 - Exclusions: operational paths (`log/`, `.local/`, `.archive/`, `.worktrees/`) and non-Markdown files are ignored.
 - Dry run: `--dry-run` reports candidate counts and status without mutating index files.
-```
 
 ## MCP tools
 
