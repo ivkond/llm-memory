@@ -24,6 +24,8 @@ export class FsOperationJournal implements IOperationJournal {
     try {
       const safePath = this.resolveSafePath(JOURNAL_PATH);
       const parent = path.dirname(safePath);
+      await this.assertAncestorSafe('.local');
+      await this.assertAncestorSafe(OPERATIONS_DIR);
       await mkdir(parent, { recursive: true });
       const canonicalParent = await this.assertUnderRoot(parent, JOURNAL_PATH);
       if (canonicalParent === null) throw new PathEscapeError(JOURNAL_PATH);
@@ -39,6 +41,12 @@ export class FsOperationJournal implements IOperationJournal {
       this.disabledReason = `operation journal append disabled: ${this.toReason(error)}`;
       throw error;
     }
+  }
+
+  private async assertAncestorSafe(relativePath: string): Promise<void> {
+    const safePath = this.resolveSafePath(relativePath);
+    const canonical = await this.assertUnderRoot(safePath, relativePath);
+    if (canonical === null) return;
   }
 
   async load(): Promise<OperationJournalSnapshot> {

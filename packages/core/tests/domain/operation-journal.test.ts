@@ -63,4 +63,25 @@ describe('OperationJournalDomain', () => {
     expect(sanitized.disabledReason).toBe('manual disable');
     expect(sanitized.resumeReason).toBe('recovered after restart');
   });
+
+  it('test_sanitizeOperationMetadata_redactsSecretsInErrorAndReasons', () => {
+    const sanitized = sanitizeOperationMetadata({
+      touchedPaths: [],
+      error: {
+        name: 'SomeError',
+        message:
+          'prompt leaked sk-abc123def456ghi789jkl012mno345pqr678 and aws AKIAIOSFODNN7EXAMPLE',
+      },
+      disabledReason: 'failed with token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij',
+      resumeReason: 'retry with db://user:s3cretPass@localhost:5432/app',
+    });
+
+    expect(sanitized.error?.message).toContain('[REDACTED_SECRET]');
+    expect(sanitized.error?.message).not.toContain('sk-abc123def456ghi789jkl012mno345pqr678');
+    expect(sanitized.error?.message).not.toContain('AKIAIOSFODNN7EXAMPLE');
+    expect(sanitized.disabledReason).toContain('[REDACTED_SECRET]');
+    expect(sanitized.disabledReason).not.toContain('ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij');
+    expect(sanitized.resumeReason).toContain('[REDACTED_SECRET]');
+    expect(sanitized.resumeReason).not.toContain('s3cretPass');
+  });
 });

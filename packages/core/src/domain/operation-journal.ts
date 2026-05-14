@@ -75,6 +75,30 @@ const TERMINAL_OPERATION_STATUSES = new Set<OperationStatus>([
   'interrupted',
   'blocked_or_conflict',
 ]);
+const MAX_FREEFORM_JOURNAL_TEXT_LENGTH = 256;
+
+function sanitizeFreeformJournalText(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  if (trimmed === '') return undefined;
+
+  let next = trimmed.replace(/\s+/g, ' ');
+  // Redact common secret-like token formats before persistence.
+  next = next.replace(
+    /\b(?:sk-[A-Za-z0-9]{16,}|(?:ghp|gho|ghu|github_pat)_[A-Za-z0-9_\-]{8,})\b/g,
+    '[REDACTED_SECRET]',
+  );
+  next = next.replace(/AKIA[A-Z0-9]{16}/g, '[REDACTED_SECRET]');
+  next = next.replace(
+    /\b[A-Za-z][A-Za-z0-9+.-]*:\/\/[^/\s:@]+:([^@\s]+)@/g,
+    (match, password) => match.replace(password, '[REDACTED_SECRET]'),
+  );
+
+  if (next.length > MAX_FREEFORM_JOURNAL_TEXT_LENGTH) {
+    next = `${next.slice(0, MAX_FREEFORM_JOURNAL_TEXT_LENGTH)}...[TRUNCATED]`;
+  }
+  return next;
+}
 
 export function transitionOperationStatus(
   current: OperationStatus,
@@ -103,13 +127,13 @@ export function sanitizeOperationMetadata(metadata: Partial<OperationMetadata>):
     error: metadata.error
       ? {
           name: metadata.error.name,
-          message: metadata.error.message,
+          message: sanitizeFreeformJournalText(metadata.error.message) ?? '[REDACTED]',
           code: metadata.error.code,
           category: metadata.error.category,
         }
       : undefined,
-    disabledReason: metadata.disabledReason,
-    resumeReason: metadata.resumeReason,
+    disabledReason: sanitizeFreeformJournalText(metadata.disabledReason),
+    resumeReason: sanitizeFreeformJournalText(metadata.resumeReason),
   };
 }
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtemp, mkdir, readFile, rm, writeFile, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile, symlink, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { FsOperationJournal } from '../src/fs-operation-journal.js';
@@ -96,6 +96,30 @@ describe('FsOperationJournal', () => {
     expect(body).toContain('"requestId":"req-3"');
   });
 
+  it('test_append_redactsUnsafeErrorAndReasonMetadataFields', async () => {
+    await journal.append({
+      id: 'op-err',
+      type: 'lint',
+      status: 'failed',
+      startedAt: '2026-05-14T00:00:00Z',
+      updatedAt: '2026-05-14T00:00:01Z',
+      metadata: {
+        touchedPaths: [],
+        error: {
+          name: 'ExampleError',
+          message: 'prompt body leaked sk-abc123def456ghi789jkl012mno345pqr678',
+        },
+        disabledReason: 'token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij detected',
+        resumeReason: 'retry db://user:s3cretPass@localhost:5432/app',
+      },
+    });
+    const body = await readFile(path.join(dir, '.local/operations/journal.jsonl'), 'utf-8');
+    expect(body).not.toContain('sk-abc123def456ghi789jkl012mno345pqr678');
+    expect(body).not.toContain('ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij');
+    expect(body).not.toContain('s3cretPass');
+    expect(body).toContain('[REDACTED_SECRET]');
+  });
+
   it('test_load_symlinkedLocalDirOutsideRoot_setsDisabledReason', async () => {
     await rm(path.join(dir, '.local'), { recursive: true, force: true });
     const outside = await mkdtemp(path.join(tmpdir(), 'llm-wiki-operation-outside-'));
@@ -111,6 +135,7 @@ describe('FsOperationJournal', () => {
           metadata: { touchedPaths: [] },
         }),
       ).rejects.toThrow();
+      await expect(stat(path.join(outside, 'operations'))).rejects.toThrow();
       const loaded = await journal.load();
       expect(loaded.records).toEqual([]);
       expect(loaded.disabledReason).toContain('disabled');
