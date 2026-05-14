@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { simpleGit, type SimpleGit } from 'simple-git';
-import type { IVersionControl, WorktreeInfo } from '@ivkond-llm-wiki/core';
+import type { IVersionControl, ManagedWorktreeInfo, WorktreeInfo } from '@ivkond-llm-wiki/core';
 import { GitConflictError } from '@ivkond-llm-wiki/core';
 
 /**
@@ -100,5 +100,54 @@ export class GitVersionControl implements IVersionControl {
 
     const sha = await this.git.revparse(['HEAD']);
     return sha.trim();
+  }
+
+  async listManagedWorktrees(): Promise<ManagedWorktreeInfo[]> {
+    const raw = await this.git.raw(['worktree', 'list', '--porcelain']);
+    const blocks = raw
+      .trim()
+      .split('\n\n')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+
+    const managedRoot = path.resolve(this.repoRoot, '.worktrees') + path.sep;
+    const entries: ManagedWorktreeInfo[] = [];
+
+    for (const block of blocks) {
+      const lines = block.split('\n');
+      const wtPath = lines[0]?.startsWith('worktree ') ? lines[0].slice('worktree '.length) : null;
+      if (!wtPath) continue;
+      const absPath = path.resolve(wtPath);
+
+      if (!absPath.startsWith(managedRoot)) continue;
+
+      let branch: string | null = null;
+      let isPrunable = false;
+      for (const line of lines.slice(1)) {
+        if (line.startsWith('branch ')) {
+          branch = line.slice('branch '.length).replace('refs/heads/', '');
+        }
+        if (line.startsWith('prunable')) {
+          isPrunable = true;
+        }
+      }
+
+      if (isPrunable) {
+        entries.push({ path: absPath, branch, status: 'stale', isManaged: true });
+        continue;
+      }
+
+      const wtGit = simpleGit(absPath);
+      const status = await wtGit.status();
+      const classified = status.conflicted.length
+        ? 'conflicted'
+        : status.isClean()
+          ? 'clean'
+          : 'dirty';
+
+      entries.push({ path: absPath, branch, status: classified, isManaged: true });
+    }
+
+    return entries;
   }
 }

@@ -506,4 +506,80 @@ describe('CLI command coverage', () => {
     expect(ingest).toHaveBeenCalledWith({ source: 'file.md' });
     expect(buildContainer.mock.calls[0]?.[0].wiki.path).toBe('/fake/wiki');
   });
+
+  it('recover-worktrees: default run is diagnostics-only and non-destructive', async () => {
+    const removeWorktree = vi.fn();
+    const listManagedWorktrees = vi.fn().mockResolvedValue([
+      { path: '/wiki/.worktrees/ingest-1', branch: 'ingest-1', status: 'clean', isManaged: true },
+      { path: '/wiki/.worktrees/lint-2', branch: 'lint-2', status: 'conflicted', isManaged: true },
+    ]);
+    const hasUncommittedChanges = vi.fn().mockResolvedValue(false);
+
+    vi.doMock('@ivkond-llm-wiki/infra', () => ({
+      ConfigLoader: class {
+        constructor(_root: string) {}
+        async load() {
+          return { wiki: { path: '/wiki' } };
+        }
+      },
+      GitVersionControl: class {
+        listManagedWorktrees = listManagedWorktrees;
+        hasUncommittedChanges = hasUncommittedChanges;
+        removeWorktree = removeWorktree;
+      },
+    }));
+
+    const tap = tapConsole();
+    const restoreExit = mockExit();
+
+    await runCommand('../src/commands/recover-worktrees.ts', 'recoverWorktreesCommand', [
+      '--wiki',
+      '/fake',
+    ]);
+
+    restoreExit();
+    tap.restore();
+
+    expect(listManagedWorktrees).toHaveBeenCalled();
+    expect(removeWorktree).not.toHaveBeenCalled();
+    expect(tap.stdout.join('\n')).toContain('Dry-run diagnostics only');
+  });
+
+  it('recover-worktrees: prune-clean plans cleanup but blocks execution when main repo is dirty', async () => {
+    const removeWorktree = vi.fn();
+    const listManagedWorktrees = vi.fn().mockResolvedValue([
+      { path: '/wiki/.worktrees/ingest-1', branch: 'ingest-1', status: 'clean', isManaged: true },
+      { path: '/wiki/.worktrees/lint-2', branch: 'lint-2', status: 'dirty', isManaged: true },
+    ]);
+    const hasUncommittedChanges = vi.fn().mockResolvedValue(true);
+
+    vi.doMock('@ivkond-llm-wiki/infra', () => ({
+      ConfigLoader: class {
+        constructor(_root: string) {}
+        async load() {
+          return { wiki: { path: '/wiki' } };
+        }
+      },
+      GitVersionControl: class {
+        listManagedWorktrees = listManagedWorktrees;
+        hasUncommittedChanges = hasUncommittedChanges;
+        removeWorktree = removeWorktree;
+      },
+    }));
+
+    const tap = tapConsole();
+    const restoreExit = mockExit();
+
+    await runCommand('../src/commands/recover-worktrees.ts', 'recoverWorktreesCommand', [
+      '--wiki',
+      '/fake',
+      '--prune-clean',
+    ]);
+
+    restoreExit();
+    tap.restore();
+
+    expect(removeWorktree).not.toHaveBeenCalled();
+    expect(tap.stdout.join('\n')).toContain('Main repository is dirty');
+  });
 });

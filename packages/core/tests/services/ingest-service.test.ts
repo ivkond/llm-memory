@@ -144,6 +144,9 @@ class FakeVersionControl implements IVersionControl {
     this.commitInWorktreeSpy(p, files, m);
     return 'wt-sha';
   }
+  async listManagedWorktrees() {
+    return [];
+  }
 }
 
 /** An in-memory file store whose parent dir can be anywhere — suitable for

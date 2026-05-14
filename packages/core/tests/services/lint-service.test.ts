@@ -132,6 +132,9 @@ class FakeVersionControl implements IVersionControl {
     this.commitSpy(p, f, m);
     return 'wt-commit-sha';
   }
+  async listManagedWorktrees() {
+    return [];
+  }
 }
 
 class FakeStateStore implements IStateStore {

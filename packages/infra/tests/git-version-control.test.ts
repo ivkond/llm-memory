@@ -127,4 +127,42 @@ describe('GitVersionControl', () => {
     await vcs.removeWorktree(info.path);
     expect(() => execSync('git status', { cwd: info.path })).toThrow();
   });
+
+  it('test_listManagedWorktrees_classifiesCleanDirtyAndConflicted', async () => {
+    const clean = await vcs.createWorktree('ingest');
+    const dirty = await vcs.createWorktree('lint');
+    const conflicted = await vcs.createWorktree('recover');
+
+    await writeFile(path.join(dirty.path, 'dirty.md'), 'dirty');
+
+    await writeFile(path.join(repo, 'conflict.md'), 'main-version');
+    await vcs.commit(['conflict.md'], 'main conflict base');
+    await writeFile(path.join(conflicted.path, 'conflict.md'), 'worktree-version');
+    await vcs.commitInWorktree(conflicted.path, ['conflict.md'], 'worktree conflict base');
+    await writeFile(path.join(repo, 'conflict.md'), 'main-version-2');
+    await vcs.commit(['conflict.md'], 'main conflict second');
+    expect(() => execSync('git merge main', { cwd: conflicted.path, encoding: 'utf-8' })).toThrow();
+
+    const listed = await vcs.listManagedWorktrees();
+    const byPath = new Map(listed.map((w) => [w.path, w.status]));
+
+    expect(byPath.get(clean.path)).toBe('clean');
+    expect(byPath.get(dirty.path)).toBe('dirty');
+    expect(byPath.get(conflicted.path)).toBe('conflicted');
+
+    await vcs.removeWorktree(clean.path);
+    await vcs.removeWorktree(dirty.path, true);
+    await vcs.removeWorktree(conflicted.path, true);
+  });
+
+  it('test_listManagedWorktrees_classifiesPrunableAsStale', async () => {
+    const stale = await vcs.createWorktree('stale');
+    await rm(stale.path, { recursive: true, force: true });
+
+    const listed = await vcs.listManagedWorktrees();
+    const found = listed.find((w) => w.path === stale.path);
+    expect(found?.status).toBe('stale');
+
+    execSync('git worktree prune', { cwd: repo });
+  });
 });

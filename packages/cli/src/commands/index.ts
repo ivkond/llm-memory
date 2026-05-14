@@ -11,6 +11,7 @@ export { importCommand } from './import-cmd.js';
 export { searchCommand } from './search.js';
 export { statusCommand } from './status.js';
 export { skillCommand } from './skill.js';
+export { recoverWorktreesCommand } from './recover-worktrees.js';
 
 /**
  * CommandModule type for cliffy subcommands
