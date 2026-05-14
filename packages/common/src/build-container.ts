@@ -94,7 +94,7 @@ export function buildContainer(config: WikiConfig): AppServices {
     allowlist: config.sanitization.allowlist,
   });
 
-  const remember = new RememberService(fileStore, verbatimStore, sanitizer);
+  const remember = new RememberService(fileStore, verbatimStore, sanitizer, operationJournal);
   const recall = new RecallService(fileStore, verbatimStore, projectResolver);
   const query = new QueryService(searchEngine, llmClient, projectResolver, fileStore);
   const status = new WikiStatusService(fileStore, verbatimStore, searchEngine, stateStore);
@@ -106,6 +106,7 @@ export function buildContainer(config: WikiConfig): AppServices {
     fileStore,
     fileStoreFactory,
     stateStore,
+    operationJournal,
   );
   const lint = new LintService({
     mainRepoRoot: wikiRoot,
@@ -129,11 +130,13 @@ export function buildContainer(config: WikiConfig): AppServices {
       const phase = new HealthPhase(fs);
       return { name: 'health', run: () => phase.run() };
     },
+    operationJournal,
   });
   const import_ = new ImportService({
     readers: new Map([['claude-code', new ClaudeCodeMemoryReader()]]),
     verbatimStore,
     stateStore,
+    operationJournal,
     agentConfigs: {},
   });
 

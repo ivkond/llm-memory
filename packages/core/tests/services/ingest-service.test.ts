@@ -214,6 +214,7 @@ describe('IngestService', () => {
   let worktreeStores: FakeFileStore[];
   let factory: FileStoreFactory;
   let stateStore: FakeStateStore;
+  let operationJournal: { append: ReturnType<typeof vi.fn>; load: ReturnType<typeof vi.fn> };
   let service: IngestService;
 
   beforeEach(() => {
@@ -229,6 +230,10 @@ describe('IngestService', () => {
       return s;
     };
     stateStore = new FakeStateStore();
+    operationJournal = {
+      append: vi.fn(async () => undefined),
+      load: vi.fn(async () => ({ storagePath: '.local/operations', disabledReason: null, degradedReasons: [], records: [] })),
+    };
     // Simulate the effect of a real git merge: files written to the
     // worktree become visible in the main store after mergeWorktree
     // succeeds. Real FsFileStore + GitVersionControl gives this for free
@@ -241,7 +246,7 @@ describe('IngestService', () => {
         mainStore.files[p] = content;
       }
     };
-    service = new IngestService(sourceReader, llm, search, vcs, mainStore, factory, stateStore);
+    service = new IngestService(sourceReader, llm, search, vcs, mainStore, factory, stateStore, operationJournal);
   });
 
   it('test_ingest_validSource_createsWikiPagesInWorktree', async () => {
@@ -332,6 +337,8 @@ describe('IngestService', () => {
 
     expect(vcs.removeSpy).not.toHaveBeenCalled();
     expect(stateStore.updateSpy).not.toHaveBeenCalled();
+    const statuses = operationJournal.append.mock.calls.map((c) => c[0].status);
+    expect(statuses).toContain('blocked_or_conflict');
   });
 
   // ---- Path validation (Problem 1 from blocksorg review) -------------------

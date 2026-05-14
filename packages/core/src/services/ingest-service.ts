@@ -12,6 +12,8 @@ import type { ISearchEngine } from '../ports/search-engine.js';
 import type { IVersionControl } from '../ports/version-control.js';
 import type { IFileStore, FileStoreFactory } from '../ports/file-store.js';
 import type { IStateStore } from '../ports/state-store.js';
+import type { IOperationJournal } from '../ports/operation-journal.js';
+import { appendOperation, createOperationContext, journalErrorMetadata } from './operation-journal.js';
 
 /** Spec bound for wiki_ingest: max 100K tokens after extraction. */
 export const MAX_SOURCE_TOKENS = 100_000;
@@ -76,10 +78,18 @@ export class IngestService {
     private readonly mainFileStore: IFileStore,
     private readonly fileStoreFactory: FileStoreFactory,
     private readonly stateStore: IStateStore,
+    private readonly operationJournal?: IOperationJournal,
   ) {}
 
   async ingest(req: IngestRequest): Promise<IngestResponse> {
+    const op = createOperationContext('ingest', {
+      request: { source: req.source, actor: 'ingest-service' },
+    });
+    await appendOperation(this.operationJournal, op, 'running');
     if (req.project) {
+      await appendOperation(this.operationJournal, op, 'failed', {
+        error: { name: 'ProjectScopeUnsupportedError', message: 'project scope unsupported', code: 'PROJECT_SCOPE_UNSUPPORTED', category: 'wiki' },
+      });
       throw new ProjectScopeUnsupportedError('ingest', req.project);
     }
     // -- Pre-worktree checks --------------------------------------------------
@@ -101,6 +111,10 @@ export class IngestService {
     } catch (err) {
       // LLM or extraction failure: discard the worktree, DO NOT touch state.
       await this.safeRemoveWorktree(worktree.path, true);
+      await appendOperation(this.operationJournal, op, 'failed', {
+        worktree: { path: worktree.path, branch: worktree.branch },
+        error: journalErrorMetadata(err),
+      });
       if (err instanceof WikiError) throw err;
       const message = err instanceof Error ? err.message : String(err);
       throw new LlmUnavailableError(message);
@@ -125,6 +139,11 @@ export class IngestService {
       }
     } catch (err) {
       await this.safeRemoveWorktree(worktree.path, true);
+      await appendOperation(this.operationJournal, op, 'failed', {
+        touchedPaths,
+        worktree: { path: worktree.path, branch: worktree.branch },
+        error: journalErrorMetadata(err),
+      });
       throw err;
     }
 
@@ -141,27 +160,73 @@ export class IngestService {
     } catch (err) {
       if (err instanceof GitConflictError) {
         // Preserve the worktree for manual recovery; state is unchanged.
+        await appendOperation(this.operationJournal, op, 'blocked_or_conflict', {
+          touchedPaths,
+          worktree: { path: worktree.path, branch: worktree.branch },
+          error: journalErrorMetadata(err),
+        });
         throw err;
       }
       // Any other error: discard the worktree.
       await this.safeRemoveWorktree(worktree.path, true);
+      await appendOperation(this.operationJournal, op, 'failed', {
+        touchedPaths,
+        worktree: { path: worktree.path, branch: worktree.branch },
+        error: journalErrorMetadata(err),
+      });
       throw err;
     }
 
     // -- Post-merge reindex + state stamp + worktree cleanup ----------------
-    for (const path of touchedPaths) {
-      const data = await this.mainFileStore.readWikiPage(path);
-      if (!data) continue;
-      await this.searchEngine.index({
-        path,
-        title: data.frontmatter.title,
-        content: data.content,
-        updated: data.frontmatter.updated,
+    const reindexOp = createOperationContext('reindex', {
+      request: { source: req.source, actor: 'ingest-service' },
+      touchedPaths,
+      worktree: { path: worktree.path, branch: worktree.branch },
+      commitSha,
+    });
+    await appendOperation(this.operationJournal, reindexOp, 'running');
+    try {
+      for (const path of touchedPaths) {
+        const data = await this.mainFileStore.readWikiPage(path);
+        if (!data) continue;
+        await this.searchEngine.index({
+          path,
+          title: data.frontmatter.title,
+          content: data.content,
+          updated: data.frontmatter.updated,
+        });
+      }
+      await appendOperation(this.operationJournal, reindexOp, 'succeeded');
+    } catch (err) {
+      await appendOperation(this.operationJournal, reindexOp, 'interrupted', {
+        error: journalErrorMetadata(err),
       });
+      await appendOperation(this.operationJournal, op, 'interrupted', {
+        touchedPaths,
+        commitSha,
+        worktree: { path: worktree.path, branch: worktree.branch },
+        error: journalErrorMetadata(err),
+      });
+      throw err;
     }
 
-    await this.safeRemoveWorktree(worktree.path);
-    await this.stateStore.update({ last_ingest: new Date().toISOString() });
+    try {
+      await this.safeRemoveWorktree(worktree.path);
+      await this.stateStore.update({ last_ingest: new Date().toISOString() });
+      await appendOperation(this.operationJournal, op, 'succeeded', {
+        touchedPaths,
+        commitSha,
+        worktree: { path: worktree.path, branch: worktree.branch },
+      });
+    } catch (err) {
+      await appendOperation(this.operationJournal, op, 'interrupted', {
+        touchedPaths,
+        commitSha,
+        worktree: { path: worktree.path, branch: worktree.branch },
+        error: journalErrorMetadata(err),
+      });
+      throw err;
+    }
 
     return {
       pages_created: pagesCreated,
