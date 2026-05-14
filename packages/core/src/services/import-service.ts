@@ -4,6 +4,7 @@ import type { AgentMemoryItem } from '../domain/agent-memory-item.js';
 import type { IAgentMemoryReader } from '../ports/agent-memory-reader.js';
 import type { IVerbatimStore } from '../ports/verbatim-store.js';
 import type { IStateStore } from '../ports/state-store.js';
+import type { IWriteCoordinator } from '../ports/write-coordinator.js';
 
 export interface AgentConfig {
   enabled: boolean;
@@ -31,6 +32,7 @@ export interface ImportServiceDeps {
   verbatimStore: IVerbatimStore;
   stateStore: IStateStore;
   agentConfigs: Record<string, AgentConfig>;
+  writeCoordinator?: IWriteCoordinator;
   now?: () => Date;
   idGenerator?: (item: AgentMemoryItem) => string;
 }
@@ -46,31 +48,34 @@ export class ImportService {
   }
 
   async importAll(req: ImportRequest): Promise<ImportResponse> {
-    const selected = this.resolveAgents(req.agents);
+    const coordinator = this.deps.writeCoordinator ?? NOOP_WRITE_COORDINATOR;
+    return coordinator.runExclusive({ name: 'import' }, async () => {
+      const selected = this.resolveAgents(req.agents);
 
-    const state = await this.deps.stateStore.load();
-    const results: AgentImportResult[] = [];
-    const stateUpdates: Record<string, { last_import: string }> = {};
+      const state = await this.deps.stateStore.load();
+      const results: AgentImportResult[] = [];
+      const stateUpdates: Record<string, { last_import: string }> = {};
 
-    for (const agent of selected) {
-      const reader = this.readerForEnabledAgent(agent);
-      if (!reader) continue;
-      const config = this.deps.agentConfigs[agent];
-      const since = state.imports[agent]?.last_import ?? null;
-      const result = await this.sweepAgent(agent, reader, config.paths, since);
-      results.push(result);
-      if (!result.error) {
-        stateUpdates[agent] = { last_import: this.now().toISOString() };
+      for (const agent of selected) {
+        const reader = this.readerForEnabledAgent(agent);
+        if (!reader) continue;
+        const config = this.deps.agentConfigs[agent];
+        const since = state.imports[agent]?.last_import ?? null;
+        const result = await this.sweepAgent(agent, reader, config.paths, since);
+        results.push(result);
+        if (!result.error) {
+          stateUpdates[agent] = { last_import: this.now().toISOString() };
+        }
       }
-    }
 
-    if (Object.keys(stateUpdates).length > 0) {
-      await this.deps.stateStore.update({
-        imports: { ...state.imports, ...stateUpdates },
-      });
-    }
+      if (Object.keys(stateUpdates).length > 0) {
+        await this.deps.stateStore.update({
+          imports: { ...state.imports, ...stateUpdates },
+        });
+      }
 
-    return { agents: results };
+      return { agents: results };
+    });
   }
 
   private readerForEnabledAgent(agent: string): IAgentMemoryReader | null {
@@ -146,3 +151,7 @@ export class ImportService {
     return (hash >>> 0).toString(16).padStart(8, '0');
   }
 }
+
+const NOOP_WRITE_COORDINATOR: IWriteCoordinator = {
+  runExclusive: async (_operation, work) => work(),
+};

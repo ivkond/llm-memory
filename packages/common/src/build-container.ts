@@ -16,6 +16,7 @@ import {
   SevenZipArchiver,
   ClaudeCodeMemoryReader,
   FsOperationJournal,
+  FsWriteCoordinator,
   type WikiConfig,
 } from '@ivkond-llm-wiki/infra';
 import {
@@ -68,6 +69,7 @@ export function buildContainer(config: WikiConfig): AppServices {
   const sourceReader = new CompositeSourceReader(new FsSourceReader(), new HttpSourceReader());
   const archiver = new SevenZipArchiver();
   const operationJournal = new FsOperationJournal(wikiRoot);
+  const writeCoordinator = new FsWriteCoordinator(wikiRoot);
 
   const llmProvider = createOpenAI({
     apiKey: config.llm.api_key ?? undefined,
@@ -94,7 +96,7 @@ export function buildContainer(config: WikiConfig): AppServices {
     allowlist: config.sanitization.allowlist,
   });
 
-  const remember = new RememberService(fileStore, verbatimStore, sanitizer);
+  const remember = new RememberService(fileStore, verbatimStore, sanitizer, writeCoordinator);
   const recall = new RecallService(fileStore, verbatimStore, projectResolver);
   const query = new QueryService(searchEngine, llmClient, projectResolver, fileStore);
   const status = new WikiStatusService(fileStore, verbatimStore, searchEngine, stateStore);
@@ -106,6 +108,7 @@ export function buildContainer(config: WikiConfig): AppServices {
     fileStore,
     fileStoreFactory,
     stateStore,
+    writeCoordinator,
   );
   const lint = new LintService({
     mainRepoRoot: wikiRoot,
@@ -117,6 +120,7 @@ export function buildContainer(config: WikiConfig): AppServices {
     verbatimStoreFactory,
     stateStore,
     archiver,
+    writeCoordinator,
     makeConsolidatePhase: (fs, vs) => {
       const phase = new ConsolidatePhase(fs, vs, llmClient, wikiRoot);
       return { name: 'consolidate', run: () => phase.run() };
@@ -135,6 +139,7 @@ export function buildContainer(config: WikiConfig): AppServices {
     verbatimStore,
     stateStore,
     agentConfigs: {},
+    writeCoordinator,
   });
 
   return Object.freeze({ remember, recall, query, ingest, status, lint, import_, operationJournal });

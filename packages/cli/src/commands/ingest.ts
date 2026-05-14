@@ -99,7 +99,12 @@ export const ingestCommand = new Command()
           console.log(`Completed in ${elapsed}ms`);
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const lockOperation = coordinationOperation(error);
+        const message = lockOperation
+          ? `Another write is in progress (${lockOperation}). Retry after it completes.`
+          : error instanceof Error
+            ? error.message
+            : String(error);
         console.error(`\x1b[31m%s\x1b[0m`, `Error: ${message}`);
         if (verbose) {
           console.error(error);
@@ -108,3 +113,16 @@ export const ingestCommand = new Command()
       }
     },
   );
+
+function coordinationOperation(error: unknown): string | null {
+  if (!error || typeof error !== 'object') return null;
+  const code = (error as { code?: unknown }).code;
+  const operation = (error as { operation?: unknown }).operation;
+  if (
+    (code === 'WRITE_LOCK_TIMEOUT' || code === 'WRITE_LOCK_ACQUISITION_FAILED') &&
+    typeof operation === 'string'
+  ) {
+    return operation;
+  }
+  return null;
+}

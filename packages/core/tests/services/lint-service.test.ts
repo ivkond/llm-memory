@@ -25,6 +25,7 @@ import type {
 import type { SearchResult } from '../../src/domain/search-result.js';
 import type { VerbatimEntry } from '../../src/domain/verbatim-entry.js';
 import type { WikiPageData } from '../../src/domain/wiki-page.js';
+import type { IWriteCoordinator } from '../../src/ports/write-coordinator.js';
 
 class FakeFileStore implements IFileStore {
   constructor(public readonly root: string) {}
@@ -197,6 +198,7 @@ describe('LintService', () => {
   let state: FakeStateStore;
   let archiver: FakeArchiver;
   let searchEngine: FakeSearchEngine;
+  let writeCoordinator: IWriteCoordinator;
 
   beforeEach(() => {
     mainFs = new FakeFileStore('/main');
@@ -205,6 +207,7 @@ describe('LintService', () => {
     state = new FakeStateStore();
     archiver = new FakeArchiver();
     searchEngine = new FakeSearchEngine();
+    writeCoordinator = { runExclusive: vi.fn(async (_op, work) => work()) };
     fsFactory = (root: string) => new FakeFileStore(root);
   });
 
@@ -220,6 +223,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      writeCoordinator,
       makeConsolidatePhase: () => stubConsolidate(consolidatePaths),
       makePromotePhase: () => stubPromote(['wiki/patterns/x.md']),
       makeHealthPhase: () => stubHealth([]),
@@ -249,6 +253,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      writeCoordinator,
       makeConsolidatePhase: () => ({
         name: 'consolidate',
         async run() {
@@ -278,6 +283,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      writeCoordinator,
       makeConsolidatePhase: () => stubConsolidate(['wiki/x.md']),
       makePromotePhase: () => stubPromote(),
       makeHealthPhase: () => stubHealth(),
@@ -304,6 +310,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      writeCoordinator,
       makeConsolidatePhase: () => ({
         name: 'consolidate',
         async run() {
@@ -340,6 +347,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      writeCoordinator,
       makeConsolidatePhase: () => stubConsolidate(),
       makePromotePhase: () => stubPromote(),
       makeHealthPhase: () => stubHealth(),
@@ -377,6 +385,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      writeCoordinator,
       makeConsolidatePhase: () => phase,
       makePromotePhase: () => stubPromote(),
       makeHealthPhase: () => stubHealth(),
@@ -426,6 +435,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      writeCoordinator,
       makeConsolidatePhase: () => stubConsolidate(['wiki/tools/postgresql.md']),
       makePromotePhase: () => stubPromote(['wiki/patterns/no-db-mocking.md']),
       makeHealthPhase: () => stubHealth(),
@@ -450,6 +460,7 @@ describe('LintService', () => {
       verbatimStoreFactory: () => vs,
       stateStore: state,
       archiver,
+      writeCoordinator,
       makeConsolidatePhase: () => stubConsolidate(),
       makePromotePhase: () => stubPromote(),
       makeHealthPhase: () => stubHealth([]),

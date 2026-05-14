@@ -53,7 +53,12 @@ export function createWikiRememberSessionHandler(services: AppServices) {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const code = message.includes('summary') ? 'InvalidParams' : 'InternalError';
+      const code =
+        isCoordinationError(error)
+          ? 'WRITE_COORDINATION_FAILED'
+          : message.includes('summary')
+            ? 'InvalidParams'
+            : 'InternalError';
 
       return {
         content: [
@@ -69,4 +74,10 @@ export function createWikiRememberSessionHandler(services: AppServices) {
       };
     }
   };
+}
+
+function isCoordinationError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const code = (error as { code?: unknown }).code;
+  return code === 'WRITE_LOCK_TIMEOUT' || code === 'WRITE_LOCK_ACQUISITION_FAILED';
 }

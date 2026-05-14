@@ -27,6 +27,7 @@ import type {
 } from '../../src/ports/index.js';
 import type { SearchResult } from '../../src/domain/search-result.js';
 import type { WikiPageData } from '../../src/domain/wiki-page.js';
+import type { IWriteCoordinator } from '../../src/ports/write-coordinator.js';
 
 // ---------------------------------------------------------------------------
 // Lightweight in-memory fakes so IngestService tests can assert orchestration
@@ -214,6 +215,7 @@ describe('IngestService', () => {
   let worktreeStores: FakeFileStore[];
   let factory: FileStoreFactory;
   let stateStore: FakeStateStore;
+  let writeCoordinator: IWriteCoordinator;
   let service: IngestService;
 
   beforeEach(() => {
@@ -229,6 +231,7 @@ describe('IngestService', () => {
       return s;
     };
     stateStore = new FakeStateStore();
+    writeCoordinator = { runExclusive: vi.fn(async (_op, work) => work()) };
     // Simulate the effect of a real git merge: files written to the
     // worktree become visible in the main store after mergeWorktree
     // succeeds. Real FsFileStore + GitVersionControl gives this for free
@@ -241,7 +244,16 @@ describe('IngestService', () => {
         mainStore.files[p] = content;
       }
     };
-    service = new IngestService(sourceReader, llm, search, vcs, mainStore, factory, stateStore);
+    service = new IngestService(
+      sourceReader,
+      llm,
+      search,
+      vcs,
+      mainStore,
+      factory,
+      stateStore,
+      writeCoordinator,
+    );
   });
 
   it('test_ingest_validSource_createsWikiPagesInWorktree', async () => {

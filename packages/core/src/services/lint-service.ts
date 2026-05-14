@@ -8,6 +8,7 @@ import type { IStateStore } from '../ports/state-store.js';
 import type { ISearchEngine } from '../ports/search-engine.js';
 import type { IArchiver, ArchiveEntry } from '../ports/archiver.js';
 import type { HealthIssue } from '../domain/health-issue.js';
+import type { IWriteCoordinator } from '../ports/write-coordinator.js';
 
 export type LintPhaseName = 'consolidate' | 'promote' | 'health';
 
@@ -54,6 +55,7 @@ export interface LintServiceDeps {
   verbatimStoreFactory: VerbatimStoreFactory;
   stateStore: IStateStore;
   archiver: IArchiver;
+  writeCoordinator?: IWriteCoordinator;
   makeConsolidatePhase: (fs: IFileStore, vs: IVerbatimStore) => LintPhase<'consolidate'>;
   makePromotePhase: (fs: IFileStore) => LintPhase<'promote'>;
   makeHealthPhase: (fs: IFileStore) => LintPhase<'health'>;
@@ -61,6 +63,9 @@ export interface LintServiceDeps {
 }
 
 const ALL_PHASES: LintPhaseName[] = ['consolidate', 'promote', 'health'];
+const NOOP_WRITE_COORDINATOR: IWriteCoordinator = {
+  runExclusive: async (_operation, work) => work(),
+};
 
 export class LintService {
   private readonly now: () => Date;
@@ -70,6 +75,8 @@ export class LintService {
   }
 
   async lint(req: LintRequest = {}): Promise<LintReport> {
+    const coordinator = this.deps.writeCoordinator ?? NOOP_WRITE_COORDINATOR;
+    return coordinator.runExclusive({ name: 'lint' }, async () => {
     if (req.project) {
       throw new ProjectScopeUnsupportedError('lint', req.project);
     }
@@ -110,6 +117,7 @@ export class LintService {
     await this.runArchival(consolidateResult);
 
     return commitSha ? report.withCommit(commitSha) : report;
+    });
   }
 
   private async runPhases(

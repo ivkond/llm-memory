@@ -12,12 +12,16 @@ import type { ISearchEngine } from '../ports/search-engine.js';
 import type { IVersionControl } from '../ports/version-control.js';
 import type { IFileStore, FileStoreFactory } from '../ports/file-store.js';
 import type { IStateStore } from '../ports/state-store.js';
+import type { IWriteCoordinator } from '../ports/write-coordinator.js';
 
 /** Spec bound for wiki_ingest: max 100K tokens after extraction. */
 export const MAX_SOURCE_TOKENS = 100_000;
 
 /** Project identifier shape — mirrors InvalidIdentifierError's regex. */
 const PROJECT_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
+const NOOP_WRITE_COORDINATOR: IWriteCoordinator = {
+  runExclusive: async (_operation, work) => work(),
+};
 
 export interface IngestRequest {
   source: string;
@@ -76,9 +80,11 @@ export class IngestService {
     private readonly mainFileStore: IFileStore,
     private readonly fileStoreFactory: FileStoreFactory,
     private readonly stateStore: IStateStore,
+    private readonly writeCoordinator: IWriteCoordinator = NOOP_WRITE_COORDINATOR,
   ) {}
 
   async ingest(req: IngestRequest): Promise<IngestResponse> {
+    return this.writeCoordinator.runExclusive({ name: 'ingest' }, async () => {
     if (req.project) {
       throw new ProjectScopeUnsupportedError('ingest', req.project);
     }
@@ -168,6 +174,7 @@ export class IngestService {
       pages_updated: pagesUpdated,
       commit_sha: commitSha,
     };
+    });
   }
 
   /**

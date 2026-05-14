@@ -2,7 +2,12 @@ import { VerbatimEntry } from '../domain/verbatim-entry.js';
 import { ContentEmptyError, SanitizationBlockedError } from '../domain/errors.js';
 import type { IFileStore } from '../ports/file-store.js';
 import type { IVerbatimStore } from '../ports/verbatim-store.js';
+import type { IWriteCoordinator } from '../ports/write-coordinator.js';
 import type { SanitizationService } from './sanitization-service.js';
+
+const NOOP_WRITE_COORDINATOR: IWriteCoordinator = {
+  runExclusive: async (_operation, work) => work(),
+};
 
 export interface RememberFactRequest {
   content: string;
@@ -52,6 +57,7 @@ export class RememberService {
     private readonly fileStore: IFileStore,
     private readonly verbatimStore: IVerbatimStore,
     private readonly sanitizer: SanitizationService,
+    private readonly writeCoordinator: IWriteCoordinator = NOOP_WRITE_COORDINATOR,
   ) {}
 
   async rememberFact(req: RememberFactRequest): Promise<RememberFactResponse> {
@@ -72,7 +78,9 @@ export class RememberService {
       model,
     });
 
-    await this.verbatimStore.writeEntry(entry);
+    await this.writeCoordinator.runExclusive({ name: 'remember_fact' }, async () => {
+      await this.verbatimStore.writeEntry(entry);
+    });
 
     return { ok: true, file: entry.filePath, entry_id: entry.entryId };
   }
@@ -80,46 +88,48 @@ export class RememberService {
   async rememberSession(req: RememberSessionRequest): Promise<RememberSessionResponse> {
     if (!req.summary.trim()) throw new ContentEmptyError();
 
-    // Deduplication by session_id — return stored entry metadata, not new request data
-    if (req.sessionId) {
-      const existing = await this.findExistingSession(req.agent, req.sessionId);
-      if (existing) {
-        const storedContent = await this.fileStore.readFile(existing);
-        const storedEntry = await this.verbatimStore.readEntry(existing);
-        const factsCount = storedContent ? this.countFacts(storedContent) : 1;
-        return {
-          ok: true,
-          file: existing,
-          entry_id: storedEntry?.entryId ?? existing.split('/').pop() ?? existing,
-          created_at: storedEntry?.processing.created_at ?? new Date().toISOString(),
-          facts_count: factsCount,
-        };
+    return this.writeCoordinator.runExclusive({ name: 'remember_session' }, async () => {
+      // Deduplication by session_id — return stored entry metadata, not new request data
+      if (req.sessionId) {
+        const existing = await this.findExistingSession(req.agent, req.sessionId);
+        if (existing) {
+          const storedContent = await this.fileStore.readFile(existing);
+          const storedEntry = await this.verbatimStore.readEntry(existing);
+          const factsCount = storedContent ? this.countFacts(storedContent) : 1;
+          return {
+            ok: true,
+            file: existing,
+            entry_id: storedEntry?.entryId ?? existing.split('/').pop() ?? existing,
+            created_at: storedEntry?.processing.created_at ?? new Date().toISOString(),
+            facts_count: factsCount,
+          };
+        }
       }
-    }
 
-    const sanitized = this.sanitizer.sanitize(req.summary);
-    if (sanitized.isBlocked) throw new SanitizationBlockedError(sanitized.redactedRatio);
+      const sanitized = this.sanitizer.sanitize(req.summary);
+      if (sanitized.isBlocked) throw new SanitizationBlockedError(sanitized.redactedRatio);
 
-    const model = this.buildModelMetadata(req);
-    const entry = VerbatimEntry.create({
-      content: sanitized.content,
-      agent: req.agent,
-      sessionId: req.sessionId,
-      project: req.project,
-      source: { type: 'session', uri: req.sourceUri, digest: req.sourceDigest },
-      operationId: req.operationId,
-      model,
+      const model = this.buildModelMetadata(req);
+      const entry = VerbatimEntry.create({
+        content: sanitized.content,
+        agent: req.agent,
+        sessionId: req.sessionId,
+        project: req.project,
+        source: { type: 'session', uri: req.sourceUri, digest: req.sourceDigest },
+        operationId: req.operationId,
+        model,
+      });
+
+      await this.verbatimStore.writeEntry(entry);
+
+      return {
+        ok: true,
+        file: entry.filePath,
+        entry_id: entry.entryId,
+        created_at: entry.processing.created_at,
+        facts_count: this.countFacts(sanitized.content),
+      };
     });
-
-    await this.verbatimStore.writeEntry(entry);
-
-    return {
-      ok: true,
-      file: entry.filePath,
-      entry_id: entry.entryId,
-      created_at: entry.processing.created_at,
-      facts_count: this.countFacts(sanitized.content),
-    };
   }
 
   private async findExistingSession(agent: string, sessionId: string): Promise<string | null> {
