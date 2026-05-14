@@ -25,6 +25,7 @@ const PROJECT_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 
 const CONSOLIDATE_SYSTEM_PROMPT =
   'You are a wiki editor. Merge verbatim memory entries into durable wiki or project pages. ' +
+  'If entries conflict or cannot be safely reconciled, preserve both sides under a "## Unresolved conflicts" section instead of silently choosing one side. ' +
   'Respond with a JSON object: {"pages":[{"path":"wiki/...","title":"...","content":"...","source_entries":["log/..."]}]}. ' +
   'Only emit pages when the entries contain reusable knowledge. An empty pages array is valid.';
 

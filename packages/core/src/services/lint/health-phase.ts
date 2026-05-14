@@ -14,6 +14,7 @@ export interface HealthPhaseResult {
 
 const DEFAULT_STALE_DAYS = 365;
 const DEFAULT_STALE_CONFIDENCE = 0.7;
+const CONFLICT_HEADINGS = new Set(['unresolved conflicts', 'conflicts']);
 
 export class HealthPhase {
   private readonly now: () => Date;
@@ -44,6 +45,7 @@ export class HealthPhase {
       ...this.checkOrphans(pages),
       ...this.checkStale(pages),
       ...this.checkBrokenLinks(pages),
+      ...this.checkContradictions(pages),
     ];
     return { issues };
   }
@@ -116,6 +118,61 @@ export class HealthPhase {
       }
     }
     return issues;
+  }
+
+  private checkContradictions(pages: WikiPage[]): HealthIssue[] {
+    const issues: HealthIssue[] = [];
+    for (const page of pages) {
+      const count = this.countConflictItems(page.content);
+      if (count === 0) continue;
+      issues.push(
+        HealthIssue.create({
+          type: HealthIssueType.Contradiction,
+          page: page.path,
+          description: `Contains unresolved conflict section with ${count} item(s)`,
+        }),
+      );
+    }
+    return issues;
+  }
+
+  private countConflictItems(content: string): number {
+    const lines = content.split(/\r?\n/);
+    let inFence = false;
+    let inConflictSection = false;
+    let conflictLevel = 0;
+    let count = 0;
+
+    for (const line of lines) {
+      const fence = line.match(/^(\s*)(`{3,}|~{3,})/);
+      if (fence) {
+        inFence = !inFence;
+        continue;
+      }
+      if (inFence) continue;
+
+      const heading = line.match(/^\s*(#{2,6})\s+(.+?)\s*#*\s*$/);
+      if (heading) {
+        const level = heading[1].length;
+        const title = heading[2].trim().toLowerCase();
+        if (CONFLICT_HEADINGS.has(title)) {
+          inConflictSection = true;
+          conflictLevel = level;
+          continue;
+        }
+        if (inConflictSection && level <= conflictLevel) {
+          inConflictSection = false;
+          conflictLevel = 0;
+        }
+      }
+
+      if (!inConflictSection) continue;
+      if (/^\s*[-*+]\s+\S/.test(line) || /^\s*\d+\.\s+\S/.test(line)) {
+        count += 1;
+      }
+    }
+
+    return count;
   }
 
   private resolveLink(sourcePath: string, link: string): string | null {

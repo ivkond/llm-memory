@@ -118,4 +118,53 @@ describe('HealthPhase', () => {
     const orphans = result.issues.filter((i) => i.type === HealthIssueType.Orphan);
     expect(orphans.map((i) => i.page)).toEqual(['wiki/a.md']);
   });
+
+  it('flags pages with unresolved conflict sections', async () => {
+    const fs = new FakeFileStore();
+    fs.files['wiki/a.md'] = page(
+      '2026-04-01',
+      ['[b](b.md)', '', '## Unresolved conflicts', '- Source A says X', '- Source B says Y'].join(
+        '\n',
+      ),
+    );
+    fs.files['wiki/b.md'] = page('2026-04-01', '[a](a.md)');
+
+    const phase = new HealthPhase(fs);
+    const result = await phase.run();
+    const contradictions = result.issues.filter((i) => i.type === HealthIssueType.Contradiction);
+    expect(contradictions).toHaveLength(1);
+    expect(contradictions[0].page).toBe('wiki/a.md');
+    expect(contradictions[0].description).toContain('2 item(s)');
+  });
+
+  it('recognizes "Conflicts" heading and numbered lists', async () => {
+    const fs = new FakeFileStore();
+    fs.files['wiki/a.md'] = page(
+      '2026-04-01',
+      ['[b](b.md)', '', '## Conflicts', '1. Claim one', '2. Claim two'].join('\n'),
+    );
+    fs.files['wiki/b.md'] = page('2026-04-01', '[a](a.md)');
+
+    const phase = new HealthPhase(fs);
+    const result = await phase.run();
+    const contradictions = result.issues.filter((i) => i.type === HealthIssueType.Contradiction);
+    expect(contradictions).toHaveLength(1);
+    expect(contradictions[0].description).toContain('2 item(s)');
+  });
+
+  it('does not flag prose mentions, empty sections, or fenced code headings', async () => {
+    const fs = new FakeFileStore();
+    fs.files['wiki/prose.md'] = page('2026-04-01', '[x](x.md)\nThis page discusses conflict resolution.');
+    fs.files['wiki/empty.md'] = page('2026-04-01', '[x](x.md)\n## Unresolved conflicts');
+    fs.files['wiki/code.md'] = page(
+      '2026-04-01',
+      ['[x](x.md)', '```md', '## Unresolved conflicts', '- not real', '```'].join('\n'),
+    );
+    fs.files['wiki/x.md'] = page('2026-04-01', '[prose](prose.md)\n[empty](empty.md)\n[code](code.md)');
+
+    const phase = new HealthPhase(fs);
+    const result = await phase.run();
+    const contradictions = result.issues.filter((i) => i.type === HealthIssueType.Contradiction);
+    expect(contradictions).toEqual([]);
+  });
 });

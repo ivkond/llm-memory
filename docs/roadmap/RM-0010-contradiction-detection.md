@@ -5,7 +5,7 @@
 - Area: retrieval
 - Source roadmap item: `../ROADMAP.md`
 - Related ADRs:
-  - None
+  - ADR-0022 page-level unresolved conflict detection
 - Related items:
   - RM-0024 (superseded health-check duplicate)
   - RM-0026 (reports contradiction diagnostics)
