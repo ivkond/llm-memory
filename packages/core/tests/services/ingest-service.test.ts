@@ -110,6 +110,7 @@ class FakeVersionControl implements IVersionControl {
   public squashSpy = vi.fn();
   public mergeSpy = vi.fn<(p: string) => void>();
   public mergeResponse: string | Error = 'abc1234567';
+  public createWorktreeError: Error | null = null;
   public onMergeSuccess: (worktreePath: string) => void = () => {};
   private worktreeCounter = 0;
 
@@ -120,6 +121,7 @@ class FakeVersionControl implements IVersionControl {
     return false;
   }
   async createWorktree(name: string): Promise<WorktreeInfo> {
+    if (this.createWorktreeError) throw this.createWorktreeError;
     this.worktreeCounter += 1;
     this.createSpy(name);
     return {
@@ -293,6 +295,14 @@ describe('IngestService', () => {
     );
     expect(vcs.createSpy).not.toHaveBeenCalled();
     expect(operationJournal.append).toHaveBeenCalledTimes(2);
+    expect(operationJournal.append.mock.calls[1][0].status).toBe('failed');
+  });
+
+  it('test_ingest_worktreeCreateFails_recordsTerminalFailed', async () => {
+    vcs.createWorktreeError = new Error('cannot create worktree');
+    await expect(service.ingest({ source: '/tmp/src.md' })).rejects.toThrow('cannot create worktree');
+    expect(operationJournal.append).toHaveBeenCalledTimes(2);
+    expect(operationJournal.append.mock.calls[0][0].status).toBe('running');
     expect(operationJournal.append.mock.calls[1][0].status).toBe('failed');
   });
 

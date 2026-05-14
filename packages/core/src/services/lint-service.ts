@@ -85,7 +85,15 @@ export class LintService {
     }
     const phaseSet = new Set<LintPhaseName>(req.phases ?? ALL_PHASES);
 
-    const worktree = await this.deps.versionControl.createWorktree('lint');
+    let worktree: { path: string; branch: string };
+    try {
+      worktree = await this.deps.versionControl.createWorktree('lint');
+    } catch (err) {
+      await appendOperation(this.deps.operationJournal, op, 'failed', {
+        error: journalErrorMetadata(err),
+      });
+      throw err;
+    }
     const wtFileStore = this.deps.fileStoreFactory(worktree.path);
     const wtVerbatimStore = this.deps.verbatimStoreFactory(wtFileStore);
 

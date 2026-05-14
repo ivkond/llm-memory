@@ -106,6 +106,7 @@ class FakeVersionControl implements IVersionControl {
   public mergeSpy = vi.fn();
   public commitSpy = vi.fn();
   public mergeResponse: string | Error = 'final-sha';
+  public createWorktreeError: Error | null = null;
   async commit(): Promise<string> {
     return 'main-sha';
   }
@@ -113,6 +114,7 @@ class FakeVersionControl implements IVersionControl {
     return false;
   }
   async createWorktree(name: string): Promise<WorktreeInfo> {
+    if (this.createWorktreeError) throw this.createWorktreeError;
     this.createdWorktree = { path: `/tmp/wt/${name}-1`, branch: `${name}-1` };
     return this.createdWorktree;
   }
@@ -371,6 +373,30 @@ describe('LintService', () => {
     );
     expect(vc.createdWorktree).toBeNull();
     expect(state.saved).toEqual([]);
+  });
+
+  it('records terminal failed when worktree creation throws', async () => {
+    vc.createWorktreeError = new Error('create worktree failed');
+    const service = new LintService({
+      mainRepoRoot: '/main',
+      mainFileStore: mainFs,
+      mainVerbatimStore: vs,
+      versionControl: vc,
+      searchEngine,
+      fileStoreFactory: fsFactory,
+      verbatimStoreFactory: () => vs,
+      stateStore: state,
+      archiver,
+      makeConsolidatePhase: () => stubConsolidate(),
+      makePromotePhase: () => stubPromote(),
+      makeHealthPhase: () => stubHealth(),
+      now: () => new Date(),
+      operationJournal,
+    });
+    await expect(service.lint({})).rejects.toThrow('create worktree failed');
+    expect(operationJournal.append).toHaveBeenCalledTimes(2);
+    expect(operationJournal.append.mock.calls[0][0].status).toBe('running');
+    expect(operationJournal.append.mock.calls[1][0].status).toBe('failed');
   });
 
   it('invokes archiver for every consolidated verbatim path when consolidate produces edits', async () => {

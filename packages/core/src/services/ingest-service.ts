@@ -107,7 +107,15 @@ export class IngestService {
     }
 
     // -- Worktree-scoped ingest ----------------------------------------------
-    const worktree = await this.versionControl.createWorktree('ingest');
+    let worktree: { path: string; branch: string };
+    try {
+      worktree = await this.versionControl.createWorktree('ingest');
+    } catch (err) {
+      await appendOperation(this.operationJournal, op, 'failed', {
+        error: journalErrorMetadata(err),
+      });
+      throw err;
+    }
     const worktreeStore = this.fileStoreFactory(worktree.path);
 
     let extractedPages: ExtractedPage[];
