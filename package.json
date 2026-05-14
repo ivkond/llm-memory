@@ -9,6 +9,7 @@
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b",
+    "quality:release": "pnpm install --frozen-lockfile && pnpm typecheck && pnpm build && pnpm lint && pnpm format:check && pnpm test && pnpm test:release-version",
     "test": "corepack pnpm -r test",
     "test:release-version": "node --test scripts/set-release-version.test.mjs",
     "test:watch": "vitest",

@@ -1,6 +1,6 @@
 # RM-0060: Full release quality gates
 
-- Status: Proposed
+- Status: Implemented (2026-05-14)
 - Priority: P2
 - Area: release
 - Source roadmap item: `../ROADMAP.md`
@@ -44,6 +44,12 @@ The roadmap concern is tracked independently with enough context to design, prio
 
 RM-0060 is the release checklist aggregator. It should collect evidence from concrete quality gates, publishing, and artifact checks rather than duplicate their implementation.
 
+## Implementation links
+
+- Root aggregation script: `package.json` (`quality:release`)
+- Release workflow gate wiring: `.github/workflows/release.yml`
+- Canonical local verification command docs: `README.md` ("Release quality gates")
+
 ## Dependencies
 
 Depends on concrete gate/artifact items RM-0040, RM-0041, RM-0043, RM-0061, RM-0062, and the publishing lane in RM-0027.
@@ -55,4 +61,4 @@ Depends on concrete gate/artifact items RM-0040, RM-0041, RM-0043, RM-0061, RM-0
 
 ## Open questions
 
-None.
+- Artifact/Claude Code verification additions remain owned by RM-0061 and RM-0062; RM-0060 should only aggregate those checks once their exact commands are finalized.

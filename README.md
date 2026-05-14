@@ -208,6 +208,14 @@ llm-wiki search "query" --limit 5 --format json
 llm-wiki ingest ./doc.md --verbose
 ```
 
+## Release quality gates
+
+Run the full pre-release verification checklist locally (without publishing side effects):
+
+```bash
+pnpm quality:release
+```
+
 ## MCP tools
 
 The MCP server exposes these tools:
