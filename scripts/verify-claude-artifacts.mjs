@@ -1,12 +1,12 @@
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const FORBIDDEN_CLAUDE_ARTIFACTS = [
   '.claude/settings.json',
-  '.claude/hooks/pre-commit.sh',
   '.claude/skills/wiki/SKILL.md',
 ];
+const FORBIDDEN_CLAUDE_HOOKS_PATH = '.claude/hooks';
 
 const SKILL_PACKAGE_PATH = 'packages/skill/llm-memory/package.json';
 const RELEASE_WORKFLOW_PATH = '.github/workflows/release.yml';
@@ -23,6 +23,11 @@ export async function verifyClaudeArtifacts(rootDir) {
     } catch {
       // Expected: artifact intentionally absent.
     }
+  }
+
+  const hookArtifacts = await listHookArtifacts(rootDir);
+  for (const hookArtifactPath of hookArtifacts) {
+    failures.push(`Unexpected Claude artifact present: ${hookArtifactPath}`);
   }
 
   const skillPackage = JSON.parse(
@@ -51,6 +56,31 @@ export async function verifyClaudeArtifacts(rootDir) {
   if (failures.length > 0) {
     throw new Error(failures.join('\n'));
   }
+}
+
+async function listHookArtifacts(rootDir) {
+  const hooksRoot = path.join(rootDir, FORBIDDEN_CLAUDE_HOOKS_PATH);
+  const entries = [];
+
+  async function walkDirectory(directoryPath, relativeDirectoryPath) {
+    const directoryEntries = await readdir(directoryPath, { withFileTypes: true });
+    for (const directoryEntry of directoryEntries) {
+      const relativePath = path.posix.join(relativeDirectoryPath, directoryEntry.name);
+      entries.push(relativePath);
+
+      if (directoryEntry.isDirectory()) {
+        await walkDirectory(path.join(directoryPath, directoryEntry.name), relativePath);
+      }
+    }
+  }
+
+  try {
+    await walkDirectory(hooksRoot, FORBIDDEN_CLAUDE_HOOKS_PATH);
+  } catch {
+    return [];
+  }
+
+  return entries.sort();
 }
 
 function isMainModule() {

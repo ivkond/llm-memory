@@ -38,12 +38,37 @@ test('test_verifyClaudeArtifacts_whenPolicySatisfied_passes', async () => {
 
 test('test_verifyClaudeArtifacts_whenClaudeHookArtifactPresent_fails', async () => {
   const rootDir = await createBaseFixture();
-  await mkdir(path.join(rootDir, '.claude', 'hooks'), { recursive: true });
-  await writeFile(path.join(rootDir, '.claude', 'hooks', 'pre-commit.sh'), '#!/usr/bin/env bash\n');
+  await mkdir(path.join(rootDir, '.claude', 'hooks', 'subdir'), { recursive: true });
+  await writeFile(
+    path.join(rootDir, '.claude', 'hooks', 'subdir', 'post-tool-use.sh'),
+    '#!/usr/bin/env bash\n',
+  );
 
   await assert.rejects(
     () => verifyClaudeArtifacts(rootDir),
-    /Unexpected Claude artifact present: \.claude\/hooks\/pre-commit\.sh/,
+    /Unexpected Claude artifact present: \.claude\/hooks\/subdir\/post-tool-use\.sh/,
+  );
+});
+
+test('test_verifyClaudeArtifacts_whenClaudeSettingsArtifactPresent_fails', async () => {
+  const rootDir = await createBaseFixture();
+  await mkdir(path.join(rootDir, '.claude'), { recursive: true });
+  await writeFile(path.join(rootDir, '.claude', 'settings.json'), '{}\n');
+
+  await assert.rejects(
+    () => verifyClaudeArtifacts(rootDir),
+    /Unexpected Claude artifact present: \.claude\/settings\.json/,
+  );
+});
+
+test('test_verifyClaudeArtifacts_whenClaudeSkillArtifactPresent_fails', async () => {
+  const rootDir = await createBaseFixture();
+  await mkdir(path.join(rootDir, '.claude', 'skills', 'wiki'), { recursive: true });
+  await writeFile(path.join(rootDir, '.claude', 'skills', 'wiki', 'SKILL.md'), '# skill\n');
+
+  await assert.rejects(
+    () => verifyClaudeArtifacts(rootDir),
+    /Unexpected Claude artifact present: \.claude\/skills\/wiki\/SKILL\.md/,
   );
 });
 
