@@ -105,6 +105,25 @@ describe('PromotePhase', () => {
     llm.response = { promoted: [baseProposal(overrides)] };
   }
 
+  async function runPhase(options?: { autoPromoteConfidenceThreshold?: number }) {
+    const phase = new PromotePhase(fileStore, llm, options ?? {});
+    return phase.run();
+  }
+
+  async function expectReviewNoPromote(
+    expectedReason: string,
+    options?: { autoPromoteConfidenceThreshold?: number; sourceMustContain?: string },
+  ): Promise<void> {
+    const result = await runPhase(options);
+    expect(result.promotedCount).toBe(0);
+    expect(result.reviewCount).toBe(1);
+    expect(result.skippedReasons?.some((reason) => reason.includes(expectedReason))).toBe(true);
+    expect(fileStore.files['wiki/patterns/pattern-a.md']).toBeUndefined();
+    if (options?.sourceMustContain) {
+      expect(fileStore.files['projects/x/practices.md']).toContain(options.sourceMustContain);
+    }
+  }
+
   it('returns zero when no project practices files exist', async () => {
     const phase = new PromotePhase(fileStore, llm);
     const result = await phase.run();
@@ -194,14 +213,10 @@ describe('PromotePhase', () => {
       confidence: 0.6,
       promotion_reason: 'Potentially reusable.',
     });
-
-    const phase = new PromotePhase(fileStore, llm, { autoPromoteConfidenceThreshold: 0.8 });
-    const result = await phase.run();
-
-    expect(result.promotedCount).toBe(0);
-    expect(result.reviewCount).toBe(1);
-    expect(fileStore.files['wiki/patterns/pattern-a.md']).toBeUndefined();
-    expect(fileStore.files['projects/x/practices.md']).toContain('## pattern-a');
+    await expectReviewNoPromote('below confidence threshold', {
+      autoPromoteConfidenceThreshold: 0.8,
+      sourceMustContain: '## pattern-a',
+    });
   });
 
   it('skips proposal safely when replacement marker does not match source', async () => {
@@ -222,16 +237,7 @@ describe('PromotePhase', () => {
   it('routes single-source proposals without rationale to review', async () => {
     seedPractice();
     setSingleProposal({ promotion_reason: '   ' });
-
-    const phase = new PromotePhase(fileStore, llm);
-    const result = await phase.run();
-
-    expect(result.promotedCount).toBe(0);
-    expect(result.reviewCount).toBe(1);
-    expect(result.skippedReasons?.some((reason) => reason.includes('insufficient sources/rationale'))).toBe(
-      true,
-    );
-    expect(fileStore.files['wiki/patterns/pattern-a.md']).toBeUndefined();
+    await expectReviewNoPromote('insufficient sources/rationale');
   });
 
   it('routes one allowed + one disallowed source with blank rationale to review', async () => {
@@ -241,33 +247,16 @@ describe('PromotePhase', () => {
       promotion_reason: ' ',
       sources: ['projects/x/practices.md', 'wiki/important-page.md'],
     });
-
-    const phase = new PromotePhase(fileStore, llm);
-    const result = await phase.run();
-
-    expect(result.promotedCount).toBe(0);
-    expect(result.reviewCount).toBe(1);
-    expect(result.skippedReasons?.some((reason) => reason.includes('insufficient sources/rationale'))).toBe(
-      true,
-    );
-    expect(fileStore.files['wiki/patterns/pattern-a.md']).toBeUndefined();
-    expect(fileStore.files['projects/x/practices.md']).toContain('## pattern-a');
+    await expectReviewNoPromote('insufficient sources/rationale', {
+      sourceMustContain: '## pattern-a',
+    });
   });
 
   it('does not write promoted page when all sources are outside allowlist', async () => {
     seedPractice();
     seedSensitiveWiki();
     setSingleProposal({ sources: ['wiki/important-page.md'] });
-
-    const phase = new PromotePhase(fileStore, llm);
-    const result = await phase.run();
-
-    expect(result.promotedCount).toBe(0);
-    expect(result.reviewCount).toBe(1);
-    expect(result.skippedReasons?.some((reason) => reason.includes('no valid project practice sources'))).toBe(
-      true,
-    );
-    expect(fileStore.files['wiki/patterns/pattern-a.md']).toBeUndefined();
+    await expectReviewNoPromote('no valid project practice sources');
   });
 
   it('rejects non-string sources entries in model response', async () => {
@@ -284,15 +273,6 @@ describe('PromotePhase', () => {
       promotion_reason: ' ',
       sources: ['projects/x/practices.md', 'projects/x/practices.md'],
     });
-
-    const phase = new PromotePhase(fileStore, llm);
-    const result = await phase.run();
-
-    expect(result.promotedCount).toBe(0);
-    expect(result.reviewCount).toBe(1);
-    expect(result.skippedReasons?.some((reason) => reason.includes('insufficient sources/rationale'))).toBe(
-      true,
-    );
-    expect(fileStore.files['wiki/patterns/pattern-a.md']).toBeUndefined();
+    await expectReviewNoPromote('insufficient sources/rationale');
   });
 });
