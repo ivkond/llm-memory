@@ -14,6 +14,7 @@ import type {
 } from '../../src/ports/index.js';
 import type { WikiPageData } from '../../src/domain/wiki-page.js';
 import type { SearchResult } from '../../src/domain/search-result.js';
+import { indexSnapshotFromLastIndexedMap } from './test-helpers.js';
 
 class FakeFileStore implements IFileStore {
   public files: Record<string, { info: FileInfo; page: WikiPageData }> = {};
@@ -67,6 +68,9 @@ class FakeSearchEngine implements ISearchEngine {
     const result: Record<string, string | null> = {};
     for (const p of paths) result[p] = this.lastIndexedMap[p] ?? null;
     return result;
+  }
+  async inspectIndex() {
+    return indexSnapshotFromLastIndexedMap(this.lastIndexedMap, this.healthValue);
   }
 }
 

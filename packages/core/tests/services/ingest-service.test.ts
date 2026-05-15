@@ -27,6 +27,7 @@ import type {
 } from '../../src/ports/index.js';
 import type { SearchResult } from '../../src/domain/search-result.js';
 import type { WikiPageData } from '../../src/domain/wiki-page.js';
+import { emptyIndexSnapshot } from './test-helpers.js';
 
 // ---------------------------------------------------------------------------
 // Lightweight in-memory fakes so IngestService tests can assert orchestration
@@ -101,6 +102,9 @@ class FakeSearchEngine implements ISearchEngine {
     for (const p of paths) result[p] = null;
     return result;
   }
+  async inspectIndex() {
+    return emptyIndexSnapshot('ok');
+  }
 }
 
 class FakeVersionControl implements IVersionControl {
@@ -143,6 +147,9 @@ class FakeVersionControl implements IVersionControl {
   async commitInWorktree(p: string, files: string[], m: string): Promise<string> {
     this.commitInWorktreeSpy(p, files, m);
     return 'wt-sha';
+  }
+  async listTrackedFiles(): Promise<string[]> {
+    return [];
   }
 }
 

@@ -25,6 +25,7 @@ import type {
 import type { SearchResult } from '../../src/domain/search-result.js';
 import type { VerbatimEntry } from '../../src/domain/verbatim-entry.js';
 import type { WikiPageData } from '../../src/domain/wiki-page.js';
+import { emptyIndexSnapshot } from './test-helpers.js';
 
 class FakeFileStore implements IFileStore {
   constructor(public readonly root: string) {}
@@ -72,6 +73,9 @@ class FakeSearchEngine implements ISearchEngine {
     const result: Record<string, string | null> = {};
     for (const p of paths) result[p] = null;
     return result;
+  }
+  async inspectIndex() {
+    return emptyIndexSnapshot('ok');
   }
 }
 
@@ -131,6 +135,9 @@ class FakeVersionControl implements IVersionControl {
   async commitInWorktree(p: string, f: string[], m: string): Promise<string> {
     this.commitSpy(p, f, m);
     return 'wt-commit-sha';
+  }
+  async listTrackedFiles(): Promise<string[]> {
+    return [];
   }
 }
 

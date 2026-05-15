@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { IEmbeddingClient, IndexEntry } from '@ivkond-llm-wiki/core';
+import { VectorDb as RuVectorDb } from 'ruvector';
 import { RuVectorSearchEngine } from '../src/ruvector-search-engine.js';
 
 /**
@@ -60,6 +61,62 @@ describe('RuVectorSearchEngine', () => {
   afterEach(async () => {
     await rm(dir, { recursive: true, force: true });
   });
+
+  async function seedAlphaDoc(docPath = 'wiki/a.md'): Promise<void> {
+    await engine.index({
+      path: docPath,
+      title: 'A',
+      content: 'alpha',
+      updated: '2026-04-09',
+    });
+  }
+
+  async function readBm25Meta(): Promise<{
+    version: 1;
+    index: unknown;
+    lastIndexedAt: Record<string, string>;
+    bm25Paths: string[];
+    vectorPaths: string[];
+  }> {
+    const bm25File = path.join(dbPath, 'bm25.json');
+    return JSON.parse(await readFile(bm25File, 'utf-8')) as {
+      version: 1;
+      index: unknown;
+      lastIndexedAt: Record<string, string>;
+      bm25Paths: string[];
+      vectorPaths: string[];
+    };
+  }
+
+  async function writeBm25Meta(meta: {
+    version: 1;
+    index: unknown;
+    lastIndexedAt: Record<string, string>;
+    bm25Paths: string[];
+    vectorPaths: string[];
+  }): Promise<void> {
+    const bm25File = path.join(dbPath, 'bm25.json');
+    await writeFile(bm25File, JSON.stringify(meta), 'utf-8');
+  }
+
+  async function mutateBm25Meta(
+    mutate: (meta: {
+      version: 1;
+      index: unknown;
+      lastIndexedAt: Record<string, string>;
+      bm25Paths: string[];
+      vectorPaths: string[];
+    }) => void,
+  ): Promise<void> {
+    const parsed = await readBm25Meta();
+    mutate(parsed);
+    await writeBm25Meta(parsed);
+  }
+
+  async function reopenAndInspect() {
+    const reopened = new RuVectorSearchEngine(dbPath, embeddings);
+    return reopened.inspectIndex();
+  }
 
   it('test_index_then_search_findsDocument', async () => {
     await engine.index({
@@ -362,5 +419,98 @@ describe('RuVectorSearchEngine', () => {
     const matchingPaths = results.filter((r) => r.path === 'wiki/a.md');
     expect(matchingPaths.length).toBe(1);
     expect(matchingPaths[0].title).toBe('New title');
+  });
+
+  it.each([
+    {
+      name: 'reports bm25 path even when indexedAt entry is missing',
+      mutate: async () => {
+        await mutateBm25Meta((parsed) => {
+          delete parsed.lastIndexedAt['wiki/a.md'];
+        });
+      },
+      assert: (snapshot: Awaited<ReturnType<typeof reopenAndInspect>>) => {
+        expect(snapshot.bm25Paths).toContain('wiki/a.md');
+        expect(snapshot.indexedAt['wiki/a.md']).toBeUndefined();
+      },
+    },
+    {
+      name: 'distinguishes indexedAt-only path',
+      mutate: async () => {
+        await mutateBm25Meta((parsed) => {
+          parsed.lastIndexedAt['wiki/indexed-only.md'] = '2026-04-10T00:00:00.000Z';
+        });
+      },
+      assert: (snapshot: Awaited<ReturnType<typeof reopenAndInspect>>) => {
+        expect(snapshot.indexedAt['wiki/indexed-only.md']).toBe('2026-04-10T00:00:00.000Z');
+        expect(snapshot.bm25Paths).not.toContain('wiki/indexed-only.md');
+      },
+    },
+  ])('test_inspectIndex_$name', async ({ mutate, assert }) => {
+    await seedAlphaDoc();
+    await mutate();
+    const snapshot = await reopenAndInspect();
+    assert(snapshot);
+  });
+
+  it('test_inspectIndex_reportsMissingVectorForKnownBm25Path', async () => {
+    await seedAlphaDoc();
+
+    const vectorDb = new (RuVectorDb as unknown as new (opts: {
+      dimensions: number;
+      storagePath?: string;
+    }) => { delete(id: string): Promise<boolean> })({
+      dimensions: embeddings.dimensions(),
+      storagePath: path.join(dbPath, 'vectors.db'),
+    });
+    await vectorDb.delete('wiki/a.md');
+
+    const snapshot = await reopenAndInspect();
+    expect(snapshot.bm25Paths).toContain('wiki/a.md');
+    expect(snapshot.vectorPaths).not.toContain('wiki/a.md');
+  });
+
+  it('test_inspectIndex_flagsCorruptMetadataFile', async () => {
+    await seedAlphaDoc();
+
+    const bm25File = path.join(dbPath, 'bm25.json');
+    await writeFile(bm25File, '{"version":1,', 'utf-8');
+
+    const snapshot = await reopenAndInspect();
+    expect(snapshot.metadataCorrupted).toBe(true);
+    expect(snapshot.bm25Paths).toEqual([]);
+    expect(snapshot.vectorPaths).toEqual([]);
+  });
+
+  it('test_rebuild_clearsVectorOnlyKnownPathFromInventory', async () => {
+    await engine.index({
+      path: 'wiki/legacy.md',
+      title: 'Legacy',
+      content: 'legacy vector payload',
+      updated: '2026-04-09',
+    });
+
+    const parsed = await readBm25Meta();
+    delete parsed.lastIndexedAt['wiki/legacy.md'];
+    parsed.bm25Paths = [];
+    parsed.vectorPaths = ['wiki/legacy.md'];
+    await writeBm25Meta(parsed);
+
+    const reopened = new RuVectorSearchEngine(dbPath, embeddings);
+    await reopened.rebuild([
+      {
+        path: 'wiki/fresh.md',
+        title: 'Fresh',
+        content: 'fresh corpus',
+        updated: '2026-04-10',
+      },
+    ]);
+
+    const snapshot = await reopened.inspectIndex();
+    expect(snapshot.bm25Paths).toEqual(['wiki/fresh.md']);
+    expect(snapshot.vectorPaths).toEqual(['wiki/fresh.md']);
+
+    const legacyResults = await reopened.search({ text: 'legacy payload', maxResults: 10 });
+    expect(legacyResults.map((r) => r.path)).not.toContain('wiki/legacy.md');
   });
 });

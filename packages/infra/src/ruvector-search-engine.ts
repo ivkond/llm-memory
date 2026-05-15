@@ -52,6 +52,8 @@ interface Bm25FileV1 {
   version: 1;
   index: unknown;
   lastIndexedAt: Record<string, string>;
+  bm25Paths?: string[];
+  vectorPaths?: string[];
 }
 
 const BM25_FILE = 'bm25.json';
@@ -96,6 +98,8 @@ export class RuVectorSearchEngine implements ISearchEngine {
   private vectorDb: VectorDbLike | null = null;
   private bm25: MiniSearch<DocFields> | null = null;
   private indexedAt: Record<string, string> = {};
+  private bm25Paths = new Set<string>();
+  private vectorPaths = new Set<string>();
   private initialized = false;
   /**
    * Cached init promise. The first caller assigns this; every concurrent
@@ -112,6 +116,7 @@ export class RuVectorSearchEngine implements ISearchEngine {
    * still surfaces via the per-call return value.
    */
   private writeChain: Promise<void> = Promise.resolve();
+  private metadataCorrupted = false;
 
   constructor(
     private readonly dbPath: string,
@@ -182,9 +187,20 @@ export class RuVectorSearchEngine implements ISearchEngine {
         },
       });
       this.indexedAt = parsed.lastIndexedAt ?? {};
+      this.bm25Paths = new Set(parsed.bm25Paths ?? Object.keys(this.indexedAt));
+      this.vectorPaths = new Set(parsed.vectorPaths ?? [...this.bm25Paths]);
+      this.metadataCorrupted = false;
     } catch {
       this.bm25 = this.createMiniSearch();
       this.indexedAt = {};
+      this.bm25Paths = new Set();
+      this.vectorPaths = new Set();
+      try {
+        await access(this.bm25FilePath());
+        this.metadataCorrupted = true;
+      } catch {
+        this.metadataCorrupted = false;
+      }
     }
 
     this.initialized = true;
@@ -224,6 +240,8 @@ export class RuVectorSearchEngine implements ISearchEngine {
       version: 1,
       index: this.bm25.toJSON(),
       lastIndexedAt: this.indexedAt,
+      bm25Paths: [...this.bm25Paths],
+      vectorPaths: [...this.vectorPaths],
     };
     const target = this.bm25FilePath();
     const tmp = `${target}.tmp`;
@@ -283,6 +301,8 @@ export class RuVectorSearchEngine implements ISearchEngine {
     });
 
     this.indexedAt[entry.path] = new Date().toISOString();
+    this.bm25Paths.add(entry.path);
+    this.vectorPaths.add(entry.path);
     await this.persist();
   }
 
@@ -302,6 +322,8 @@ export class RuVectorSearchEngine implements ISearchEngine {
       this.bm25!.discard(docPath);
     }
     delete this.indexedAt[docPath];
+    this.bm25Paths.delete(docPath);
+    this.vectorPaths.delete(docPath);
     await this.persist();
   }
 
@@ -421,7 +443,8 @@ export class RuVectorSearchEngine implements ISearchEngine {
     return this.runExclusive(async () => {
       // Clear the BM25 side wholesale. ruvector lacks a bulk clear, so
       // delete each known id individually before re-indexing.
-      for (const id of Object.keys(this.indexedAt)) {
+      const knownVectorIds = new Set([...Object.keys(this.indexedAt), ...this.vectorPaths]);
+      for (const id of knownVectorIds) {
         try {
           await this.vectorDb!.delete(id);
         } catch {
@@ -430,6 +453,8 @@ export class RuVectorSearchEngine implements ISearchEngine {
       }
       this.bm25!.removeAll();
       this.indexedAt = {};
+      this.bm25Paths = new Set();
+      this.vectorPaths = new Set();
       // Reuse indexUnsafe (not index()) — calling the public method here
       // would try to re-enter the mutex and deadlock.
       for (const entry of entries) {
@@ -459,6 +484,29 @@ export class RuVectorSearchEngine implements ISearchEngine {
       result[p] = this.indexedAt[p] ?? null;
     }
     return result;
+  }
+
+  async inspectIndex(): Promise<{
+    health: IndexHealth;
+    bm25Paths: string[];
+    vectorPaths: string[];
+    indexedAt: Record<string, string>;
+    metadataCorrupted: boolean;
+  }> {
+    await this.init();
+    const bm25Paths = [...this.bm25Paths];
+    const vectorPaths: string[] = [];
+    for (const docPath of this.vectorPaths) {
+      const entry = await this.vectorDb!.get(docPath);
+      if (entry) vectorPaths.push(docPath);
+    }
+    return {
+      health: await this.health(),
+      bm25Paths,
+      vectorPaths,
+      indexedAt: { ...this.indexedAt },
+      metadataCorrupted: this.metadataCorrupted,
+    };
   }
 
   private excerpt(content: string): string {

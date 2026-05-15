@@ -24,4 +24,7 @@ export interface IVersionControl {
 
   /** Add specific changes in a worktree and commit. */
   commitInWorktree(worktreePath: string, files: string[], message: string): Promise<string>;
+
+  /** List tracked files in the repository, optionally constrained by git pathspec patterns. */
+  listTrackedFiles(patterns?: string[]): Promise<string[]>;
 }

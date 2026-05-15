@@ -12,6 +12,7 @@ import type {
   SearchQuery,
 } from '../../src/ports/index.js';
 import type { WikiPageData } from '../../src/domain/wiki-page.js';
+import { indexSnapshotFromLastIndexedMap } from './test-helpers.js';
 
 /**
  * Minimal in-memory ISearchEngine fake.
@@ -54,6 +55,9 @@ class FakeSearchEngine implements ISearchEngine {
     const result: Record<string, string | null> = {};
     for (const p of paths) result[p] = this.lastIndexedMap[p] ?? null;
     return result;
+  }
+  async inspectIndex() {
+    return indexSnapshotFromLastIndexedMap(this.lastIndexedMap, 'ok');
   }
 }
 
