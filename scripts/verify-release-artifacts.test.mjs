@@ -221,6 +221,14 @@ test('test_validateUndeclaredRuntimeImports_whenDynamicImportAppearsInString_doe
   expectNoUndeclaredRuntimeImport('const s = "import(\'left-pad\')";\n');
 });
 
+test('test_validateUndeclaredRuntimeImports_whenRequireInTemplateExpressionIsUndeclared_throws', () => {
+  expectUndeclaredRuntimeImport('const s = `${require("left-pad")}`;\n');
+});
+
+test('test_validateUndeclaredRuntimeImports_whenTemplateLiteralPlainTextContainsImport_doesNotThrow', () => {
+  expectNoUndeclaredRuntimeImport('const s = `import("left-pad")`;\n');
+});
+
 test('test_loadReleaseManifests_whenReleasePackageDirectoryMissing_throws', async () => {
   const rootDir = await mkdtemp(path.join(tmpdir(), 'llm-wiki-release-manifests-'));
   await writeJson(path.join(rootDir, 'packages', 'core', 'package.json'), {

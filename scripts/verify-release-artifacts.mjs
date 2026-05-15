@@ -334,6 +334,102 @@ function parseStringLiteral(source, index) {
   return null;
 }
 
+function mergeSpecifiers(target, source) {
+  for (const specifier of source) {
+    target.add(specifier);
+  }
+}
+
+function collectTemplateExpression(source, startIndex) {
+  let cursor = startIndex;
+  let depth = 1;
+  while (cursor < source.length) {
+    const char = source[cursor];
+    const next = source[cursor + 1];
+
+    if (char === '\'' || char === '"') {
+      const parsed = parseStringLiteral(source, cursor);
+      if (!parsed) {
+        break;
+      }
+      cursor = parsed.end;
+      continue;
+    }
+
+    if (char === '/' && next === '/') {
+      cursor += 2;
+      while (cursor < source.length && source[cursor] !== '\n') {
+        cursor += 1;
+      }
+      continue;
+    }
+
+    if (char === '/' && next === '*') {
+      cursor += 2;
+      while (cursor < source.length && !(source[cursor] === '*' && source[cursor + 1] === '/')) {
+        cursor += 1;
+      }
+      cursor += cursor < source.length ? 2 : 0;
+      continue;
+    }
+
+    if (char === '{') {
+      depth += 1;
+      cursor += 1;
+      continue;
+    }
+
+    if (char === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return { expression: source.slice(startIndex, cursor), end: cursor + 1 };
+      }
+      cursor += 1;
+      continue;
+    }
+
+    if (char === '\\') {
+      cursor += 2;
+      continue;
+    }
+
+    cursor += 1;
+  }
+
+  return null;
+}
+
+function skipTemplateLiteral(source, index, specifiers) {
+  let cursor = index + 1;
+  while (cursor < source.length) {
+    const char = source[cursor];
+    const next = source[cursor + 1];
+
+    if (char === '\\') {
+      cursor += 2;
+      continue;
+    }
+
+    if (char === '`') {
+      return cursor + 1;
+    }
+
+    if (char === '$' && next === '{') {
+      const expression = collectTemplateExpression(source, cursor + 2);
+      if (!expression) {
+        return source.length;
+      }
+      mergeSpecifiers(specifiers, extractRuntimeImportSpecifiers(expression.expression));
+      cursor = expression.end;
+      continue;
+    }
+
+    cursor += 1;
+  }
+
+  return source.length;
+}
+
 function extractRuntimeImportSpecifiers(source) {
   const specifiers = new Set();
   let index = 0;
@@ -376,24 +472,18 @@ function extractRuntimeImportSpecifiers(source) {
       while (index < source.length && !(source[index] === '*' && source[index + 1] === '/')) {
         index += 1;
       }
-      index += 2;
+      index += index < source.length ? 2 : 0;
       continue;
     }
 
-    if (char === '\'' || char === '"' || char === '`') {
-      const quote = char;
-      index += 1;
-      while (index < source.length) {
-        if (source[index] === '\\') {
-          index += 2;
-          continue;
-        }
-        if (source[index] === quote) {
-          index += 1;
-          break;
-        }
-        index += 1;
-      }
+    if (char === '`') {
+      index = skipTemplateLiteral(source, index, specifiers);
+      continue;
+    }
+
+    if (char === '\'' || char === '"') {
+      const parsed = parseStringLiteral(source, index);
+      index = parsed ? parsed.end : source.length;
       continue;
     }
 
