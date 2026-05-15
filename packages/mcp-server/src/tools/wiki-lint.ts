@@ -61,6 +61,7 @@ export function createWikiLintHandler(services: AppServices) {
       }
 
       const report = await lintService.lint({ phases });
+      const issues = report.issues.map((issue) => issue.toData());
 
       return {
         content: [
@@ -74,6 +75,7 @@ export function createWikiLintHandler(services: AppServices) {
                   consolidated: report.consolidated,
                   promoted: report.promoted,
                   issues_count: report.issues.length,
+                  issues,
                   commit_sha: report.commitSha,
                 },
                 entries_consolidated: report.consolidated,

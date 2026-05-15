@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { LintReport } from '../../src/domain/lint-report.js';
-import { HealthIssue, HealthIssueType } from '../../src/domain/health-issue.js';
+import { HealthIssueSeverity, HealthIssueType } from '../../src/domain/health-issue.js';
 
 describe('LintReport', () => {
   it('defaults every counter to zero', () => {
@@ -16,14 +16,28 @@ describe('LintReport', () => {
       consolidated: 3,
       promoted: 1,
       issues: [
-        HealthIssue.create({ type: HealthIssueType.Orphan, page: 'a.md', description: 'x' }),
+        {
+          code: 'HEALTH_ORPHAN_PAGE',
+          type: HealthIssueType.Orphan,
+          severity: HealthIssueSeverity.Warning,
+          page: 'a.md',
+          description: 'x',
+        },
       ],
       commitSha: null,
     });
     const b = LintReport.from({
       consolidated: 2,
       promoted: 4,
-      issues: [HealthIssue.create({ type: HealthIssueType.Stale, page: 'b.md', description: 'y' })],
+      issues: [
+        {
+          code: 'HEALTH_STALE_PAGE',
+          type: HealthIssueType.Stale,
+          severity: HealthIssueSeverity.Warning,
+          page: 'b.md',
+          description: 'y',
+        },
+      ],
       commitSha: null,
     });
     const merged = a.merge(b);

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { access, mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { HealthIssue, HealthIssueSeverity, HealthIssueType } from '@ivkond-llm-wiki/core';
 
 class ExitError extends Error {
   constructor(readonly code: number | undefined) {
@@ -239,7 +240,15 @@ describe('CLI command coverage', () => {
     const lint = vi.fn().mockResolvedValue({
       consolidated: 1,
       promoted: 0,
-      issues: [{ type: 'stale', page: 'wiki/a.md', description: 'old' }],
+      issues: [
+        HealthIssue.create({
+          code: 'HEALTH_STALE_PAGE',
+          type: HealthIssueType.Stale,
+          severity: HealthIssueSeverity.Warning,
+          page: 'wiki/a.md',
+          description: 'old',
+        }),
+      ],
       commitSha: 'abcdef123456',
     });
     const buildContainer = vi.fn(() => ({ lint: { lint } }));
@@ -267,6 +276,58 @@ describe('CLI command coverage', () => {
     expect(buildContainer.mock.calls[0]?.[0].wiki.path).toBe(wikiPath);
     expect(buildContainer.mock.calls[0]?.[0].llm.model).toBe('local-model');
     expect(tap.stdout.join('\n')).toContain('Found 1 issue(s)');
+  });
+
+  it('lint: emits machine-readable diagnostics in json format', async () => {
+    const wikiPath = await mkdtemp(path.join(tmpdir(), 'cli-lint-json-wiki-'));
+    await writeWikiConfig(wikiPath);
+    const lint = vi.fn().mockResolvedValue({
+      consolidated: 0,
+      promoted: 0,
+      issues: [
+        HealthIssue.create({
+          code: 'HEALTH_BROKEN_LINK',
+          type: HealthIssueType.BrokenLink,
+          severity: HealthIssueSeverity.Error,
+          page: 'wiki/a.md',
+          description: 'Broken link to missing.md',
+        }),
+      ],
+      commitSha: null,
+    });
+    const buildContainer = vi.fn(() => ({ lint: { lint } }));
+    vi.doMock('@ivkond-llm-wiki/common', () => ({ buildContainer }));
+
+    const tap = tapConsole();
+    const restoreExit = mockExit();
+
+    await expect(
+      runCommand('../src/commands/lint.ts', 'lintCommand', [
+        '--wiki',
+        wikiPath,
+        '--format',
+        'json',
+        '--phases',
+        'health',
+      ]),
+    ).rejects.toMatchObject({ code: 1 });
+
+    restoreExit();
+    tap.restore();
+
+    const payload = JSON.parse(tap.stdout.join('\n')) as Record<string, unknown>;
+    expect(payload.phases_run).toEqual(['health']);
+    const report = payload.report as Record<string, unknown>;
+    expect(report.issues_count).toBe(1);
+    expect(report.issues).toEqual([
+      {
+        code: 'HEALTH_BROKEN_LINK',
+        type: 'broken_link',
+        severity: 'error',
+        page: 'wiki/a.md',
+        description: 'Broken link to missing.md',
+      },
+    ]);
   });
 
   it('import: validates agent names and exits on unknown agent', async () => {

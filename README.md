@@ -206,6 +206,7 @@ Useful global options:
 llm-wiki status --wiki ./my-wiki
 llm-wiki search "query" --limit 5 --format json
 llm-wiki ingest ./doc.md --verbose
+llm-wiki lint --phases health --format json
 ```
 
 ## MCP tools
@@ -221,6 +222,8 @@ The MCP server exposes these tools:
 | `wiki_ingest` | Ingest a file path or URL into wiki pages. |
 | `wiki_lint` | Run consolidation, promotion, and health phases. |
 | `wiki_status` | Return wiki health and metadata. |
+
+`wiki_lint` returns machine-readable diagnostics in `data.report.issues` (with `code`, `type`, `severity`, `page`, and `description`) plus `issues_count`.
 
 ## Configuration
 

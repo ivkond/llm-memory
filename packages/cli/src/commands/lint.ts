@@ -38,10 +38,12 @@ export const lintCommand = new Command()
     'Comma-separated phases (consolidate,promote,health)',
     'consolidate,promote,health',
   )
+  .option('-f, --format <format>', 'Output format (text, json)', 'text')
   .option('-v, --verbose', 'Verbose output', false)
   .option('-w, --wiki <path>', 'Wiki directory path')
-  .action(async (options: { phases?: string; verbose?: boolean; wiki?: string }) => {
+  .action(async (options: { phases?: string; format?: string; verbose?: boolean; wiki?: string }) => {
     const phasesInput = options.phases ?? 'consolidate,promote,health';
+    const format = options.format ?? 'text';
     const verbose = options.verbose ?? false;
 
     // Parse phases
@@ -74,34 +76,56 @@ export const lintCommand = new Command()
       const config = await configLoader.load();
       const services = buildContainer(config);
 
-      console.log(`Running lint phases: ${phases.join(', ')}`);
+      if (format !== 'json') {
+        console.log(`Running lint phases: ${phases.join(', ')}`);
+      }
 
       const startTime = Date.now();
       const report = await services.lint.lint({ phases });
 
       const elapsed = Date.now() - startTime;
+      const issuesData = report.issues.map((issue) => issue.toData());
 
       // Display results
-      console.log('\n\x1b[32m%s\x1b[0m', '✓ Lint complete');
+      if (format === 'json') {
+        console.log(
+          JSON.stringify(
+            {
+              phases_run: phases,
+              report: {
+                consolidated: report.consolidated,
+                promoted: report.promoted,
+                issues_count: report.issues.length,
+                issues: issuesData,
+                commit_sha: report.commitSha,
+              },
+            },
+            null,
+            2,
+          ),
+        );
+      } else {
+        console.log('\n\x1b[32m%s\x1b[0m', '✓ Lint complete');
 
-      if (report.consolidated > 0) {
-        console.log(`  Consolidated: ${report.consolidated} entries`);
-      }
-      if (report.promoted > 0) {
-        console.log(`  Promoted: ${report.promoted} pages`);
-      }
-      if (report.issues.length > 0) {
-        console.log(`\n\x1b[33m%s\x1b[0m`, `⚠ Found ${report.issues.length} issue(s):`);
-        for (const issue of report.issues.slice(0, 10)) {
-          console.log(`  - [${issue.type}] ${issue.page}: ${issue.description}`);
+        if (report.consolidated > 0) {
+          console.log(`  Consolidated: ${report.consolidated} entries`);
         }
-        if (report.issues.length > 10) {
-          console.log(`  ... and ${report.issues.length - 10} more`);
+        if (report.promoted > 0) {
+          console.log(`  Promoted: ${report.promoted} pages`);
         }
-      }
+        if (report.issues.length > 0) {
+          console.log(`\n\x1b[33m%s\x1b[0m`, `⚠ Found ${report.issues.length} issue(s):`);
+          for (const issue of report.issues.slice(0, 10)) {
+            console.log(`  - [${issue.severity}/${issue.type}] ${issue.page}: ${issue.description}`);
+          }
+          if (report.issues.length > 10) {
+            console.log(`  ... and ${report.issues.length - 10} more`);
+          }
+        }
 
-      if (report.commitSha) {
-        console.log(`\nCommit: ${report.commitSha.slice(0, 7)}`);
+        if (report.commitSha) {
+          console.log(`\nCommit: ${report.commitSha.slice(0, 7)}`);
+        }
       }
 
       if (verbose) {

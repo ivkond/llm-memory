@@ -1,4 +1,8 @@
-import { HealthIssue, HealthIssueType } from '../../domain/health-issue.js';
+import {
+  HealthIssue,
+  HealthIssueSeverity,
+  HealthIssueType,
+} from '../../domain/health-issue.js';
 import { WikiPage } from '../../domain/wiki-page.js';
 import type { IFileStore, FileInfo } from '../../ports/file-store.js';
 
@@ -65,7 +69,9 @@ export class HealthPhase {
       if ((inboundCount.get(page.path) ?? 0) === 0) {
         issues.push(
           HealthIssue.create({
+            code: 'HEALTH_ORPHAN_PAGE',
             type: HealthIssueType.Orphan,
+            severity: HealthIssueSeverity.Warning,
             page: page.path,
             description: 'No inbound links from any other page',
           }),
@@ -86,7 +92,9 @@ export class HealthPhase {
         const days = Math.round(ageMs / (24 * 60 * 60 * 1000));
         issues.push(
           HealthIssue.create({
+            code: 'HEALTH_STALE_PAGE',
             type: HealthIssueType.Stale,
+            severity: HealthIssueSeverity.Warning,
             page: page.path,
             description: `Last updated ${days} days ago (confidence ${page.confidence.toFixed(2)})`,
           }),
@@ -107,7 +115,9 @@ export class HealthPhase {
         if (!byPath.has(resolved)) {
           issues.push(
             HealthIssue.create({
+              code: 'HEALTH_BROKEN_LINK',
               type: HealthIssueType.BrokenLink,
+              severity: HealthIssueSeverity.Error,
               page: page.path,
               description: `Broken link to ${ref} (resolved to ${resolved})`,
             }),

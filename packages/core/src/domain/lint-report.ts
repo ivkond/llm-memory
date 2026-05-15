@@ -1,9 +1,9 @@
-import type { HealthIssue } from './health-issue.js';
+import { HealthIssue, type HealthIssueData } from './health-issue.js';
 
 export interface LintReportData {
   consolidated: number;
   promoted: number;
-  issues: HealthIssue[];
+  issues: HealthIssueData[];
   commitSha: string | null;
 }
 
@@ -20,7 +20,12 @@ export class LintReport {
   }
 
   static from(data: LintReportData): LintReport {
-    return new LintReport(data.consolidated, data.promoted, [...data.issues], data.commitSha);
+    return new LintReport(
+      data.consolidated,
+      data.promoted,
+      data.issues.map((issue) => HealthIssue.create(issue)),
+      data.commitSha,
+    );
   }
 
   merge(other: LintReport): LintReport {
@@ -40,7 +45,7 @@ export class LintReport {
     return {
       consolidated: this.consolidated,
       promoted: this.promoted,
-      issues: [...this.issues],
+      issues: this.issues.map((issue) => issue.toData()),
       commitSha: this.commitSha,
     };
   }

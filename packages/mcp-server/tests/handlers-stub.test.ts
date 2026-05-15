@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FsFileStore, FsVerbatimStore } from '@ivkond-llm-wiki/infra';
 import { RememberService, SanitizationService } from '@ivkond-llm-wiki/core';
+import { HealthIssue, HealthIssueSeverity, HealthIssueType } from '@ivkond-llm-wiki/core';
 import type { AppServices } from '@ivkond-llm-wiki/common';
 import { startServer, type ServerHandle } from '../src/index.js';
 import { createWikiIngestHandler } from '../src/tools/wiki-ingest.js';
@@ -185,6 +186,48 @@ describe('tools/call (integration)', () => {
       success: false,
       error: 'project-scoped lint is not supported yet',
       code: 'PROJECT_SCOPE_UNSUPPORTED',
+    });
+  });
+
+  it('test_toolCall_wiki_lint_returnsMachineReadableIssues', async () => {
+    const lint = vi.fn().mockResolvedValue({
+      consolidated: 0,
+      promoted: 0,
+      issues: [
+        HealthIssue.create({
+          code: 'HEALTH_BROKEN_LINK',
+          type: HealthIssueType.BrokenLink,
+          severity: HealthIssueSeverity.Error,
+          page: 'wiki/a.md',
+          description: 'Broken link to missing.md',
+        }),
+      ],
+      commitSha: null,
+    });
+    handle = await startServer(makeServices({ lint: { lint } }), { host: '127.0.0.1', port: 0 });
+
+    const body = await callTool(handle.url, 'wiki_lint', { phases: ['health'] });
+    const payload = parsePayload(body.result as ToolCallResult);
+    expect(payload.success).toBe(true);
+    expect(payload.data).toEqual({
+      phases_run: ['health'],
+      report: {
+        consolidated: 0,
+        promoted: 0,
+        issues_count: 1,
+        issues: [
+          {
+            code: 'HEALTH_BROKEN_LINK',
+            type: 'broken_link',
+            severity: 'error',
+            page: 'wiki/a.md',
+            description: 'Broken link to missing.md',
+          },
+        ],
+        commit_sha: null,
+      },
+      entries_consolidated: 0,
+      entries_promoted: 0,
     });
   });
 

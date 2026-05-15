@@ -103,6 +103,8 @@ describe('HealthPhase', () => {
     const broken = result.issues.filter((i) => i.type === HealthIssueType.BrokenLink);
     expect(broken).toHaveLength(1);
     expect(broken[0].page).toBe('wiki/a.md');
+    expect(broken[0].code).toBe('HEALTH_BROKEN_LINK');
+    expect(broken[0].severity).toBe('error');
     expect(broken[0].description).toContain('missing.md');
   });
 

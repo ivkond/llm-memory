@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { LintService, type LintPhase } from '../../src/services/lint-service.js';
-import { HealthIssue, HealthIssueType } from '../../src/domain/health-issue.js';
+import { HealthIssue, HealthIssueSeverity, HealthIssueType } from '../../src/domain/health-issue.js';
 import {
   GitConflictError,
   LlmUnavailableError,
@@ -290,7 +290,13 @@ describe('LintService', () => {
 
   it('honors explicit phases filter', async () => {
     const healthIssues = [
-      HealthIssue.create({ type: HealthIssueType.Orphan, page: 'wiki/a.md', description: 'x' }),
+      HealthIssue.create({
+        code: 'HEALTH_ORPHAN_PAGE',
+        type: HealthIssueType.Orphan,
+        severity: HealthIssueSeverity.Warning,
+        page: 'wiki/a.md',
+        description: 'x',
+      }),
     ];
     const consolidateSpy = vi.fn();
     const promoteSpy = vi.fn();
