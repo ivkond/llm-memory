@@ -146,6 +146,21 @@ function makePage(
   };
 }
 
+function mockAnswerAndVerifiedCheck(llmClient: FakeLlmClient, answer: string): void {
+  llmClient.completeSpy.mockResolvedValueOnce({
+    content: answer,
+    usage: { inputTokens: 10, outputTokens: 20 },
+  });
+  llmClient.completeSpy.mockResolvedValueOnce({
+    content: JSON.stringify({
+      status: 'verified',
+      reason: null,
+      unsupported_claims: [],
+    }),
+    usage: { inputTokens: 10, outputTokens: 20 },
+  });
+}
+
 describe('QueryService', () => {
   let searchEngine: FakeSearchEngine;
   let llmClient: FakeLlmClient;
@@ -166,18 +181,7 @@ describe('QueryService', () => {
       new SearchResult('wiki/a.md', 'A', 'alpha snippet', 0.9, 'hybrid'),
       new SearchResult('wiki/b.md', 'B', 'beta snippet', 0.7, 'bm25'),
     ];
-    llmClient.completeSpy.mockResolvedValueOnce({
-      content: 'Answer with refs [1].',
-      usage: { inputTokens: 10, outputTokens: 20 },
-    });
-    llmClient.completeSpy.mockResolvedValueOnce({
-      content: JSON.stringify({
-        status: 'verified',
-        reason: null,
-        unsupported_claims: [],
-      }),
-      usage: { inputTokens: 10, outputTokens: 20 },
-    });
+    mockAnswerAndVerifiedCheck(llmClient, 'Answer with refs [1].');
 
     const response = await service.query({ question: 'alpha?', cwd: '/tmp' });
 
@@ -194,18 +198,7 @@ describe('QueryService', () => {
     searchEngine.documents = [
       new SearchResult('wiki/patterns/testing.md', 'T', 'x', 0.9, 'hybrid'),
     ];
-    llmClient.completeSpy.mockResolvedValueOnce({
-      content: 'Scoped answer [1].',
-      usage: { inputTokens: 10, outputTokens: 20 },
-    });
-    llmClient.completeSpy.mockResolvedValueOnce({
-      content: JSON.stringify({
-        status: 'verified',
-        reason: null,
-        unsupported_claims: [],
-      }),
-      usage: { inputTokens: 10, outputTokens: 20 },
-    });
+    mockAnswerAndVerifiedCheck(llmClient, 'Scoped answer [1].');
     await service.query({ question: 'q', scope: 'wiki/patterns/' });
 
     expect(searchEngine.searchSpy).toHaveBeenCalledTimes(1);
@@ -221,18 +214,7 @@ describe('QueryService', () => {
       new SearchResult('wiki/patterns/testing.md', 'T', 'x', 0.9, 'hybrid'),
     ];
 
-    llmClient.completeSpy.mockResolvedValueOnce({
-      content: 'Project cascade answer [1].',
-      usage: { inputTokens: 10, outputTokens: 20 },
-    });
-    llmClient.completeSpy.mockResolvedValueOnce({
-      content: JSON.stringify({
-        status: 'verified',
-        reason: null,
-        unsupported_claims: [],
-      }),
-      usage: { inputTokens: 10, outputTokens: 20 },
-    });
+    mockAnswerAndVerifiedCheck(llmClient, 'Project cascade answer [1].');
     const response = await service.query({ question: 'q', cwd: '/tmp/cli-relay' });
 
     // Three search calls in cascade order
@@ -252,18 +234,7 @@ describe('QueryService', () => {
       new SearchResult('wiki/patterns/testing.md', 'T', 'y', 0.8, 'hybrid'),
     ];
 
-    llmClient.completeSpy.mockResolvedValueOnce({
-      content: 'Project answer [1].',
-      usage: { inputTokens: 10, outputTokens: 20 },
-    });
-    llmClient.completeSpy.mockResolvedValueOnce({
-      content: JSON.stringify({
-        status: 'verified',
-        reason: null,
-        unsupported_claims: [],
-      }),
-      usage: { inputTokens: 10, outputTokens: 20 },
-    });
+    mockAnswerAndVerifiedCheck(llmClient, 'Project answer [1].');
     const response = await service.query({ question: 'q', cwd: '/tmp/cli-relay' });
 
     expect(response.scope_used).toBe('projects/cli-relay/');
@@ -315,18 +286,7 @@ describe('QueryService', () => {
     searchEngine.lastIndexedMap['wiki/a.md'] = '2026-04-09T00:00:00Z';
     searchEngine.documents = [new SearchResult('wiki/a.md', 'A', 'body', 0.9, 'hybrid')];
 
-    llmClient.completeSpy.mockResolvedValueOnce({
-      content: 'Stale sync [1].',
-      usage: { inputTokens: 10, outputTokens: 20 },
-    });
-    llmClient.completeSpy.mockResolvedValueOnce({
-      content: JSON.stringify({
-        status: 'verified',
-        reason: null,
-        unsupported_claims: [],
-      }),
-      usage: { inputTokens: 10, outputTokens: 20 },
-    });
+    mockAnswerAndVerifiedCheck(llmClient, 'Stale sync [1].');
     await service.query({ question: 'q' });
 
     expect(searchEngine.indexSpy).toHaveBeenCalled();
@@ -344,18 +304,7 @@ describe('QueryService', () => {
     searchEngine.lastIndexedMap['wiki/a.md'] = '2026-04-10T12:00:00Z';
     searchEngine.documents = [new SearchResult('wiki/a.md', 'A', 'body', 0.9, 'hybrid')];
 
-    llmClient.completeSpy.mockResolvedValueOnce({
-      content: 'Fresh file [1].',
-      usage: { inputTokens: 10, outputTokens: 20 },
-    });
-    llmClient.completeSpy.mockResolvedValueOnce({
-      content: JSON.stringify({
-        status: 'verified',
-        reason: null,
-        unsupported_claims: [],
-      }),
-      usage: { inputTokens: 10, outputTokens: 20 },
-    });
+    mockAnswerAndVerifiedCheck(llmClient, 'Fresh file [1].');
     await service.query({ question: 'q' });
     expect(searchEngine.indexSpy).not.toHaveBeenCalled();
   });
@@ -367,18 +316,7 @@ describe('QueryService', () => {
     searchEngine.lastIndexedMap['wiki/b.md'] = '2026-04-10T12:00:00Z';
     searchEngine.documents = [new SearchResult('wiki/a.md', 'A', 'body', 0.9, 'hybrid')];
 
-    llmClient.completeSpy.mockResolvedValueOnce({
-      content: 'Bulk lookup [1].',
-      usage: { inputTokens: 10, outputTokens: 20 },
-    });
-    llmClient.completeSpy.mockResolvedValueOnce({
-      content: JSON.stringify({
-        status: 'verified',
-        reason: null,
-        unsupported_claims: [],
-      }),
-      usage: { inputTokens: 10, outputTokens: 20 },
-    });
+    mockAnswerAndVerifiedCheck(llmClient, 'Bulk lookup [1].');
     await service.query({ question: 'q' });
 
     expect(searchEngine.lastIndexedManySpy).toHaveBeenCalledTimes(2);
@@ -391,18 +329,7 @@ describe('QueryService', () => {
     // No lastIndexedMap entry -> null
     searchEngine.documents = [new SearchResult('wiki/new.md', 'New', 'body', 0.9, 'hybrid')];
 
-    llmClient.completeSpy.mockResolvedValueOnce({
-      content: 'Unindexed file [1].',
-      usage: { inputTokens: 10, outputTokens: 20 },
-    });
-    llmClient.completeSpy.mockResolvedValueOnce({
-      content: JSON.stringify({
-        status: 'verified',
-        reason: null,
-        unsupported_claims: [],
-      }),
-      usage: { inputTokens: 10, outputTokens: 20 },
-    });
+    mockAnswerAndVerifiedCheck(llmClient, 'Unindexed file [1].');
     await service.query({ question: 'q' });
     const indexed = searchEngine.indexSpy.mock.calls.map((c) => c[0].path);
     expect(indexed).toContain('wiki/new.md');
@@ -415,36 +342,14 @@ describe('QueryService', () => {
       (_, i) => new SearchResult(`wiki/${i}.md`, `T${i}`, `e${i}`, 1 - i * 0.01, 'hybrid'),
     );
 
-    llmClient.completeSpy.mockResolvedValueOnce({
-      content: 'Capped citations [1].',
-      usage: { inputTokens: 10, outputTokens: 20 },
-    });
-    llmClient.completeSpy.mockResolvedValueOnce({
-      content: JSON.stringify({
-        status: 'verified',
-        reason: null,
-        unsupported_claims: [],
-      }),
-      usage: { inputTokens: 10, outputTokens: 20 },
-    });
+    mockAnswerAndVerifiedCheck(llmClient, 'Capped citations [1].');
     const response = await service.query({ question: 'q', maxResults: 25 });
     expect(response.citations.length).toBe(20);
   });
 
   it('test_query_answerRespectsMaxTokens', async () => {
     searchEngine.documents = [new SearchResult('wiki/a.md', 'A', 'alpha', 0.9, 'hybrid')];
-    llmClient.completeSpy.mockResolvedValueOnce({
-      content: 'Token bounded answer [1].',
-      usage: { inputTokens: 10, outputTokens: 20 },
-    });
-    llmClient.completeSpy.mockResolvedValueOnce({
-      content: JSON.stringify({
-        status: 'verified',
-        reason: null,
-        unsupported_claims: [],
-      }),
-      usage: { inputTokens: 10, outputTokens: 20 },
-    });
+    mockAnswerAndVerifiedCheck(llmClient, 'Token bounded answer [1].');
     await service.query({ question: 'q', maxTokens: 512 });
 
     expect(llmClient.lastRequest).not.toBeNull();
@@ -509,18 +414,7 @@ describe('QueryService', () => {
       { length: 25 },
       (_, i) => new SearchResult(`wiki/${i}.md`, `T${i}`, `e${i}`, 1 - i * 0.01, 'hybrid'),
     );
-    llmClient.completeSpy.mockResolvedValueOnce({
-      content: 'Claim [20].',
-      usage: { inputTokens: 10, outputTokens: 20 },
-    });
-    llmClient.completeSpy.mockResolvedValueOnce({
-      content: JSON.stringify({
-        status: 'verified',
-        reason: null,
-        unsupported_claims: [],
-      }),
-      usage: { inputTokens: 10, outputTokens: 20 },
-    });
+    mockAnswerAndVerifiedCheck(llmClient, 'Claim [20].');
 
     const response = await service.query({ question: 'q', maxResults: 25 });
 
@@ -528,5 +422,23 @@ describe('QueryService', () => {
     const verifierRequest = llmClient.completeSpy.mock.calls[1]?.[0];
     expect(verifierRequest?.messages[0]?.content).toContain('[20] T19 (wiki/19.md)');
     expect(verifierRequest?.messages[0]?.content).not.toContain('[21]');
+  });
+
+  it('test_query_verifierOversizedOutput_returnsUnknown', async () => {
+    searchEngine.documents = [new SearchResult('wiki/a.md', 'A', 'alpha', 0.9, 'hybrid')];
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: 'Claim [1].',
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
+    llmClient.completeSpy.mockResolvedValueOnce({
+      content: 'x'.repeat(20001),
+      usage: { inputTokens: 10, outputTokens: 20 },
+    });
+
+    const response = await service.query({ question: 'q' });
+
+    expect(response.answer).toBe('');
+    expect(response.citation_check.status).toBe('unknown');
+    expect(response.citation_check.reason).toBe('verifier_malformed_output');
   });
 });

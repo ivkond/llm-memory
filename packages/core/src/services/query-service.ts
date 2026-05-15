@@ -60,6 +60,7 @@ const VERIFIER_SYSTEM_PROMPT =
   'You verify whether an answer is supported by numbered citation excerpts. ' +
   'Return strict JSON only, with keys: status, reason, unsupported_claims. ' +
   "status must be 'verified' or 'unsupported'.";
+const MAX_VERIFIER_RESPONSE_CHARS = 20_000;
 
 /**
  * Orchestrates `wiki_query`:
@@ -318,6 +319,9 @@ export class QueryService {
   }
 
   private parseVerifierResponse(content: string): CitationFaithfulnessCheck | null {
+    if (content.length > MAX_VERIFIER_RESPONSE_CHARS) {
+      return null;
+    }
     let parsed: unknown;
     try {
       parsed = JSON.parse(content);
