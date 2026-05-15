@@ -278,6 +278,13 @@ function isIdentifierChar(char) {
   return /[A-Za-z0-9_$]/.test(char);
 }
 
+function isKeywordAt(source, index, keyword) {
+  if (!source.startsWith(keyword, index)) {
+    return false;
+  }
+  return !isIdentifierChar(source[index - 1] ?? '') && !isIdentifierChar(source[index + keyword.length] ?? '');
+}
+
 function skipWhitespace(source, index) {
   let cursor = index;
   while (cursor < source.length && /\s/.test(source[cursor])) {
@@ -377,14 +384,16 @@ function extractRuntimeImportSpecifiers(source) {
         }
       } else {
         while (cursor < source.length) {
-          if (source.startsWith('from', cursor) && !isIdentifierChar(source[cursor + 4] ?? '')) {
-            cursor = skipWhitespace(source, cursor + 4);
-            const parsed = parseStringLiteral(source, cursor);
+          if (isKeywordAt(source, cursor, 'from')) {
+            const fromTargetCursor = skipWhitespace(source, cursor + 4);
+            const parsed = parseStringLiteral(source, fromTargetCursor);
             if (parsed) {
               specifiers.add(parsed.value);
               cursor = parsed.end;
+              break;
             }
-            break;
+            cursor += 4;
+            continue;
           }
           if (source[cursor] === '\n' || source[cursor] === ';') {
             break;
@@ -403,14 +412,16 @@ function extractRuntimeImportSpecifiers(source) {
     if (exportBoundary) {
       let cursor = index + 6;
       while (cursor < source.length) {
-        if (source.startsWith('from', cursor) && !isIdentifierChar(source[cursor + 4] ?? '')) {
-          cursor = skipWhitespace(source, cursor + 4);
-          const parsed = parseStringLiteral(source, cursor);
+        if (isKeywordAt(source, cursor, 'from')) {
+          const fromTargetCursor = skipWhitespace(source, cursor + 4);
+          const parsed = parseStringLiteral(source, fromTargetCursor);
           if (parsed) {
             specifiers.add(parsed.value);
             cursor = parsed.end;
+            break;
           }
-          break;
+          cursor += 4;
+          continue;
         }
         if (source[cursor] === '\n' || source[cursor] === ';') {
           break;

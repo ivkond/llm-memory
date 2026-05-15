@@ -218,6 +218,48 @@ test('test_validateUndeclaredRuntimeImports_whenCompactImportSyntaxIsUndeclared_
   );
 });
 
+test('test_validateUndeclaredRuntimeImports_whenFromUsedAsImportBinding_detectsRealFromSpecifier', () => {
+  const packedManifest = {
+    name: '@ivkond-llm-wiki/cli',
+    dependencies: {},
+  };
+
+  const jsFiles = {
+    'package/dist/index.js': 'import { from as f } from "left-pad";\n',
+  };
+
+  assert.throws(
+    () =>
+      validateUndeclaredRuntimeImports({
+        packageName: packedManifest.name,
+        packedManifest,
+        jsFiles,
+      }),
+    /undeclared runtime imports/,
+  );
+});
+
+test('test_validateUndeclaredRuntimeImports_whenFromUsedAsExportBinding_detectsRealFromSpecifier', () => {
+  const packedManifest = {
+    name: '@ivkond-llm-wiki/cli',
+    dependencies: {},
+  };
+
+  const jsFiles = {
+    'package/dist/index.js': 'export { from as f } from "left-pad";\n',
+  };
+
+  assert.throws(
+    () =>
+      validateUndeclaredRuntimeImports({
+        packageName: packedManifest.name,
+        packedManifest,
+        jsFiles,
+      }),
+    /undeclared runtime imports/,
+  );
+});
+
 test('test_validateUndeclaredRuntimeImports_whenImportWordsAppearInString_doesNotThrow', () => {
   const packedManifest = {
     name: '@ivkond-llm-wiki/cli',
