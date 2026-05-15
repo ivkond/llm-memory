@@ -15,11 +15,19 @@ import {
 } from './release-metadata.mjs';
 
 function runCommand(command, args, options = {}) {
-  const result = spawnSync(command, args, {
+  let result = spawnSync(command, args, {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     ...options,
   });
+
+  if (result.error && result.error.code === 'ENOENT' && command === 'pnpm') {
+    result = spawnSync('corepack', ['pnpm', ...args], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      ...options,
+    });
+  }
 
   if (result.status !== 0) {
     const output = [result.stderr, result.stdout].filter(Boolean).join('\n').trim();
@@ -266,6 +274,35 @@ function extractPackageName(specifier) {
   return specifier.split('/')[0];
 }
 
+function collectSpecifiers(source, pattern, collector) {
+  let match = pattern.exec(source);
+  while (match !== null) {
+    const specifier = match[1];
+    if (specifier) {
+      collector.add(specifier);
+    }
+    match = pattern.exec(source);
+  }
+  pattern.lastIndex = 0;
+}
+
+function extractRuntimeImportSpecifiers(source) {
+  const specifiers = new Set();
+  const patterns = [
+    /^\s*import\s+['"]([^'"]+)['"]\s*;?\s*$/gm,
+    /^\s*import\s+.+?\s+from\s+['"]([^'"]+)['"]\s*;?\s*$/gm,
+    /^\s*export\s+.+?\s+from\s+['"]([^'"]+)['"]\s*;?\s*$/gm,
+    /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g,
+    /\brequire\(\s*['"]([^'"]+)['"]\s*\)/g,
+  ];
+
+  for (const pattern of patterns) {
+    collectSpecifiers(source, pattern, specifiers);
+  }
+
+  return specifiers;
+}
+
 export function validateUndeclaredRuntimeImports({ packageName, packedManifest, jsFiles }) {
   const declaredDependencies = new Set([
     ...Object.keys(packedManifest.dependencies ?? {}),
@@ -280,20 +317,15 @@ export function validateUndeclaredRuntimeImports({ packageName, packedManifest, 
   );
 
   const unresolved = new Set();
-  const importRegex =
-    /(?:^|[;\n\r])\s*import\s+(?:[^'"`;\n]+?\s+from\s*)?['"]([^'"]+)['"]\s*;?|(?:^|[;\n\r])\s*export\s+[^'"`;\n]+?\s+from\s*['"]([^'"]+)['"]\s*;?|import\(\s*['"]([^'"]+)['"]\s*\)|require\(\s*['"]([^'"]+)['"]\s*\)/g;
 
   for (const source of Object.values(jsFiles)) {
-    let match = importRegex.exec(source);
-    while (match !== null) {
-      const specifier = match[1] ?? match[2] ?? match[3] ?? match[4];
+    const specifiers = extractRuntimeImportSpecifiers(source);
+    for (const specifier of specifiers) {
       if (!specifier || specifier.startsWith('.') || specifier.startsWith('/')) {
-        match = importRegex.exec(source);
         continue;
       }
 
       if (builtins.has(specifier)) {
-        match = importRegex.exec(source);
         continue;
       }
 
@@ -301,10 +333,7 @@ export function validateUndeclaredRuntimeImports({ packageName, packedManifest, 
       if (!declaredDependencies.has(packageSpecifier)) {
         unresolved.add(packageSpecifier);
       }
-
-      match = importRegex.exec(source);
     }
-    importRegex.lastIndex = 0;
   }
 
   if (unresolved.size > 0) {

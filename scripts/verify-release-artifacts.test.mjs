@@ -197,6 +197,25 @@ test('test_validateUndeclaredRuntimeImports_whenSideEffectImportIsUndeclared_thr
   );
 });
 
+test('test_validateUndeclaredRuntimeImports_whenImportWordsAppearInString_doesNotThrow', () => {
+  const packedManifest = {
+    name: '@ivkond-llm-wiki/cli',
+    dependencies: {},
+  };
+
+  const jsFiles = {
+    'package/dist/index.js': "const msg = \"import 'left-pad' from docs\";\n",
+  };
+
+  assert.doesNotThrow(() =>
+    validateUndeclaredRuntimeImports({
+      packageName: packedManifest.name,
+      packedManifest,
+      jsFiles,
+    }),
+  );
+});
+
 test('test_loadReleaseManifests_whenReleasePackageDirectoryMissing_throws', async () => {
   const rootDir = await mkdtemp(path.join(tmpdir(), 'llm-wiki-release-manifests-'));
   await writeJson(path.join(rootDir, 'packages', 'core', 'package.json'), {
