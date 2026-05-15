@@ -99,6 +99,25 @@ describe('RuVectorSearchEngine', () => {
     await writeFile(bm25File, JSON.stringify(meta), 'utf-8');
   }
 
+  async function mutateBm25Meta(
+    mutate: (meta: {
+      version: 1;
+      index: unknown;
+      lastIndexedAt: Record<string, string>;
+      bm25Paths: string[];
+      vectorPaths: string[];
+    }) => void,
+  ): Promise<void> {
+    const parsed = await readBm25Meta();
+    mutate(parsed);
+    await writeBm25Meta(parsed);
+  }
+
+  async function reopenAndInspect() {
+    const reopened = new RuVectorSearchEngine(dbPath, embeddings);
+    return reopened.inspectIndex();
+  }
+
   it('test_index_then_search_findsDocument', async () => {
     await engine.index({
       path: 'wiki/patterns/testing.md',
@@ -402,16 +421,36 @@ describe('RuVectorSearchEngine', () => {
     expect(matchingPaths[0].title).toBe('New title');
   });
 
-  it('test_inspectIndex_reportsBm25PathEvenWhenIndexedAtMissing', async () => {
+  it.each([
+    {
+      name: 'reports bm25 path even when indexedAt entry is missing',
+      mutate: async () => {
+        await mutateBm25Meta((parsed) => {
+          delete parsed.lastIndexedAt['wiki/a.md'];
+        });
+      },
+      assert: (snapshot: Awaited<ReturnType<typeof reopenAndInspect>>) => {
+        expect(snapshot.bm25Paths).toContain('wiki/a.md');
+        expect(snapshot.indexedAt['wiki/a.md']).toBeUndefined();
+      },
+    },
+    {
+      name: 'distinguishes indexedAt-only path',
+      mutate: async () => {
+        await mutateBm25Meta((parsed) => {
+          parsed.lastIndexedAt['wiki/indexed-only.md'] = '2026-04-10T00:00:00.000Z';
+        });
+      },
+      assert: (snapshot: Awaited<ReturnType<typeof reopenAndInspect>>) => {
+        expect(snapshot.indexedAt['wiki/indexed-only.md']).toBe('2026-04-10T00:00:00.000Z');
+        expect(snapshot.bm25Paths).not.toContain('wiki/indexed-only.md');
+      },
+    },
+  ])('test_inspectIndex_$name', async ({ mutate, assert }) => {
     await seedAlphaDoc();
-    const parsed = await readBm25Meta();
-    delete parsed.lastIndexedAt['wiki/a.md'];
-    await writeBm25Meta(parsed);
-
-    const reopened = new RuVectorSearchEngine(dbPath, embeddings);
-    const snapshot = await reopened.inspectIndex();
-    expect(snapshot.bm25Paths).toContain('wiki/a.md');
-    expect(snapshot.indexedAt['wiki/a.md']).toBeUndefined();
+    await mutate();
+    const snapshot = await reopenAndInspect();
+    assert(snapshot);
   });
 
   it('test_inspectIndex_reportsMissingVectorForKnownBm25Path', async () => {
@@ -426,22 +465,9 @@ describe('RuVectorSearchEngine', () => {
     });
     await vectorDb.delete('wiki/a.md');
 
-    const reopened = new RuVectorSearchEngine(dbPath, embeddings);
-    const snapshot = await reopened.inspectIndex();
+    const snapshot = await reopenAndInspect();
     expect(snapshot.bm25Paths).toContain('wiki/a.md');
     expect(snapshot.vectorPaths).not.toContain('wiki/a.md');
-  });
-
-  it('test_inspectIndex_distinguishesIndexedAtOnlyPath', async () => {
-    await seedAlphaDoc();
-    const parsed = await readBm25Meta();
-    parsed.lastIndexedAt['wiki/indexed-only.md'] = '2026-04-10T00:00:00.000Z';
-    await writeBm25Meta(parsed);
-
-    const reopened = new RuVectorSearchEngine(dbPath, embeddings);
-    const snapshot = await reopened.inspectIndex();
-    expect(snapshot.indexedAt['wiki/indexed-only.md']).toBe('2026-04-10T00:00:00.000Z');
-    expect(snapshot.bm25Paths).not.toContain('wiki/indexed-only.md');
   });
 
   it('test_inspectIndex_flagsCorruptMetadataFile', async () => {
@@ -450,8 +476,7 @@ describe('RuVectorSearchEngine', () => {
     const bm25File = path.join(dbPath, 'bm25.json');
     await writeFile(bm25File, '{"version":1,', 'utf-8');
 
-    const reopened = new RuVectorSearchEngine(dbPath, embeddings);
-    const snapshot = await reopened.inspectIndex();
+    const snapshot = await reopenAndInspect();
     expect(snapshot.metadataCorrupted).toBe(true);
     expect(snapshot.bm25Paths).toEqual([]);
     expect(snapshot.vectorPaths).toEqual([]);
