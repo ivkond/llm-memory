@@ -36,7 +36,7 @@ import type { WikiPageData } from '../../src/domain/wiki-page.js';
 class FakeSourceReader implements ISourceReader {
   public readSpy = vi.fn();
   public response: SourceContent | Error = {
-    uri: '/tmp/src.md',
+    uri: 'testdata/source.md',
     content: '# Source\n\nBody.',
     mimeType: 'text/markdown',
     bytes: 20,
@@ -110,6 +110,7 @@ class FakeVersionControl implements IVersionControl {
   public squashSpy = vi.fn();
   public mergeSpy = vi.fn<(p: string) => void>();
   public mergeResponse: string | Error = 'abc1234567';
+  public createWorktreeError: Error | null = null;
   public onMergeSuccess: (worktreePath: string) => void = () => {};
   private worktreeCounter = 0;
 
@@ -120,6 +121,7 @@ class FakeVersionControl implements IVersionControl {
     return false;
   }
   async createWorktree(name: string): Promise<WorktreeInfo> {
+    if (this.createWorktreeError) throw this.createWorktreeError;
     this.worktreeCounter += 1;
     this.createSpy(name);
     return {
@@ -214,6 +216,7 @@ describe('IngestService', () => {
   let worktreeStores: FakeFileStore[];
   let factory: FileStoreFactory;
   let stateStore: FakeStateStore;
+  let operationJournal: { append: ReturnType<typeof vi.fn>; load: ReturnType<typeof vi.fn> };
   let service: IngestService;
 
   beforeEach(() => {
@@ -229,6 +232,10 @@ describe('IngestService', () => {
       return s;
     };
     stateStore = new FakeStateStore();
+    operationJournal = {
+      append: vi.fn(async () => undefined),
+      load: vi.fn(async () => ({ storagePath: '.local/operations', disabledReason: null, degradedReasons: [], records: [] })),
+    };
     // Simulate the effect of a real git merge: files written to the
     // worktree become visible in the main store after mergeWorktree
     // succeeds. Real FsFileStore + GitVersionControl gives this for free
@@ -241,13 +248,13 @@ describe('IngestService', () => {
         mainStore.files[p] = content;
       }
     };
-    service = new IngestService(sourceReader, llm, search, vcs, mainStore, factory, stateStore);
+    service = new IngestService(sourceReader, llm, search, vcs, mainStore, factory, stateStore, operationJournal);
   });
 
   it('test_ingest_validSource_createsWikiPagesInWorktree', async () => {
     // The main store is empty so the only writes must land on the worktree
     // store — proving INV-13 (ingest never touches main directly).
-    await service.ingest({ source: '/tmp/src.md' });
+    await service.ingest({ source: 'testdata/source.md' });
 
     expect(worktreeStores.length).toBe(1);
     expect(worktreeStores[0].writeSpy).toHaveBeenCalled();
@@ -258,23 +265,27 @@ describe('IngestService', () => {
 
   it('test_ingest_sourceOverTokenLimit_throwsSourceParseError', async () => {
     sourceReader.response = {
-      uri: '/tmp/huge.md',
+      uri: 'testdata/huge.md',
       content: 'x',
       bytes: 1,
       estimatedTokens: MAX_SOURCE_TOKENS + 1,
     };
-    await expect(service.ingest({ source: '/tmp/huge.md' })).rejects.toBeInstanceOf(
+    await expect(service.ingest({ source: 'testdata/huge.md' })).rejects.toBeInstanceOf(
       SourceParseError,
     );
     expect(vcs.createSpy).not.toHaveBeenCalled();
+    expect(operationJournal.append).toHaveBeenCalledTimes(2);
+    expect(operationJournal.append.mock.calls[1][0].status).toBe('failed');
   });
 
   it('test_ingest_projectScopeProvided_throwsProjectScopeUnsupported', async () => {
-    await expect(service.ingest({ source: '/tmp/src.md', project: 'acme' })).rejects.toBeInstanceOf(
+    await expect(service.ingest({ source: 'testdata/source.md', project: 'acme' })).rejects.toBeInstanceOf(
       ProjectScopeUnsupportedError,
     );
     expect(sourceReader.readSpy).not.toHaveBeenCalled();
     expect(vcs.createSpy).not.toHaveBeenCalled();
+    expect(operationJournal.append).toHaveBeenCalledTimes(2);
+    expect(operationJournal.append.mock.calls[1][0].status).toBe('failed');
   });
 
   it('test_ingest_sourceMissing_throwsSourceNotFoundError', async () => {
@@ -283,12 +294,22 @@ describe('IngestService', () => {
       SourceNotFoundError,
     );
     expect(vcs.createSpy).not.toHaveBeenCalled();
+    expect(operationJournal.append).toHaveBeenCalledTimes(2);
+    expect(operationJournal.append.mock.calls[1][0].status).toBe('failed');
+  });
+
+  it('test_ingest_worktreeCreateFails_recordsTerminalFailed', async () => {
+    vcs.createWorktreeError = new Error('cannot create worktree');
+    await expect(service.ingest({ source: 'testdata/source.md' })).rejects.toThrow('cannot create worktree');
+    expect(operationJournal.append).toHaveBeenCalledTimes(2);
+    expect(operationJournal.append.mock.calls[0][0].status).toBe('running');
+    expect(operationJournal.append.mock.calls[1][0].status).toBe('failed');
   });
 
   it('test_ingest_llmFails_worktreeDiscarded_mainBranchUntouched_stateUnchanged', async () => {
     llm.response = new Error('model down');
 
-    await expect(service.ingest({ source: '/tmp/src.md' })).rejects.toBeInstanceOf(
+    await expect(service.ingest({ source: 'testdata/source.md' })).rejects.toBeInstanceOf(
       LlmUnavailableError,
     );
 
@@ -301,7 +322,7 @@ describe('IngestService', () => {
   });
 
   it('test_ingest_success_pagesCommittedSquashedMerged_thenReindexed_stateUpdated', async () => {
-    const result = await service.ingest({ source: '/tmp/src.md' });
+    const result = await service.ingest({ source: 'testdata/source.md' });
 
     expect(result.pages_created).toEqual(['wiki/tools/postgresql.md']);
     expect(vcs.commitInWorktreeSpy).toHaveBeenCalledTimes(1);
@@ -326,12 +347,14 @@ describe('IngestService', () => {
   it('test_ingest_mergeConflict_worktreePreserved_returnsPath_stateUnchanged', async () => {
     vcs.mergeResponse = new GitConflictError('/tmp/repo/.worktrees/ingest-1', 'conflict.md');
 
-    await expect(service.ingest({ source: '/tmp/src.md' })).rejects.toBeInstanceOf(
+    await expect(service.ingest({ source: 'testdata/source.md' })).rejects.toBeInstanceOf(
       GitConflictError,
     );
 
     expect(vcs.removeSpy).not.toHaveBeenCalled();
     expect(stateStore.updateSpy).not.toHaveBeenCalled();
+    const statuses = operationJournal.append.mock.calls.map((c) => c[0].status);
+    expect(statuses).toContain('blocked_or_conflict');
   });
 
   // ---- Path validation (Problem 1 from blocksorg review) -------------------
@@ -355,7 +378,7 @@ describe('IngestService', () => {
   ])('test_ingest_rejectsMaliciousPath_%s', async (badPath, _description) => {
     llm.response = [{ path: badPath, title: 'Evil', content: '# oops' }];
 
-    await expect(service.ingest({ source: '/tmp/src.md' })).rejects.toBeInstanceOf(
+    await expect(service.ingest({ source: 'testdata/source.md' })).rejects.toBeInstanceOf(
       IngestPathViolationError,
     );
 
@@ -382,7 +405,7 @@ describe('IngestService', () => {
       { path: 'wiki/tools/ok.md', title: 'OK', content: '## ok' },
     ];
 
-    await expect(service.ingest({ source: '/tmp/src.md' })).rejects.toBeInstanceOf(
+    await expect(service.ingest({ source: 'testdata/source.md' })).rejects.toBeInstanceOf(
       IngestPathViolationError,
     );
     if (worktreeStores.length > 0) {
@@ -398,7 +421,7 @@ describe('IngestService', () => {
       { path: 'projects/cli-relay_v2/architecture.md', title: 'A', content: '## ok' },
     ];
 
-    const result = await service.ingest({ source: '/tmp/src.md' });
+    const result = await service.ingest({ source: 'testdata/source.md' });
     expect(result.pages_created.length + result.pages_updated.length).toBe(2);
     expect(vcs.mergeSpy).toHaveBeenCalled();
     expect(stateStore.updateSpy).toHaveBeenCalled();
@@ -406,7 +429,7 @@ describe('IngestService', () => {
 
   it('test_ingest_rerunSameSource_updatesExistingPage_noDuplicate', async () => {
     // First run — the LLM produces one page.
-    await service.ingest({ source: '/tmp/src.md' });
+    await service.ingest({ source: 'testdata/source.md' });
     expect(worktreeStores[0].writeSpy).toHaveBeenCalledTimes(1);
 
     // Main store now contains the page (simulate the merge effect)
@@ -415,7 +438,7 @@ describe('IngestService', () => {
 
     // Second run — same LLM response. The service must overwrite the existing
     // page in the (fresh) worktree, not create a sibling.
-    const result = await service.ingest({ source: '/tmp/src.md' });
+    const result = await service.ingest({ source: 'testdata/source.md' });
 
     expect(worktreeStores.length).toBe(2);
     const secondWrites = worktreeStores[1].writeSpy.mock.calls.map((c) => c[0]);
@@ -424,5 +447,17 @@ describe('IngestService', () => {
     // reported as updated, not created, and must appear exactly once.
     expect(result.pages_created).toEqual([]);
     expect(result.pages_updated).toEqual(['wiki/tools/postgresql.md']);
+  });
+
+  it('test_ingest_journalAppendFailsAfterMerge_surfacesErrorWithoutRollback', async () => {
+    operationJournal.append.mockImplementation(async (record: { status: string; type: string }) => {
+      if (record.type === 'ingest' && record.status === 'succeeded') {
+        throw new Error('journal post-merge failure');
+      }
+    });
+
+    await expect(service.ingest({ source: 'testdata/source.md' })).rejects.toThrow('journal post-merge failure');
+    expect(vcs.mergeSpy).toHaveBeenCalledTimes(1);
+    expect(stateStore.updateSpy).toHaveBeenCalledTimes(1);
   });
 });

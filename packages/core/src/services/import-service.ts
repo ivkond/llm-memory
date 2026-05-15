@@ -2,8 +2,10 @@ import { ImportReaderNotRegisteredError } from '../domain/errors.js';
 import { VerbatimEntry } from '../domain/verbatim-entry.js';
 import type { AgentMemoryItem } from '../domain/agent-memory-item.js';
 import type { IAgentMemoryReader } from '../ports/agent-memory-reader.js';
+import type { IOperationJournal } from '../ports/operation-journal.js';
 import type { IVerbatimStore } from '../ports/verbatim-store.js';
 import type { IStateStore } from '../ports/state-store.js';
+import { appendOperation, createOperationContext, journalErrorMetadata } from './operation-journal.js';
 
 export interface AgentConfig {
   enabled: boolean;
@@ -30,6 +32,7 @@ export interface ImportServiceDeps {
   readers: Map<string, IAgentMemoryReader>;
   verbatimStore: IVerbatimStore;
   stateStore: IStateStore;
+  operationJournal?: IOperationJournal;
   agentConfigs: Record<string, AgentConfig>;
   now?: () => Date;
   idGenerator?: (item: AgentMemoryItem) => string;
@@ -46,31 +49,42 @@ export class ImportService {
   }
 
   async importAll(req: ImportRequest): Promise<ImportResponse> {
-    const selected = this.resolveAgents(req.agents);
+    const op = createOperationContext('import', {
+      request: { source: 'cli_or_mcp', actor: 'import-service' },
+    });
+    await appendOperation(this.deps.operationJournal, op, 'running');
+    try {
+      const selected = this.resolveAgents(req.agents);
+      const state = await this.deps.stateStore.load();
+      const results: AgentImportResult[] = [];
+      const stateUpdates: Record<string, { last_import: string }> = {};
 
-    const state = await this.deps.stateStore.load();
-    const results: AgentImportResult[] = [];
-    const stateUpdates: Record<string, { last_import: string }> = {};
-
-    for (const agent of selected) {
-      const reader = this.readerForEnabledAgent(agent);
-      if (!reader) continue;
-      const config = this.deps.agentConfigs[agent];
-      const since = state.imports[agent]?.last_import ?? null;
-      const result = await this.sweepAgent(agent, reader, config.paths, since);
-      results.push(result);
-      if (!result.error) {
-        stateUpdates[agent] = { last_import: this.now().toISOString() };
+      for (const agent of selected) {
+        const reader = this.readerForEnabledAgent(agent);
+        if (!reader) continue;
+        const config = this.deps.agentConfigs[agent];
+        const since = state.imports[agent]?.last_import ?? null;
+        const result = await this.sweepAgent(agent, reader, config.paths, since);
+        results.push(result);
+        if (!result.error) {
+          stateUpdates[agent] = { last_import: this.now().toISOString() };
+        }
       }
-    }
 
-    if (Object.keys(stateUpdates).length > 0) {
-      await this.deps.stateStore.update({
-        imports: { ...state.imports, ...stateUpdates },
+      if (Object.keys(stateUpdates).length > 0) {
+        await this.deps.stateStore.update({
+          imports: { ...state.imports, ...stateUpdates },
+        });
+      }
+
+      await appendOperation(this.deps.operationJournal, op, 'succeeded', {
+        touchedPaths: results.flatMap((r) => (r.error ? [] : [`log/${r.agent}/raw`])),
       });
+      return { agents: results };
+    } catch (error) {
+      await appendOperation(this.deps.operationJournal, op, 'failed', { error: journalErrorMetadata(error) });
+      throw error;
     }
-
-    return { agents: results };
   }
 
   private readerForEnabledAgent(agent: string): IAgentMemoryReader | null {

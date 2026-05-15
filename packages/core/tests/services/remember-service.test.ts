@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RememberService } from '../../src/services/remember-service.js';
 import { SanitizationService } from '../../src/services/sanitization-service.js';
 import type { IFileStore } from '../../src/ports/file-store.js';
+import type { IOperationJournal } from '../../src/ports/operation-journal.js';
 import type { IVerbatimStore } from '../../src/ports/verbatim-store.js';
 
 function createMocks() {
@@ -37,14 +38,19 @@ function createMocks() {
 describe('RememberService', () => {
   let fileStore: IFileStore;
   let verbatimStore: IVerbatimStore;
+  let operationJournal: IOperationJournal;
   let service: RememberService;
 
   beforeEach(() => {
     const mocks = createMocks();
     fileStore = mocks.fileStore;
     verbatimStore = mocks.verbatimStore;
+    operationJournal = {
+      append: vi.fn(async () => undefined),
+      load: vi.fn(async () => ({ storagePath: '.local/operations', disabledReason: null, degradedReasons: [], records: [] })),
+    };
     const sanitizer = new SanitizationService({ enabled: true, mode: 'redact' });
-    service = new RememberService(fileStore, verbatimStore, sanitizer);
+    service = new RememberService(fileStore, verbatimStore, sanitizer, operationJournal);
   });
 
   it('test_rememberFact_validContent_writesFile', async () => {
@@ -129,5 +135,31 @@ describe('RememberService', () => {
     expect(second.file).toBe(first.file);
     expect(second.facts_count).toBe(first.facts_count);
     expect(verbatimStore.writeEntry).toHaveBeenCalledOnce();
+  });
+
+  it('test_rememberFact_journalsRunningAndSucceeded', async () => {
+    await service.rememberFact({
+      content: 'fact',
+      agent: 'claude-code',
+      sessionId: 's1',
+    });
+    const append = operationJournal.append as ReturnType<typeof vi.fn>;
+    expect(append).toHaveBeenCalledTimes(2);
+    expect(append.mock.calls[0][0].type).toBe('remember_fact');
+    expect(append.mock.calls[0][0].status).toBe('running');
+    expect(append.mock.calls[1][0].status).toBe('succeeded');
+  });
+
+  it('test_rememberFact_journalAppendFailsBeforeWrite_failsClosed', async () => {
+    const append = operationJournal.append as ReturnType<typeof vi.fn>;
+    append.mockRejectedValueOnce(new Error('journal down'));
+    await expect(
+      service.rememberFact({
+        content: 'fact',
+        agent: 'claude-code',
+        sessionId: 's1',
+      }),
+    ).rejects.toThrow('journal down');
+    expect(verbatimStore.writeEntry).not.toHaveBeenCalled();
   });
 });

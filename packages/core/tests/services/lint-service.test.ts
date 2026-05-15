@@ -106,6 +106,7 @@ class FakeVersionControl implements IVersionControl {
   public mergeSpy = vi.fn();
   public commitSpy = vi.fn();
   public mergeResponse: string | Error = 'final-sha';
+  public createWorktreeError: Error | null = null;
   async commit(): Promise<string> {
     return 'main-sha';
   }
@@ -113,6 +114,7 @@ class FakeVersionControl implements IVersionControl {
     return false;
   }
   async createWorktree(name: string): Promise<WorktreeInfo> {
+    if (this.createWorktreeError) throw this.createWorktreeError;
     this.createdWorktree = { path: `/tmp/wt/${name}-1`, branch: `${name}-1` };
     return this.createdWorktree;
   }
@@ -197,6 +199,7 @@ describe('LintService', () => {
   let state: FakeStateStore;
   let archiver: FakeArchiver;
   let searchEngine: FakeSearchEngine;
+  let operationJournal: { append: ReturnType<typeof vi.fn>; load: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     mainFs = new FakeFileStore('/main');
@@ -205,6 +208,10 @@ describe('LintService', () => {
     state = new FakeStateStore();
     archiver = new FakeArchiver();
     searchEngine = new FakeSearchEngine();
+    operationJournal = {
+      append: vi.fn(async () => undefined),
+      load: vi.fn(async () => ({ storagePath: '.local/operations', disabledReason: null, degradedReasons: [], records: [] })),
+    };
     fsFactory = (root: string) => new FakeFileStore(root);
   });
 
@@ -224,6 +231,7 @@ describe('LintService', () => {
       makePromotePhase: () => stubPromote(['wiki/patterns/x.md']),
       makeHealthPhase: () => stubHealth([]),
       now: () => new Date('2026-04-10T12:00:00Z'),
+      operationJournal,
     });
 
     const report = await service.lint({});
@@ -236,6 +244,12 @@ describe('LintService', () => {
     expect(report.commitSha).toBe('final-sha');
     expect(state.saved[0].last_lint).toBe('2026-04-10T12:00:00.000Z');
     expect(vc.removeSpy).toHaveBeenCalledWith(vc.createdWorktree!.path, undefined);
+    const types = operationJournal.append.mock.calls.map((c) => c[0].type);
+    expect(types).toContain('lint');
+    expect(types).toContain('consolidate');
+    expect(types).toContain('promote');
+    expect(types).toContain('reindex');
+    expect(types).toContain('archive');
   });
 
   it('discards worktree and keeps state untouched when consolidate throws', async () => {
@@ -258,12 +272,17 @@ describe('LintService', () => {
       makePromotePhase: () => stubPromote(),
       makeHealthPhase: () => stubHealth(),
       now: () => new Date(),
+      operationJournal,
     });
 
     await expect(service.lint({})).rejects.toBeInstanceOf(LlmUnavailableError);
     expect(vc.removeSpy).toHaveBeenCalledWith(vc.createdWorktree!.path, true);
     expect(vc.mergeSpy).not.toHaveBeenCalled();
     expect(state.saved).toEqual([]);
+    const failedConsolidate = operationJournal.append.mock.calls.find(
+      (c) => c[0].type === 'consolidate' && c[0].status === 'failed',
+    );
+    expect(failedConsolidate).toBeTruthy();
   });
 
   it('preserves worktree on GitConflictError and does NOT stamp state', async () => {
@@ -282,6 +301,7 @@ describe('LintService', () => {
       makePromotePhase: () => stubPromote(),
       makeHealthPhase: () => stubHealth(),
       now: () => new Date(),
+      operationJournal,
     });
     await expect(service.lint({})).rejects.toBeInstanceOf(GitConflictError);
     expect(vc.removeSpy).not.toHaveBeenCalled();
@@ -320,6 +340,7 @@ describe('LintService', () => {
       }),
       makeHealthPhase: () => stubHealth(healthIssues),
       now: () => new Date(),
+      operationJournal,
     });
 
     const report = await service.lint({ phases: ['health'] });
@@ -344,6 +365,7 @@ describe('LintService', () => {
       makePromotePhase: () => stubPromote(),
       makeHealthPhase: () => stubHealth(),
       now: () => new Date(),
+      operationJournal,
     });
 
     await expect(service.lint({ project: 'acme' })).rejects.toBeInstanceOf(
@@ -351,6 +373,30 @@ describe('LintService', () => {
     );
     expect(vc.createdWorktree).toBeNull();
     expect(state.saved).toEqual([]);
+  });
+
+  it('records terminal failed when worktree creation throws', async () => {
+    vc.createWorktreeError = new Error('create worktree failed');
+    const service = new LintService({
+      mainRepoRoot: '/main',
+      mainFileStore: mainFs,
+      mainVerbatimStore: vs,
+      versionControl: vc,
+      searchEngine,
+      fileStoreFactory: fsFactory,
+      verbatimStoreFactory: () => vs,
+      stateStore: state,
+      archiver,
+      makeConsolidatePhase: () => stubConsolidate(),
+      makePromotePhase: () => stubPromote(),
+      makeHealthPhase: () => stubHealth(),
+      now: () => new Date(),
+      operationJournal,
+    });
+    await expect(service.lint({})).rejects.toThrow('create worktree failed');
+    expect(operationJournal.append).toHaveBeenCalledTimes(2);
+    expect(operationJournal.append.mock.calls[0][0].status).toBe('running');
+    expect(operationJournal.append.mock.calls[1][0].status).toBe('failed');
   });
 
   it('invokes archiver for every consolidated verbatim path when consolidate produces edits', async () => {
@@ -381,6 +427,7 @@ describe('LintService', () => {
       makePromotePhase: () => stubPromote(),
       makeHealthPhase: () => stubHealth(),
       now: () => new Date('2026-04-10T12:00:00Z'),
+      operationJournal,
     });
 
     await service.lint({});
@@ -430,6 +477,7 @@ describe('LintService', () => {
       makePromotePhase: () => stubPromote(['wiki/patterns/no-db-mocking.md']),
       makeHealthPhase: () => stubHealth(),
       now: () => new Date('2026-04-10T12:00:00Z'),
+      operationJournal,
     });
 
     await service.lint({});
@@ -454,6 +502,7 @@ describe('LintService', () => {
       makePromotePhase: () => stubPromote(),
       makeHealthPhase: () => stubHealth([]),
       now: () => new Date('2026-04-10T12:00:00Z'),
+      operationJournal,
     });
 
     await service.lint({ phases: ['health'] });

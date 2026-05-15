@@ -8,6 +8,8 @@ import type { IStateStore } from '../ports/state-store.js';
 import type { ISearchEngine } from '../ports/search-engine.js';
 import type { IArchiver, ArchiveEntry } from '../ports/archiver.js';
 import type { HealthIssue } from '../domain/health-issue.js';
+import type { IOperationJournal } from '../ports/operation-journal.js';
+import { appendOperation, createOperationContext, journalErrorMetadata } from './operation-journal.js';
 
 export type LintPhaseName = 'consolidate' | 'promote' | 'health';
 
@@ -58,6 +60,7 @@ export interface LintServiceDeps {
   makePromotePhase: (fs: IFileStore) => LintPhase<'promote'>;
   makeHealthPhase: (fs: IFileStore) => LintPhase<'health'>;
   now?: () => Date;
+  operationJournal?: IOperationJournal;
 }
 
 const ALL_PHASES: LintPhaseName[] = ['consolidate', 'promote', 'health'];
@@ -70,12 +73,27 @@ export class LintService {
   }
 
   async lint(req: LintRequest = {}): Promise<LintReport> {
+    const op = createOperationContext('lint', {
+      request: { source: 'cli_or_mcp', actor: 'lint-service' },
+    });
+    await appendOperation(this.deps.operationJournal, op, 'running');
     if (req.project) {
+      await appendOperation(this.deps.operationJournal, op, 'failed', {
+        error: { name: 'ProjectScopeUnsupportedError', message: 'project scope unsupported', code: 'PROJECT_SCOPE_UNSUPPORTED', category: 'wiki' },
+      });
       throw new ProjectScopeUnsupportedError('lint', req.project);
     }
     const phaseSet = new Set<LintPhaseName>(req.phases ?? ALL_PHASES);
 
-    const worktree = await this.deps.versionControl.createWorktree('lint');
+    let worktree: { path: string; branch: string };
+    try {
+      worktree = await this.deps.versionControl.createWorktree('lint');
+    } catch (err) {
+      await appendOperation(this.deps.operationJournal, op, 'failed', {
+        error: journalErrorMetadata(err),
+      });
+      throw err;
+    }
     const wtFileStore = this.deps.fileStoreFactory(worktree.path);
     const wtVerbatimStore = this.deps.verbatimStoreFactory(wtFileStore);
 
@@ -91,6 +109,10 @@ export class LintService {
       ));
     } catch (err) {
       await this.safeRemoveWorktree(worktree.path, true);
+      await appendOperation(this.deps.operationJournal, op, 'failed', {
+        worktree: { path: worktree.path, branch: worktree.branch },
+        error: journalErrorMetadata(err),
+      });
       throw err;
     }
 
@@ -98,16 +120,79 @@ export class LintService {
       touchedPaths.size > 0 &&
       ((consolidateResult?.consolidatedCount ?? 0) > 0 || report.promoted > 0);
 
-    const commitSha = hasChanges ? await this.commitAndMerge(worktree.path, touchedPaths) : null;
-
-    if (hasChanges) {
-      await this.reindexTouched(touchedPaths);
+    let commitSha: string | null = null;
+    try {
+      commitSha = hasChanges ? await this.commitAndMerge(worktree.path, touchedPaths) : null;
+    } catch (err) {
+      const status = err instanceof GitConflictError ? 'blocked_or_conflict' : 'failed';
+      await appendOperation(this.deps.operationJournal, op, status, {
+        touchedPaths: [...touchedPaths],
+        worktree: { path: worktree.path, branch: worktree.branch },
+        error: journalErrorMetadata(err),
+      });
+      throw err;
     }
 
-    await this.deps.stateStore.update({ last_lint: this.now().toISOString() });
-    await this.safeRemoveWorktree(worktree.path);
+    if (hasChanges) {
+      const reindexOp = createOperationContext('reindex', {
+        touchedPaths: [...touchedPaths],
+        worktree: { path: worktree.path, branch: worktree.branch },
+        commitSha: commitSha ?? undefined,
+      });
+      await appendOperation(this.deps.operationJournal, reindexOp, 'running');
+      try {
+        await this.reindexTouched(touchedPaths);
+        await appendOperation(this.deps.operationJournal, reindexOp, 'succeeded');
+      } catch (err) {
+        await appendOperation(this.deps.operationJournal, reindexOp, 'interrupted', {
+          error: journalErrorMetadata(err),
+        });
+        await appendOperation(this.deps.operationJournal, op, 'interrupted', {
+          touchedPaths: [...touchedPaths],
+          commitSha: commitSha ?? undefined,
+          worktree: { path: worktree.path, branch: worktree.branch },
+          error: journalErrorMetadata(err),
+        });
+        throw err;
+      }
+    }
 
-    await this.runArchival(consolidateResult);
+    try {
+      await this.deps.stateStore.update({ last_lint: this.now().toISOString() });
+      await this.safeRemoveWorktree(worktree.path);
+    } catch (err) {
+      await appendOperation(this.deps.operationJournal, op, 'interrupted', {
+        touchedPaths: [...touchedPaths],
+        commitSha: commitSha ?? undefined,
+        worktree: { path: worktree.path, branch: worktree.branch },
+        error: journalErrorMetadata(err),
+      });
+      throw err;
+    }
+
+    const archiveOp = createOperationContext('archive', {
+      touchedPaths: consolidateResult?.archivedEntries?.map((e) => e.sourcePath) ?? [],
+      commitSha: commitSha ?? undefined,
+    });
+    await appendOperation(this.deps.operationJournal, archiveOp, 'running');
+    try {
+      await this.runArchival(consolidateResult);
+      await appendOperation(this.deps.operationJournal, archiveOp, 'succeeded');
+      await appendOperation(this.deps.operationJournal, op, 'succeeded', {
+        touchedPaths: [...touchedPaths],
+        commitSha: commitSha ?? undefined,
+      });
+    } catch (err) {
+      await appendOperation(this.deps.operationJournal, archiveOp, 'interrupted', {
+        error: journalErrorMetadata(err),
+      });
+      await appendOperation(this.deps.operationJournal, op, 'interrupted', {
+        touchedPaths: [...touchedPaths],
+        commitSha: commitSha ?? undefined,
+        error: journalErrorMetadata(err),
+      });
+      throw err;
+    }
 
     return commitSha ? report.withCommit(commitSha) : report;
   }
@@ -122,9 +207,21 @@ export class LintService {
     let consolidateResult: ConsolidateRunResult | null = null;
 
     if (phaseSet.has('consolidate')) {
-      consolidateResult = await this.deps.makeConsolidatePhase(wtFileStore, wtVerbatimStore).run();
+      const consolidateOp = createOperationContext('consolidate');
+      await appendOperation(this.deps.operationJournal, consolidateOp, 'running');
+      try {
+        consolidateResult = await this.deps.makeConsolidatePhase(wtFileStore, wtVerbatimStore).run();
+      } catch (err) {
+        await appendOperation(this.deps.operationJournal, consolidateOp, 'failed', {
+          error: journalErrorMetadata(err),
+        });
+        throw err;
+      }
       for (const p of consolidateResult.touchedPaths) touchedPaths.add(p);
       touchedPaths.add('log');
+      await appendOperation(this.deps.operationJournal, consolidateOp, 'succeeded', {
+        touchedPaths: consolidateResult.touchedPaths,
+      });
       report = report.merge(
         LintReport.from({
           consolidated: consolidateResult.consolidatedCount,
@@ -136,8 +233,21 @@ export class LintService {
     }
 
     if (phaseSet.has('promote')) {
-      const result = await this.deps.makePromotePhase(wtFileStore).run();
+      const promoteOp = createOperationContext('promote');
+      await appendOperation(this.deps.operationJournal, promoteOp, 'running');
+      let result: PromoteRunResult;
+      try {
+        result = await this.deps.makePromotePhase(wtFileStore).run();
+      } catch (err) {
+        await appendOperation(this.deps.operationJournal, promoteOp, 'failed', {
+          error: journalErrorMetadata(err),
+        });
+        throw err;
+      }
       for (const p of result.touchedPaths) touchedPaths.add(p);
+      await appendOperation(this.deps.operationJournal, promoteOp, 'succeeded', {
+        touchedPaths: result.touchedPaths,
+      });
       report = report.merge(
         LintReport.from({
           consolidated: 0,

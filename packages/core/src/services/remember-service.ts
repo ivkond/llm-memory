@@ -1,8 +1,10 @@
 import { VerbatimEntry } from '../domain/verbatim-entry.js';
 import { ContentEmptyError, SanitizationBlockedError } from '../domain/errors.js';
 import type { IFileStore } from '../ports/file-store.js';
+import type { IOperationJournal } from '../ports/operation-journal.js';
 import type { IVerbatimStore } from '../ports/verbatim-store.js';
 import type { SanitizationService } from './sanitization-service.js';
+import { appendOperation, createOperationContext, journalErrorMetadata } from './operation-journal.js';
 
 export interface RememberFactRequest {
   content: string;
@@ -52,33 +54,49 @@ export class RememberService {
     private readonly fileStore: IFileStore,
     private readonly verbatimStore: IVerbatimStore,
     private readonly sanitizer: SanitizationService,
+    private readonly operationJournal?: IOperationJournal,
   ) {}
 
   async rememberFact(req: RememberFactRequest): Promise<RememberFactResponse> {
-    if (!req.content.trim()) throw new ContentEmptyError();
-
-    const sanitized = this.sanitizer.sanitize(req.content);
-    if (sanitized.isBlocked) throw new SanitizationBlockedError(sanitized.redactedRatio);
-
-    const model = this.buildModelMetadata(req);
-    const entry = VerbatimEntry.create({
-      content: sanitized.content,
-      agent: req.agent,
-      sessionId: req.sessionId,
-      project: req.project,
-      tags: req.tags,
-      source: { type: 'mcp_fact', uri: req.sourceUri, digest: req.sourceDigest },
-      operationId: req.operationId,
-      model,
+    const op = createOperationContext('remember_fact', {
+      request: { source: 'mcp', actor: req.agent, requestId: req.callId ?? req.operationId },
     });
+    await appendOperation(this.operationJournal, op, 'running');
+    try {
+      if (!req.content.trim()) throw new ContentEmptyError();
 
-    await this.verbatimStore.writeEntry(entry);
+      const sanitized = this.sanitizer.sanitize(req.content);
+      if (sanitized.isBlocked) throw new SanitizationBlockedError(sanitized.redactedRatio);
 
-    return { ok: true, file: entry.filePath, entry_id: entry.entryId };
+      const model = this.buildModelMetadata(req);
+      const entry = VerbatimEntry.create({
+        content: sanitized.content,
+        agent: req.agent,
+        sessionId: req.sessionId,
+        project: req.project,
+        tags: req.tags,
+        source: { type: 'mcp_fact', uri: req.sourceUri, digest: req.sourceDigest },
+        operationId: req.operationId,
+        model,
+      });
+
+      await this.verbatimStore.writeEntry(entry);
+      await appendOperation(this.operationJournal, op, 'succeeded', { touchedPaths: [entry.filePath] });
+
+      return { ok: true, file: entry.filePath, entry_id: entry.entryId };
+    } catch (error) {
+      await appendOperation(this.operationJournal, op, 'failed', { error: journalErrorMetadata(error) });
+      throw error;
+    }
   }
 
   async rememberSession(req: RememberSessionRequest): Promise<RememberSessionResponse> {
-    if (!req.summary.trim()) throw new ContentEmptyError();
+    const op = createOperationContext('remember_session', {
+      request: { source: 'mcp', actor: req.agent, requestId: req.callId ?? req.operationId },
+    });
+    await appendOperation(this.operationJournal, op, 'running');
+    try {
+      if (!req.summary.trim()) throw new ContentEmptyError();
 
     // Deduplication by session_id — return stored entry metadata, not new request data
     if (req.sessionId) {
@@ -87,13 +105,15 @@ export class RememberService {
         const storedContent = await this.fileStore.readFile(existing);
         const storedEntry = await this.verbatimStore.readEntry(existing);
         const factsCount = storedContent ? this.countFacts(storedContent) : 1;
-        return {
+        const dedupResponse: RememberSessionResponse = {
           ok: true,
           file: existing,
           entry_id: storedEntry?.entryId ?? existing.split('/').pop() ?? existing,
           created_at: storedEntry?.processing.created_at ?? new Date().toISOString(),
           facts_count: factsCount,
         };
+        await appendOperation(this.operationJournal, op, 'succeeded', { touchedPaths: [existing] });
+        return dedupResponse;
       }
     }
 
@@ -111,15 +131,20 @@ export class RememberService {
       model,
     });
 
-    await this.verbatimStore.writeEntry(entry);
+      await this.verbatimStore.writeEntry(entry);
+      await appendOperation(this.operationJournal, op, 'succeeded', { touchedPaths: [entry.filePath] });
 
-    return {
-      ok: true,
-      file: entry.filePath,
-      entry_id: entry.entryId,
-      created_at: entry.processing.created_at,
-      facts_count: this.countFacts(sanitized.content),
-    };
+      return {
+        ok: true,
+        file: entry.filePath,
+        entry_id: entry.entryId,
+        created_at: entry.processing.created_at,
+        facts_count: this.countFacts(sanitized.content),
+      };
+    } catch (error) {
+      await appendOperation(this.operationJournal, op, 'failed', { error: journalErrorMetadata(error) });
+      throw error;
+    }
   }
 
   private async findExistingSession(agent: string, sessionId: string): Promise<string | null> {

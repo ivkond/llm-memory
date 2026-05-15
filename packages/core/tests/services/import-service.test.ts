@@ -73,12 +73,17 @@ describe('ImportService', () => {
   let readerA: FakeReader;
   let readerB: FakeReader;
   let configs: Record<string, { enabled: boolean; paths: string[] }>;
+  const operationJournal = {
+    append: vi.fn(async () => undefined),
+    load: vi.fn(async () => ({ storagePath: '.local/operations', disabledReason: null, degradedReasons: [], records: [] })),
+  };
 
   beforeEach(() => {
     verbatim = new FakeVerbatimStore();
     state = new FakeStateStore();
     readerA = new FakeReader('claude-code');
     readerB = new FakeReader('cursor');
+    operationJournal.append.mockClear();
     configs = {
       'claude-code': { enabled: true, paths: ['~/.claude/projects'] },
       cursor: { enabled: true, paths: ['~/.cursor'] },
@@ -112,6 +117,7 @@ describe('ImportService', () => {
       ]),
       verbatimStore: verbatim,
       stateStore: state,
+      operationJournal,
       agentConfigs: configs,
       now: () => new Date('2026-04-10T12:00:00Z'),
     });
@@ -143,6 +149,7 @@ describe('ImportService', () => {
       ]),
       verbatimStore: verbatim,
       stateStore: state,
+      operationJournal,
       agentConfigs: configs,
       now: () => new Date(),
     });
@@ -166,6 +173,7 @@ describe('ImportService', () => {
       ]),
       verbatimStore: verbatim,
       stateStore: state,
+      operationJournal,
       agentConfigs: configs,
       now: () => new Date(),
     });
@@ -191,6 +199,7 @@ describe('ImportService', () => {
       ]),
       verbatimStore: verbatim,
       stateStore: state,
+      operationJournal,
       agentConfigs: configs,
       now: () => new Date('2026-04-10T12:00:00Z'),
     });
@@ -223,6 +232,7 @@ describe('ImportService', () => {
       readers: new Map([['claude-code', readerA]]),
       verbatimStore: verbatim,
       stateStore: state,
+      operationJournal,
       agentConfigs: { 'claude-code': { enabled: true, paths: ['~/.claude'] } },
       now: () => new Date('2026-04-10T12:00:00Z'),
     });
@@ -243,11 +253,29 @@ describe('ImportService', () => {
       readers: new Map([['claude-code', readerA]]),
       verbatimStore: verbatim,
       stateStore: state,
+      operationJournal,
       agentConfigs: { 'claude-code': { enabled: true, paths: [] } },
       now: () => new Date(),
     });
     await expect(service.importAll({ agents: ['ghost'] })).rejects.toBeInstanceOf(
       ImportReaderNotRegisteredError,
     );
+    expect(operationJournal.append).toHaveBeenCalledTimes(2);
+    expect(operationJournal.append.mock.calls[1][0].status).toBe('failed');
+  });
+
+  it('journals import operation start and completion', async () => {
+    const service = new ImportService({
+      readers: new Map([['claude-code', readerA]]),
+      verbatimStore: verbatim,
+      stateStore: state,
+      operationJournal,
+      agentConfigs: { 'claude-code': { enabled: true, paths: [] } },
+      now: () => new Date(),
+    });
+    await service.importAll({});
+    expect(operationJournal.append).toHaveBeenCalledTimes(2);
+    expect(operationJournal.append.mock.calls[0][0].type).toBe('import');
+    expect(operationJournal.append.mock.calls[1][0].status).toBe('succeeded');
   });
 });
