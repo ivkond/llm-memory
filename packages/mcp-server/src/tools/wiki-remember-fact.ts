@@ -1,5 +1,6 @@
 import type { AppServices } from '@ivkond-llm-wiki/common';
 import { readCommonRememberParams } from './wiki-remember-params.js';
+import { toolError, toolSuccess, toOptionalString } from './tool-response.js';
 
 /**
  * Handler for `wiki_remember_fact` — wires to RememberService.
@@ -13,28 +14,16 @@ export function createWikiRememberFactHandler(services: AppServices) {
     try {
       const { remember: rememberService } = services;
       if (!rememberService) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: 'RememberService not available',
-                code: 'InternalError',
-              }),
-            },
-          ],
-        };
+        return toolError('RememberService not available', 'InternalError');
       }
 
-      const content = params.content != null ? String(params.content) : '';
+      const content = toOptionalString(params.content) ?? '';
       const common = readCommonRememberParams(params);
-      const idempotencyKey =
-        params.idempotencyKey != null ? String(params.idempotencyKey) : undefined;
+      const idempotencyKey = toOptionalString(params.idempotencyKey);
       const tags = params.tags
         ? Array.isArray(params.tags)
-          ? params.tags.map((t) => String(t))
-          : [String(params.tags)]
+          ? params.tags.map((t) => toOptionalString(t)).filter((t): t is string => t != null)
+          : [toOptionalString(params.tags)].filter((t): t is string => t != null)
         : undefined;
 
       const result = await rememberService.rememberFact({
@@ -44,37 +33,16 @@ export function createWikiRememberFactHandler(services: AppServices) {
         idempotencyKey,
       });
 
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              data: {
-                entry_id: result.entry_id,
-                project: common.project ?? 'default',
-                path: result.file,
-              },
-            }),
-          },
-        ],
-      };
+      return toolSuccess({
+        entry_id: result.entry_id,
+        project: common.project ?? 'default',
+        path: result.file,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const code = message.includes('content') ? 'InvalidParams' : 'InternalError';
 
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: message,
-              code,
-            }),
-          },
-        ],
-      };
+      return toolError(message, code);
     }
   };
 }

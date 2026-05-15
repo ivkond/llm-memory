@@ -1,5 +1,6 @@
 import type { AppServices } from '@ivkond-llm-wiki/common';
 import { readCommonRememberParams } from './wiki-remember-params.js';
+import { toolError, toolSuccess, toOptionalString } from './tool-response.js';
 
 /**
  * Handler for `wiki_remember_session` — wires to RememberService.
@@ -13,24 +14,12 @@ export function createWikiRememberSessionHandler(services: AppServices) {
     try {
       const { remember: rememberService } = services;
       if (!rememberService) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: 'RememberService not available',
-                code: 'InternalError',
-              }),
-            },
-          ],
-        };
+        return toolError('RememberService not available', 'InternalError');
       }
 
-      const summary = params.summary != null ? String(params.summary) : '';
+      const summary = toOptionalString(params.summary) ?? '';
       const common = readCommonRememberParams(params);
-      const idempotencyKey =
-        params.idempotencyKey != null ? String(params.idempotencyKey) : undefined;
+      const idempotencyKey = toOptionalString(params.idempotencyKey);
 
       const result = await rememberService.rememberSession({
         summary,
@@ -38,38 +27,17 @@ export function createWikiRememberSessionHandler(services: AppServices) {
         idempotencyKey,
       });
 
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              data: {
-                entry_id: result.entry_id,
-                session_id: common.sessionId,
-                created_at: result.created_at,
-                facts_count: result.facts_count,
-              },
-            }),
-          },
-        ],
-      };
+      return toolSuccess({
+        entry_id: result.entry_id,
+        session_id: common.sessionId,
+        created_at: result.created_at,
+        facts_count: result.facts_count,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const code = message.includes('summary') ? 'InvalidParams' : 'InternalError';
 
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: message,
-              code,
-            }),
-          },
-        ],
-      };
+      return toolError(message, code);
     }
   };
 }

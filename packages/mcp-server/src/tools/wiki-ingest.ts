@@ -1,4 +1,5 @@
 import type { AppServices } from '@ivkond-llm-wiki/common';
+import { toolError, toolSuccess, toOptionalString } from './tool-response.js';
 
 /**
  * Handler for `wiki_ingest` — wires to IngestService.
@@ -11,74 +12,30 @@ export function createWikiIngestHandler(services: AppServices) {
   return async (params: Record<string, unknown>) => {
     const maxRetries = parseRetryCount(params.retries);
     if (maxRetries === null) {
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: 'retries must be a finite number',
-              code: 'InvalidParams',
-            }),
-          },
-        ],
-      };
+      return toolError('retries must be a finite number', 'InvalidParams');
     }
-    const project = params.project != null ? String(params.project) : undefined;
+    const project = toOptionalString(params.project);
     if (project) {
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: 'project-scoped ingest is not supported yet',
-              code: 'PROJECT_SCOPE_UNSUPPORTED',
-            }),
-          },
-        ],
-      };
+      return toolError('project-scoped ingest is not supported yet', 'PROJECT_SCOPE_UNSUPPORTED');
     }
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const { ingest: ingestService } = services;
         if (!ingestService) {
-          return {
-            content: [
-              {
-                type: 'text' as const,
-                text: JSON.stringify({
-                  success: false,
-                  error: 'IngestService not available',
-                  code: 'InternalError',
-                }),
-              },
-            ],
-          };
+          return toolError('IngestService not available', 'InternalError');
         }
 
-        const source = params.source != null ? String(params.source) : '';
-        const hint = params.hint != null ? String(params.hint) : undefined;
-        const idempotencyKey =
-          params.idempotencyKey != null ? String(params.idempotencyKey) : undefined;
+        const source = toOptionalString(params.source) ?? '';
+        const hint = toOptionalString(params.hint);
+        const idempotencyKey = toOptionalString(params.idempotencyKey);
         const result = await ingestService.ingest({ source, hint, idempotencyKey });
 
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: true,
-                data: {
-                  page_path: result.pages_created[0] ?? result.pages_updated[0] ?? '',
-                  project: 'default',
-                  worktree_cleaned: true,
-                },
-              }),
-            },
-          ],
-        };
+        return toolSuccess({
+          page_path: result.pages_created[0] ?? result.pages_updated[0] ?? '',
+          project: 'default',
+          worktree_cleaned: true,
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const isTransient =
@@ -92,33 +49,11 @@ export function createWikiIngestHandler(services: AppServices) {
           continue;
         }
 
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: `Ingest failed after ${attempt} attempt(s): ${message}`,
-                code: 'InternalError',
-              }),
-            },
-          ],
-        };
+        return toolError(`Ingest failed after ${attempt} attempt(s): ${message}`, 'InternalError');
       }
     }
 
-    return {
-      content: [
-        {
-          type: 'text' as const,
-          text: JSON.stringify({
-            success: false,
-            error: 'Ingest failed: unreachable',
-            code: 'InternalError',
-          }),
-        },
-      ],
-    };
+    return toolError('Ingest failed: unreachable', 'InternalError');
   };
 }
 

@@ -1,4 +1,5 @@
 import type { AppServices } from '@ivkond-llm-wiki/common';
+import { toolError, toolSuccess, toOptionalString } from './tool-response.js';
 
 type LintPhaseName = 'consolidate' | 'promote' | 'health';
 
@@ -15,92 +16,49 @@ export function createWikiLintHandler(services: AppServices) {
     try {
       const { lint: lintService } = services;
       if (!lintService) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: 'LintService not available',
-                code: 'InternalError',
-              }),
-            },
-          ],
-        };
+        return toolError('LintService not available', 'InternalError');
       }
 
       let phases: LintPhaseName[] | undefined;
       if (params.phases != null) {
         if (Array.isArray(params.phases)) {
           phases = params.phases.map((p) => {
-            const phase = String(p);
+            const phase = toOptionalString(p);
+            if (!phase) throw new Error('Invalid phase: non-string value');
             if (phase === 'consolidate' || phase === 'promote' || phase === 'health') {
               return phase;
             }
             throw new Error(`Invalid phase: ${phase}`);
           });
-        } else if (String(params.phases) === 'all') {
+        } else if (toOptionalString(params.phases) === 'all') {
           phases = undefined;
         }
       }
 
-      const project = params.project != null ? String(params.project) : undefined;
-      const idempotencyKey =
-        params.idempotencyKey != null ? String(params.idempotencyKey) : undefined;
+      const project = toOptionalString(params.project);
+      const idempotencyKey = toOptionalString(params.idempotencyKey);
       if (project) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify({
-                success: false,
-                error: 'project-scoped lint is not supported yet',
-                code: 'PROJECT_SCOPE_UNSUPPORTED',
-              }),
-            },
-          ],
-        };
+        return toolError('project-scoped lint is not supported yet', 'PROJECT_SCOPE_UNSUPPORTED');
       }
 
       const report = await lintService.lint({ phases, idempotencyKey });
 
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: true,
-              data: {
-                phases_run: phases ?? ['consolidate', 'promote', 'health'],
-                report: {
-                  consolidated: report.consolidated,
-                  promoted: report.promoted,
-                  issues_count: report.issues.length,
-                  commit_sha: report.commitSha,
-                },
-                entries_consolidated: report.consolidated,
-                entries_promoted: report.promoted,
-              },
-            }),
-          },
-        ],
-      };
+      return toolSuccess({
+        phases_run: phases ?? ['consolidate', 'promote', 'health'],
+        report: {
+          consolidated: report.consolidated,
+          promoted: report.promoted,
+          issues_count: report.issues.length,
+          commit_sha: report.commitSha,
+        },
+        entries_consolidated: report.consolidated,
+        entries_promoted: report.promoted,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const code = message.includes('Invalid phase') ? 'InvalidParams' : 'InternalError';
 
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify({
-              success: false,
-              error: message,
-              code,
-            }),
-          },
-        ],
-      };
+      return toolError(message, code);
     }
   };
 }
