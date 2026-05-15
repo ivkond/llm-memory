@@ -108,7 +108,6 @@ export function buildContainer(config: WikiConfig): AppServices {
     stateStore,
   );
   const lint = new LintService({
-    mainRepoRoot: wikiRoot,
     mainFileStore: fileStore,
     mainVerbatimStore: verbatimStore,
     versionControl,
@@ -117,6 +116,8 @@ export function buildContainer(config: WikiConfig): AppServices {
     verbatimStoreFactory,
     stateStore,
     archiver,
+    resolveArchivePath: (yearMonth, agent) =>
+      path.resolve(wikiRoot, '.archive', `${yearMonth}-${agent}.7z`),
     makeConsolidatePhase: (fs, vs) => {
       const phase = new ConsolidatePhase(fs, vs, llmClient, wikiRoot);
       return { name: 'consolidate', run: () => phase.run() };

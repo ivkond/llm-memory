@@ -207,6 +207,7 @@ describe('ConsolidatePhase', () => {
     expect(result.archivedEntries).toHaveLength(2);
     for (const entry of result.archivedEntries!) {
       expect(entry.sourcePath.startsWith('/abs/repo/log/')).toBe(true);
+      expect(entry.logicalPath.startsWith('log/')).toBe(true);
     }
   });
 

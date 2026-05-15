@@ -140,6 +140,8 @@ describe('Lint E2E', () => {
       verbatimStoreFactory: (fs) => new FsVerbatimStore(fs),
       stateStore,
       archiver,
+      resolveArchivePath: (yearMonth, agent) =>
+        path.resolve(wiki, '.archive', `${yearMonth}-${agent}.7z`),
       makeConsolidatePhase: (fs, vs) => new ConsolidatePhase(fs, vs, llm, wiki),
       makePromotePhase: (fs) => new PromotePhase(fs, llm),
       makeHealthPhase: (fs) => new HealthPhase(fs),
