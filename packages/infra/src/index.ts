@@ -13,3 +13,4 @@ export { CompositeSourceReader } from './composite-source-reader.js';
 export { YamlStateStore } from './yaml-state-store.js';
 export { SevenZipArchiver } from './seven-zip-archiver.js';
 export { ClaudeCodeMemoryReader } from './claude-code-memory-reader.js';
+export { resolveConsolidationReviewDir } from './review-path-resolver.js';

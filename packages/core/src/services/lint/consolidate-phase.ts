@@ -12,6 +12,9 @@ export interface ConsolidatePhaseResult {
   consolidatedCount: number;
   touchedPaths: string[];
   archivedEntries?: ArchiveEntry[];
+  reviewRecords?: ReviewRecord[];
+  lowSignalCount?: number;
+  reviewQueueCount?: number;
 }
 
 interface ProposedPage {
@@ -21,12 +24,28 @@ interface ProposedPage {
   source_entries: string[];
 }
 
+interface ProposedDecision {
+  source_entry: string;
+  reason: string;
+  confidence: number;
+}
+
+export interface ReviewRecord {
+  sourcePath: string;
+  reason: string;
+  confidence: number;
+  kind: 'review' | 'low_signal';
+}
+
 const PROJECT_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 
 const CONSOLIDATE_SYSTEM_PROMPT =
   'You are a wiki editor. Merge verbatim memory entries into durable wiki or project pages. ' +
-  'Respond with a JSON object: {"pages":[{"path":"wiki/...","title":"...","content":"...","source_entries":["log/..."]}]}. ' +
-  'Only emit pages when the entries contain reusable knowledge. An empty pages array is valid.';
+  'Respond with JSON object keys: pages, review, low_signal. ' +
+  'pages format: {"path":"wiki/...","title":"...","content":"...","source_entries":["log/..."]}. ' +
+  'review/low_signal format: {"source_entry":"log/...","reason":"...","confidence":0.0}. ' +
+  'Use review for uncertain but potentially useful entries. Use low_signal for weak/noisy entries. ' +
+  'An empty array for any key is valid.';
 
 /**
  * Phase 1 of wiki_lint.
@@ -59,8 +78,10 @@ export class ConsolidatePhase {
     }
 
     let pages: ProposedPage[];
+    let reviewDecisions: ProposedDecision[];
+    let lowSignalDecisions: ProposedDecision[];
     try {
-      pages = await this.askLlm(batch);
+      ({ pages, reviewDecisions, lowSignalDecisions } = await this.askLlm(batch));
     } catch (err) {
       if (err instanceof LlmUnavailableError) throw err;
       const message = err instanceof Error ? err.message : String(err);
@@ -78,36 +99,72 @@ export class ConsolidatePhase {
       touchedPaths.push(page.path);
     }
 
+    const reviewRecords: ReviewRecord[] = [];
+    const batchByPath = new Map(batch.map((entry) => [entry.filePath, entry] as const));
+    const consumed = new Set<string>();
+    for (const page of pages) {
+      for (const source of page.source_entries) {
+        if (batchByPath.has(source)) consumed.add(source);
+      }
+    }
+    for (const decision of reviewDecisions) {
+      if (!batchByPath.has(decision.source_entry)) continue;
+      consumed.add(decision.source_entry);
+      reviewRecords.push({
+        sourcePath: decision.source_entry,
+        reason: decision.reason,
+        confidence: decision.confidence,
+        kind: 'review',
+      });
+    }
+
+    const lowSignalPaths = new Set<string>();
+    for (const decision of lowSignalDecisions) {
+      if (!batchByPath.has(decision.source_entry)) continue;
+      consumed.add(decision.source_entry);
+      lowSignalPaths.add(decision.source_entry);
+      reviewRecords.push({
+        sourcePath: decision.source_entry,
+        reason: decision.reason,
+        confidence: decision.confidence,
+        kind: 'low_signal',
+      });
+    }
+
     for (const entry of batch) {
+      if (!consumed.has(entry.filePath)) {
+        lowSignalPaths.add(entry.filePath);
+        reviewRecords.push({
+          sourcePath: entry.filePath,
+          reason: 'Model did not select this entry for consolidation',
+          confidence: 0.2,
+          kind: 'low_signal',
+        });
+      }
       await this.worktreeVerbatimStore.markConsolidated(entry.filePath);
     }
 
     const archivedEntries: ArchiveEntry[] | undefined = this.mainRepoRoot
-      ? batch.map((entry) => ({
-          sourcePath: `${this.mainRepoRoot}/${entry.filePath}`,
+      ? [...lowSignalPaths].map((entryPath) => ({
+          sourcePath: `${this.mainRepoRoot}/${entryPath}`,
         }))
       : undefined;
 
-    return { consolidatedCount: batch.length, touchedPaths, archivedEntries };
+    return {
+      consolidatedCount: batch.length,
+      touchedPaths,
+      archivedEntries,
+      reviewRecords,
+      lowSignalCount: lowSignalPaths.size,
+      reviewQueueCount: reviewRecords.filter((r) => r.kind === 'review').length,
+    };
   }
 
-  private async collectBatch(): Promise<VerbatimEntry[]> {
-    const agents = await this.worktreeVerbatimStore.listAgents();
-    const batch: VerbatimEntry[] = [];
-    for (const agent of agents) {
-      if (batch.length >= CONSOLIDATE_BATCH_LIMIT) break;
-      const unconsolidated = await this.worktreeVerbatimStore.listUnconsolidated(agent);
-      unconsolidated.sort((a, b) => a.path.localeCompare(b.path));
-      for (const info of unconsolidated) {
-        if (batch.length >= CONSOLIDATE_BATCH_LIMIT) break;
-        const entry = await this.worktreeVerbatimStore.readEntry(info.path);
-        if (entry) batch.push(entry);
-      }
-    }
-    return batch;
-  }
-
-  private async askLlm(batch: VerbatimEntry[]): Promise<ProposedPage[]> {
+  private async askLlm(batch: VerbatimEntry[]): Promise<{
+    pages: ProposedPage[];
+    reviewDecisions: ProposedDecision[];
+    lowSignalDecisions: ProposedDecision[];
+  }> {
     const userPayload = batch.map((e) => ({
       path: e.filePath,
       agent: e.agent,
@@ -121,7 +178,7 @@ export class ConsolidatePhase {
           role: 'user',
           content:
             `Consolidate the following ${batch.length} entries. ` +
-            'Reply with JSON: {"pages":[...]}.\n\n' +
+            'Reply with JSON: {"pages":[...], "review":[...], "low_signal":[...]}.\n\n' +
             JSON.stringify(userPayload, null, 2),
         },
       ],
@@ -136,16 +193,25 @@ export class ConsolidatePhase {
       const message = err instanceof Error ? err.message : String(err);
       throw new LlmUnavailableError(`model returned non-JSON: ${message}`);
     }
-    if (
-      typeof parsed !== 'object' ||
-      parsed === null ||
-      !Array.isArray((parsed as { pages?: unknown }).pages)
-    ) {
-      throw new LlmUnavailableError('model response missing "pages" array');
+    if (typeof parsed !== 'object' || parsed === null) {
+      throw new LlmUnavailableError('model response must be a JSON object');
     }
-    const pages = (parsed as { pages: unknown[] }).pages;
+
+    const pages = this.parsePages((parsed as { pages?: unknown }).pages);
+    const reviewDecisions = this.parseDecisions((parsed as { review?: unknown }).review);
+    const lowSignalDecisions = this.parseDecisions(
+      (parsed as { low_signal?: unknown }).low_signal,
+    );
+    return { pages, reviewDecisions, lowSignalDecisions };
+  }
+
+  private parsePages(rawPages: unknown): ProposedPage[] {
+    if (rawPages == null) return [];
+    if (!Array.isArray(rawPages)) {
+      throw new LlmUnavailableError('model response "pages" must be an array');
+    }
     const result: ProposedPage[] = [];
-    for (const raw of pages) {
+    for (const raw of rawPages) {
       if (
         typeof raw !== 'object' ||
         raw === null ||
@@ -166,6 +232,48 @@ export class ConsolidatePhase {
     }
     return result;
   }
+
+  private parseDecisions(raw: unknown): ProposedDecision[] {
+    if (raw == null) return [];
+    if (!Array.isArray(raw)) {
+      throw new LlmUnavailableError('model response decisions must be arrays');
+    }
+    const result: ProposedDecision[] = [];
+    for (const item of raw) {
+      if (
+        typeof item !== 'object' ||
+        item === null ||
+        typeof (item as { source_entry?: unknown }).source_entry !== 'string' ||
+        typeof (item as { reason?: unknown }).reason !== 'string' ||
+        typeof (item as { confidence?: unknown }).confidence !== 'number'
+      ) {
+        throw new LlmUnavailableError('malformed decision entry in model response');
+      }
+      result.push({
+        source_entry: (item as { source_entry: string }).source_entry,
+        reason: (item as { reason: string }).reason,
+        confidence: Math.max(0, Math.min(1, (item as { confidence: number }).confidence)),
+      });
+    }
+    return result;
+  }
+  
+  private async collectBatch(): Promise<VerbatimEntry[]> {
+    const agents = await this.worktreeVerbatimStore.listAgents();
+    const batch: VerbatimEntry[] = [];
+    for (const agent of agents) {
+      if (batch.length >= CONSOLIDATE_BATCH_LIMIT) break;
+      const unconsolidated = await this.worktreeVerbatimStore.listUnconsolidated(agent);
+      unconsolidated.sort((a, b) => a.path.localeCompare(b.path));
+      for (const info of unconsolidated) {
+        if (batch.length >= CONSOLIDATE_BATCH_LIMIT) break;
+        const entry = await this.worktreeVerbatimStore.readEntry(info.path);
+        if (entry) batch.push(entry);
+      }
+    }
+    return batch;
+  }
+
 
   private validatePagePath(requestedPath: string): void {
     if (!requestedPath || requestedPath.includes('\\') || requestedPath.startsWith('/')) {

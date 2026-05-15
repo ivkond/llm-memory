@@ -8,6 +8,7 @@ import type { IStateStore } from '../ports/state-store.js';
 import type { ISearchEngine } from '../ports/search-engine.js';
 import type { IArchiver, ArchiveEntry } from '../ports/archiver.js';
 import type { HealthIssue } from '../domain/health-issue.js';
+import type { ReviewRecord } from './lint/consolidate-phase.js';
 
 export type LintPhaseName = 'consolidate' | 'promote' | 'health';
 
@@ -15,6 +16,9 @@ export interface ConsolidateRunResult {
   consolidatedCount: number;
   touchedPaths: string[];
   archivedEntries?: ArchiveEntry[];
+  reviewRecords?: ReviewRecord[];
+  lowSignalCount?: number;
+  reviewQueueCount?: number;
 }
 
 export interface PromoteRunResult {
@@ -57,6 +61,7 @@ export interface LintServiceDeps {
   makeConsolidatePhase: (fs: IFileStore, vs: IVerbatimStore) => LintPhase<'consolidate'>;
   makePromotePhase: (fs: IFileStore) => LintPhase<'promote'>;
   makeHealthPhase: (fs: IFileStore) => LintPhase<'health'>;
+  reviewQueueDir?: string;
   now?: () => Date;
 }
 
@@ -94,6 +99,9 @@ export class LintService {
       throw err;
     }
 
+    const reviewTouched = await this.runReviewQueue(consolidateResult, wtFileStore);
+    for (const p of reviewTouched) touchedPaths.add(p);
+
     const hasChanges =
       touchedPaths.size > 0 &&
       ((consolidateResult?.consolidatedCount ?? 0) > 0 || report.promoted > 0);
@@ -129,6 +137,8 @@ export class LintService {
         LintReport.from({
           consolidated: consolidateResult.consolidatedCount,
           promoted: 0,
+          lowSignal: consolidateResult.lowSignalCount ?? 0,
+          reviewQueue: consolidateResult.reviewQueueCount ?? 0,
           issues: [],
           commitSha: null,
         }),
@@ -142,6 +152,8 @@ export class LintService {
         LintReport.from({
           consolidated: 0,
           promoted: result.promotedCount,
+          lowSignal: 0,
+          reviewQueue: 0,
           issues: [],
           commitSha: null,
         }),
@@ -154,6 +166,8 @@ export class LintService {
         LintReport.from({
           consolidated: 0,
           promoted: 0,
+          lowSignal: 0,
+          reviewQueue: 0,
           issues: result.issues,
           commitSha: null,
         }),
@@ -199,6 +213,41 @@ export class LintService {
     }
   }
 
+  private async runReviewQueue(
+    consolidateResult: ConsolidateRunResult | null,
+    wtFileStore: IFileStore,
+  ): Promise<string[]> {
+    const records = consolidateResult?.reviewRecords;
+    if (!records || records.length === 0) return [];
+    const reviewRoot = this.deps.reviewQueueDir ?? '.local/review/consolidation';
+    const trackedInGit = !reviewRoot.startsWith('.local/');
+    const destinationStore = trackedInGit ? wtFileStore : this.deps.mainFileStore;
+    const stamp = this.now().toISOString();
+    const stampFile = stamp.replace(/[:.]/g, '-');
+    const touched: string[] = [];
+    for (let i = 0; i < records.length; i += 1) {
+      const record = records[i];
+      const suffix = String(i + 1).padStart(3, '0');
+      const leaf = path.basename(record.sourcePath, '.md');
+      const filePath = `${reviewRoot}/${stampFile}-${record.kind}-${suffix}-${leaf}.md`;
+      const body = [
+        '---',
+        `source_path: ${this.yamlString(record.sourcePath)}`,
+        `reason: ${this.yamlString(record.reason)}`,
+        `confidence: ${record.confidence.toFixed(2)}`,
+        `timestamp: ${this.yamlString(stamp)}`,
+        `kind: ${record.kind}`,
+        '---',
+        '',
+        `Source: ${record.sourcePath}`,
+        `Reason: ${record.reason}`,
+      ].join('\n');
+      await destinationStore.writeFile(filePath, `${body}\n`);
+      if (trackedInGit) touched.push(filePath);
+    }
+    return touched;
+  }
+
   private groupByMonthAndAgent(entries: ArchiveEntry[]): Map<string, ArchiveEntry[]> {
     const groups = new Map<string, ArchiveEntry[]>();
     for (const entry of entries) {
@@ -225,5 +274,10 @@ export class LintService {
     } catch {
       // caller is already on an error or success path
     }
+  }
+
+  private yamlString(value: string): string {
+    if (/^[A-Za-z0-9][A-Za-z0-9 \-_./:]*$/.test(value)) return value;
+    return JSON.stringify(value);
   }
 }

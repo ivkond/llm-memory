@@ -15,6 +15,7 @@ import {
   CompositeSourceReader,
   SevenZipArchiver,
   ClaudeCodeMemoryReader,
+  resolveConsolidationReviewDir,
   type WikiConfig,
 } from '@ivkond-llm-wiki/infra';
 import {
@@ -66,6 +67,7 @@ export function buildContainer(config: WikiConfig): AppServices {
   const stateStore = new YamlStateStore(fileStore);
   const sourceReader = new CompositeSourceReader(new FsSourceReader(), new HttpSourceReader());
   const archiver = new SevenZipArchiver();
+  const reviewQueueDir = resolveConsolidationReviewDir(wikiRoot);
 
   const llmProvider = createOpenAI({
     apiKey: config.llm.api_key ?? undefined,
@@ -127,6 +129,7 @@ export function buildContainer(config: WikiConfig): AppServices {
       const phase = new HealthPhase(fs);
       return { name: 'health', run: () => phase.run() };
     },
+    reviewQueueDir,
   });
   const import_ = new ImportService({
     readers: new Map([['claude-code', new ClaudeCodeMemoryReader()]]),

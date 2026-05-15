@@ -7,6 +7,8 @@ describe('LintReport', () => {
     const report = LintReport.empty();
     expect(report.consolidated).toBe(0);
     expect(report.promoted).toBe(0);
+    expect(report.lowSignal).toBe(0);
+    expect(report.reviewQueue).toBe(0);
     expect(report.issues).toEqual([]);
     expect(report.commitSha).toBeNull();
   });
@@ -15,6 +17,8 @@ describe('LintReport', () => {
     const a = LintReport.from({
       consolidated: 3,
       promoted: 1,
+      lowSignal: 2,
+      reviewQueue: 1,
       issues: [
         HealthIssue.create({ type: HealthIssueType.Orphan, page: 'a.md', description: 'x' }),
       ],
@@ -23,12 +27,16 @@ describe('LintReport', () => {
     const b = LintReport.from({
       consolidated: 2,
       promoted: 4,
+      lowSignal: 3,
+      reviewQueue: 2,
       issues: [HealthIssue.create({ type: HealthIssueType.Stale, page: 'b.md', description: 'y' })],
       commitSha: null,
     });
     const merged = a.merge(b);
     expect(merged.consolidated).toBe(5);
     expect(merged.promoted).toBe(5);
+    expect(merged.lowSignal).toBe(5);
+    expect(merged.reviewQueue).toBe(3);
     expect(merged.issues).toHaveLength(2);
   });
 

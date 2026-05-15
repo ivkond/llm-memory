@@ -90,6 +90,12 @@ export const lintCommand = new Command()
       if (report.promoted > 0) {
         console.log(`  Promoted: ${report.promoted} pages`);
       }
+      if (report.lowSignal > 0) {
+        console.log(`  Low-signal archived: ${report.lowSignal} entries`);
+      }
+      if (report.reviewQueue > 0) {
+        console.log(`  Human review queued: ${report.reviewQueue} entries`);
+      }
       if (report.issues.length > 0) {
         console.log(`\n\x1b[33m%s\x1b[0m`, `⚠ Found ${report.issues.length} issue(s):`);
         for (const issue of report.issues.slice(0, 10)) {

@@ -228,6 +228,8 @@ describe('LintService', () => {
     expect(vc.mergeSpy).toHaveBeenCalled();
     expect(report.consolidated).toBe(1);
     expect(report.promoted).toBe(1);
+    expect(report.lowSignal).toBe(0);
+    expect(report.reviewQueue).toBe(0);
     expect(report.commitSha).toBe('final-sha');
     expect(state.saved[0].last_lint).toBe('2026-04-10T12:00:00.000Z');
     expect(vc.removeSpy).toHaveBeenCalledWith(vc.createdWorktree!.path, undefined);
@@ -383,6 +385,64 @@ describe('LintService', () => {
     expect(archiver.calls).toHaveLength(1);
     expect(archiver.calls[0].entries).toHaveLength(2);
     expect(archiver.calls[0].path).toBe('/main/.archive/2026-04-claude-code.7z');
+  });
+
+  it('writes review queue records and reports low-signal + review counts', async () => {
+    const wtFs = new FakeFileStore('/tmp/wt/lint-1');
+    fsFactory = () => wtFs;
+    const phase: LintPhase<'consolidate'> = {
+      name: 'consolidate',
+      async run() {
+        return {
+          consolidatedCount: 1,
+          touchedPaths: [],
+          lowSignalCount: 1,
+          reviewQueueCount: 1,
+          reviewRecords: [
+            {
+              sourcePath: 'log/claude-code/raw/2026-04-09-a.md',
+              reason: 'Needs human check',
+              confidence: 0.61,
+              kind: 'review',
+            },
+            {
+              sourcePath: 'log/claude-code/raw/2026-04-09-b.md',
+              reason: 'Noise',
+              confidence: 0.12,
+              kind: 'low_signal',
+            },
+          ],
+          archivedEntries: [{ sourcePath: '/main/log/claude-code/raw/2026-04-09-b.md' }],
+        };
+      },
+    };
+    const service = new LintService({
+      mainRepoRoot: '/main',
+      mainFileStore: mainFs,
+      mainVerbatimStore: vs,
+      versionControl: vc,
+      searchEngine,
+      fileStoreFactory: fsFactory,
+      verbatimStoreFactory: () => vs,
+      stateStore: state,
+      archiver,
+      makeConsolidatePhase: () => phase,
+      makePromotePhase: () => stubPromote(),
+      makeHealthPhase: () => stubHealth(),
+      reviewQueueDir: 'review/consolidation',
+      now: () => new Date('2026-04-10T12:00:00Z'),
+    });
+
+    const report = await service.lint({});
+
+    expect(report.lowSignal).toBe(1);
+    expect(report.reviewQueue).toBe(1);
+    const queuedFiles = Object.keys(wtFs.files).filter((p) => p.startsWith('review/consolidation/'));
+    expect(queuedFiles).toHaveLength(2);
+    expect(archiver.calls).toHaveLength(1);
+    expect(archiver.calls[0].entries).toEqual([
+      { sourcePath: '/main/log/claude-code/raw/2026-04-09-b.md' },
+    ]);
   });
 
   it('reindexes wiki + projects pages touched by lint, skipping log wildcard', async () => {

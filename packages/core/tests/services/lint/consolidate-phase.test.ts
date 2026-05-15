@@ -88,7 +88,11 @@ class FakeVerbatimStore implements IVerbatimStore {
 
 class FakeLlm implements ILlmClient {
   public response:
-    | { pages: Array<{ path: string; title: string; content: string; source_entries: string[] }> }
+    | {
+        pages: Array<{ path: string; title: string; content: string; source_entries: string[] }>;
+        review?: Array<{ source_entry: string; reason: string; confidence: number }>;
+        low_signal?: Array<{ source_entry: string; reason: string; confidence: number }>;
+      }
     | Error = { pages: [] };
   public completeSpy = vi.fn();
   async complete(req: LlmCompletionRequest): Promise<LlmCompletionResponse> {
@@ -186,22 +190,25 @@ describe('ConsolidatePhase', () => {
     expect(verbatimStore.marked).toHaveLength(0);
   });
 
-  it('returns archivedEntries with absolute source paths when mainRoot is provided', async () => {
+  it('returns archivedEntries for low-signal entries when mainRoot is provided', async () => {
     await seed(2);
+    const [first, second] = [...verbatimStore.entries.keys()].sort((a, b) => a.localeCompare(b));
     llm.response = {
       pages: [
         {
           path: 'wiki/a.md',
           title: 'A',
           content: 'x',
-          source_entries: [...verbatimStore.entries.keys()],
+          source_entries: [first],
         },
       ],
+      low_signal: [{ source_entry: second, reason: 'noise', confidence: 0.2 }],
     };
     const phase = new ConsolidatePhase(fileStore, verbatimStore, llm, '/abs/repo');
     const result = await phase.run();
     expect(result.archivedEntries).toBeDefined();
-    expect(result.archivedEntries).toHaveLength(2);
+    expect(result.archivedEntries).toHaveLength(1);
+    expect(result.lowSignalCount).toBe(1);
     for (const entry of result.archivedEntries!) {
       expect(entry.sourcePath.startsWith('/abs/repo/log/')).toBe(true);
     }
@@ -213,5 +220,20 @@ describe('ConsolidatePhase', () => {
     const phase = new ConsolidatePhase(fileStore, verbatimStore, llm);
     const result = await phase.run();
     expect(result.archivedEntries).toBeUndefined();
+  });
+
+  it('treats legacy pages-only responses as low-signal fallback for unselected entries', async () => {
+    await seed(2);
+    llm.response = { pages: [] };
+    const phase = new ConsolidatePhase(fileStore, verbatimStore, llm, '/abs/repo');
+    const result = await phase.run();
+    expect(result.reviewQueueCount).toBe(0);
+    expect(result.lowSignalCount).toBe(2);
+    expect(result.reviewRecords).toHaveLength(2);
+    expect(result.archivedEntries).toHaveLength(2);
+    for (const record of result.reviewRecords ?? []) {
+      expect(record.kind).toBe('low_signal');
+      expect(record.reason).toContain('did not select');
+    }
   });
 });
