@@ -31,7 +31,7 @@
   },
   "dependencies": {
     "7zip-bin": "^5.2.0",
-    "@ai-sdk/openai": "^1.3.24",
+    "@ai-sdk/openai": "^2.0.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "ai": "^5.0.172",
     "globby": "^14.1.0",
