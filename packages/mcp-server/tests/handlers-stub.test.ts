@@ -25,6 +25,12 @@ describe('tools/call (integration)', () => {
       citations: [{ page: 'wiki/p.md', title: 'P', excerpt: 'E', score: 0.9 }],
       scope_used: 'wiki/',
       project_used: 'proj',
+      citation_check: {
+        status: 'verified',
+        reason: null,
+        invalid_citations: [],
+        unsupported_claims: [],
+      },
     };
     const query = vi.fn().mockResolvedValue(queryResult);
     handle = await startServer(makeServices({ query: { query } }), { host: '127.0.0.1', port: 0 });

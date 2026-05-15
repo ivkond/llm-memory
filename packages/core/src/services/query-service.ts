@@ -33,6 +33,22 @@ export interface QueryResponse {
   citations: Citation[];
   scope_used: string;
   project_used: string | null;
+  citation_check: CitationFaithfulnessCheck;
+}
+
+export type CitationFaithfulnessStatus = 'verified' | 'unsupported' | 'unknown' | 'skipped';
+
+export interface UnsupportedClaim {
+  claim: string;
+  citations: number[];
+  reason: string;
+}
+
+export interface CitationFaithfulnessCheck {
+  status: CitationFaithfulnessStatus;
+  reason: string | null;
+  invalid_citations: string[];
+  unsupported_claims: UnsupportedClaim[];
 }
 
 const CITATION_CAP = 20;
@@ -40,6 +56,11 @@ const DEFAULT_MAX_RESULTS = 10;
 const SYSTEM_PROMPT =
   'You are a wiki assistant. Answer the question concisely using only the provided context. ' +
   'Cite sources inline using [1], [2], … that reference the numbered context passages.';
+const VERIFIER_SYSTEM_PROMPT =
+  'You verify whether an answer is supported by numbered citation excerpts. ' +
+  'Return strict JSON only, with keys: status, reason, unsupported_claims. ' +
+  "status must be 'verified' or 'unsupported'.";
+const MAX_VERIFIER_RESPONSE_CHARS = 20_000;
 
 /**
  * Orchestrates `wiki_query`:
@@ -102,11 +123,39 @@ export class QueryService {
         maxTokens: req.maxTokens,
         temperature: 0.1,
       });
+      const synthesizedAnswer = llmResponse.content;
+      const deterministicCheck = this.validateCitationReferences(synthesizedAnswer, citations.length);
+      if (deterministicCheck.status !== 'verified') {
+        return {
+          answer: '',
+          citations,
+          scope_used: scopeUsed || 'all',
+          project_used: project,
+          citation_check: deterministicCheck,
+        };
+      }
+
+      const verifierCheck = await this.verifyCitationFaithfulness(
+        req.question,
+        synthesizedAnswer,
+        citations,
+      );
+      if (verifierCheck.status !== 'verified') {
+        return {
+          answer: '',
+          citations,
+          scope_used: scopeUsed || 'all',
+          project_used: project,
+          citation_check: verifierCheck,
+        };
+      }
+
       return {
-        answer: llmResponse.content,
+        answer: synthesizedAnswer,
         citations,
         scope_used: scopeUsed || 'all',
         project_used: project,
+        citation_check: verifierCheck,
       };
     } catch {
       return {
@@ -114,6 +163,12 @@ export class QueryService {
         citations,
         scope_used: scopeUsed || 'all',
         project_used: project,
+        citation_check: {
+          status: 'skipped',
+          reason: 'answer_unavailable',
+          invalid_citations: [],
+          unsupported_claims: [],
+        },
       };
     }
   }
@@ -180,5 +235,126 @@ export class QueryService {
       .map((r, i) => `[${i + 1}] ${r.title} (${r.path})\n${r.excerpt}`)
       .join('\n\n');
     return `Question: ${question}\n\nContext:\n${context}\n\nAnswer with inline citations.`;
+  }
+
+  private validateCitationReferences(
+    answer: string,
+    citationCount: number,
+  ): CitationFaithfulnessCheck {
+    const refs = answer.match(/\[[^\]]+\]/g) ?? [];
+    const invalid: string[] = [];
+    for (const ref of refs) {
+      const value = ref.slice(1, -1).trim();
+      if (!/^\d+$/.test(value)) {
+        invalid.push(ref);
+        continue;
+      }
+      const index = Number.parseInt(value, 10);
+      if (index < 1 || index > citationCount) {
+        invalid.push(ref);
+      }
+    }
+    if (invalid.length > 0) {
+      return {
+        status: 'unsupported',
+        reason: 'invalid_citation_reference',
+        invalid_citations: invalid,
+        unsupported_claims: [],
+      };
+    }
+    return { status: 'verified', reason: null, invalid_citations: [], unsupported_claims: [] };
+  }
+
+  private async verifyCitationFaithfulness(
+    question: string,
+    answer: string,
+    citations: Citation[],
+  ): Promise<CitationFaithfulnessCheck> {
+    try {
+      const verifierResponse = await this.llmClient.complete({
+        system: VERIFIER_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: 'user',
+            content: this.buildVerifierPrompt(question, answer, citations),
+          },
+        ],
+        maxTokens: 300,
+        temperature: 0,
+      });
+      const parsed = this.parseVerifierResponse(verifierResponse.content);
+      if (!parsed) {
+        return {
+          status: 'unknown',
+          reason: 'verifier_malformed_output',
+          invalid_citations: [],
+          unsupported_claims: [],
+        };
+      }
+      return parsed;
+    } catch {
+      return {
+        status: 'unknown',
+        reason: 'verifier_unavailable',
+        invalid_citations: [],
+        unsupported_claims: [],
+      };
+    }
+  }
+
+  private buildVerifierPrompt(question: string, answer: string, citations: Citation[]): string {
+    const citationText = citations
+      .map((citation, index) => {
+        return `[${index + 1}] ${citation.title} (${citation.page})\n${citation.excerpt}`;
+      })
+      .join('\n\n');
+    return (
+      `Question: ${question}\n\n` +
+      `Answer:\n${answer}\n\n` +
+      `Citations:\n${citationText}\n\n` +
+      'Check whether each factual claim in the answer is supported by the cited excerpts. ' +
+      'Return strict JSON only:\n' +
+      '{"status":"verified|unsupported","reason":"string|null","unsupported_claims":[{"claim":"string","citations":[1],"reason":"string"}]}'
+    );
+  }
+
+  private parseVerifierResponse(content: string): CitationFaithfulnessCheck | null {
+    if (content.length > MAX_VERIFIER_RESPONSE_CHARS) {
+      return null;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      return null;
+    }
+    if (!parsed || typeof parsed !== 'object') return null;
+    const value = parsed as Record<string, unknown>;
+    if (value.status !== 'verified' && value.status !== 'unsupported') return null;
+
+    const unsupportedClaimsRaw = Array.isArray(value.unsupported_claims)
+      ? value.unsupported_claims
+      : [];
+    const unsupportedClaims: UnsupportedClaim[] = [];
+    for (const claim of unsupportedClaimsRaw) {
+      if (!claim || typeof claim !== 'object') return null;
+      const c = claim as Record<string, unknown>;
+      if (typeof c.claim !== 'string' || typeof c.reason !== 'string' || !Array.isArray(c.citations)) {
+        return null;
+      }
+      const citations = c.citations.filter((n): n is number => Number.isInteger(n));
+      unsupportedClaims.push({ claim: c.claim, citations, reason: c.reason });
+    }
+
+    if (value.status === 'verified' && unsupportedClaims.length > 0) {
+      return null;
+    }
+
+    return {
+      status: value.status,
+      reason: typeof value.reason === 'string' ? value.reason : null,
+      invalid_citations: [],
+      unsupported_claims: unsupportedClaims,
+    };
   }
 }

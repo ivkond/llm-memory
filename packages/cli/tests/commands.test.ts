@@ -323,6 +323,12 @@ describe('CLI command coverage', () => {
       scope_used: 'wiki/',
       project_used: null,
       answer: null,
+      citation_check: {
+        status: 'unsupported',
+        reason: 'invalid_citation_reference',
+        invalid_citations: ['[99]'],
+        unsupported_claims: [],
+      },
     });
     const buildContainer = vi.fn(() => ({ query: { query } }));
 
@@ -350,6 +356,7 @@ describe('CLI command coverage', () => {
     expect(buildContainer.mock.calls[0]?.[0].wiki.path).toBe(wikiPath);
     expect(buildContainer.mock.calls[0]?.[0].llm.model).toBe('local-model');
     expect(tap.stdout[0]).toContain('"citations"');
+    expect(tap.stdout[0]).toContain('"citation_check"');
   });
 
   it('status: prints health and verbose details from config and service', async () => {
@@ -461,6 +468,12 @@ describe('CLI command coverage', () => {
       scope_used: 'wiki/',
       project_used: null,
       answer: null,
+      citation_check: {
+        status: 'skipped',
+        reason: 'answer_unavailable',
+        invalid_citations: [],
+        unsupported_claims: [],
+      },
     });
     const buildContainer = vi.fn(() => ({ query: { query } }));
 
@@ -478,6 +491,52 @@ describe('CLI command coverage', () => {
 
     expect(tap.stdout.join('\n')).toContain('No results found');
     expect(buildContainer.mock.calls[0]?.[0].llm.model).toBe('local-model');
+  });
+
+  it('search: rich output prints citation verification states', async () => {
+    const wikiPath = await mkdtemp(path.join(tmpdir(), 'cli-search-rich-wiki-'));
+    await writeWikiConfig(wikiPath);
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({
+        citations: [{ title: 'A', page: 'wiki/a.md', excerpt: 'excerpt', score: 0.9 }],
+        scope_used: 'wiki/',
+        project_used: null,
+        answer: 'Verified answer [1].',
+        citation_check: {
+          status: 'verified',
+          reason: null,
+          invalid_citations: [],
+          unsupported_claims: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        citations: [{ title: 'A', page: 'wiki/a.md', excerpt: 'excerpt', score: 0.9 }],
+        scope_used: 'wiki/',
+        project_used: null,
+        answer: '',
+        citation_check: {
+          status: 'unsupported',
+          reason: 'invalid_citation_reference',
+          invalid_citations: ['[99]'],
+          unsupported_claims: [],
+        },
+      });
+    const buildContainer = vi.fn(() => ({ query: { query } }));
+    vi.doMock('@ivkond-llm-wiki/common', () => ({ buildContainer }));
+
+    const tap = tapConsole();
+    const restoreExit = mockExit();
+
+    await runCommand('../src/commands/search.ts', 'searchCommand', ['testing', '--wiki', wikiPath]);
+    await runCommand('../src/commands/search.ts', 'searchCommand', ['testing', '--wiki', wikiPath]);
+
+    restoreExit();
+    tap.restore();
+
+    const out = tap.stdout.join('\n');
+    expect(out).toContain('Citation check: verified');
+    expect(out).toContain('Answer withheld: citation faithfulness unsupported');
   });
 
   it('ingest: resolves wiki root from current directory config when --wiki is omitted', async () => {

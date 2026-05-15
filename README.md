@@ -178,6 +178,8 @@ For machine-readable output:
 llm-wiki search "release process" --format json
 ```
 
+Search answers are citation-gated. If faithfulness to returned citation excerpts cannot be verified, `answer` is withheld and `citation_check` explains whether it was `unsupported`, `unknown`, or `skipped`.
+
 ### 8. Run the MCP server
 
 Start the server for MCP-compatible clients:
