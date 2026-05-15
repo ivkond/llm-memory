@@ -274,30 +274,172 @@ function extractPackageName(specifier) {
   return specifier.split('/')[0];
 }
 
-function collectSpecifiers(source, pattern, collector) {
-  let match = pattern.exec(source);
-  while (match !== null) {
-    const specifier = match[1];
-    if (specifier) {
-      collector.add(specifier);
-    }
-    match = pattern.exec(source);
+function isIdentifierChar(char) {
+  return /[A-Za-z0-9_$]/.test(char);
+}
+
+function skipWhitespace(source, index) {
+  let cursor = index;
+  while (cursor < source.length && /\s/.test(source[cursor])) {
+    cursor += 1;
   }
-  pattern.lastIndex = 0;
+  return cursor;
+}
+
+function parseStringLiteral(source, index) {
+  const quote = source[index];
+  if (quote !== '\'' && quote !== '"') {
+    return null;
+  }
+
+  let cursor = index + 1;
+  let value = '';
+  while (cursor < source.length) {
+    const char = source[cursor];
+    if (char === '\\') {
+      const escaped = source[cursor + 1];
+      if (escaped) {
+        value += escaped;
+      }
+      cursor += 2;
+      continue;
+    }
+    if (char === quote) {
+      return { value, end: cursor + 1 };
+    }
+    value += char;
+    cursor += 1;
+  }
+
+  return null;
 }
 
 function extractRuntimeImportSpecifiers(source) {
   const specifiers = new Set();
-  const patterns = [
-    /^\s*import\s+['"]([^'"]+)['"]\s*;?\s*$/gm,
-    /^\s*import\s+.+?\s+from\s+['"]([^'"]+)['"]\s*;?\s*$/gm,
-    /^\s*export\s+.+?\s+from\s+['"]([^'"]+)['"]\s*;?\s*$/gm,
-    /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g,
-    /\brequire\(\s*['"]([^'"]+)['"]\s*\)/g,
-  ];
+  let index = 0;
 
-  for (const pattern of patterns) {
-    collectSpecifiers(source, pattern, specifiers);
+  while (index < source.length) {
+    const char = source[index];
+    const next = source[index + 1];
+
+    if (char === '/' && next === '/') {
+      index += 2;
+      while (index < source.length && source[index] !== '\n') {
+        index += 1;
+      }
+      continue;
+    }
+
+    if (char === '/' && next === '*') {
+      index += 2;
+      while (index < source.length && !(source[index] === '*' && source[index + 1] === '/')) {
+        index += 1;
+      }
+      index += 2;
+      continue;
+    }
+
+    if (char === '\'' || char === '"' || char === '`') {
+      const quote = char;
+      index += 1;
+      while (index < source.length) {
+        if (source[index] === '\\') {
+          index += 2;
+          continue;
+        }
+        if (source[index] === quote) {
+          index += 1;
+          break;
+        }
+        index += 1;
+      }
+      continue;
+    }
+
+    const importBoundary =
+      source.startsWith('import', index) &&
+      !isIdentifierChar(source[index - 1] ?? '') &&
+      !isIdentifierChar(source[index + 6] ?? '');
+    if (importBoundary) {
+      let cursor = skipWhitespace(source, index + 6);
+      if (source[cursor] === '(') {
+        cursor = skipWhitespace(source, cursor + 1);
+        const parsed = parseStringLiteral(source, cursor);
+        if (parsed) {
+          specifiers.add(parsed.value);
+          cursor = parsed.end;
+        }
+      } else if (source[cursor] === '\'' || source[cursor] === '"') {
+        const parsed = parseStringLiteral(source, cursor);
+        if (parsed) {
+          specifiers.add(parsed.value);
+          cursor = parsed.end;
+        }
+      } else {
+        while (cursor < source.length) {
+          if (source.startsWith('from', cursor) && !isIdentifierChar(source[cursor + 4] ?? '')) {
+            cursor = skipWhitespace(source, cursor + 4);
+            const parsed = parseStringLiteral(source, cursor);
+            if (parsed) {
+              specifiers.add(parsed.value);
+              cursor = parsed.end;
+            }
+            break;
+          }
+          if (source[cursor] === '\n' || source[cursor] === ';') {
+            break;
+          }
+          cursor += 1;
+        }
+      }
+      index = Math.max(cursor, index + 6);
+      continue;
+    }
+
+    const exportBoundary =
+      source.startsWith('export', index) &&
+      !isIdentifierChar(source[index - 1] ?? '') &&
+      !isIdentifierChar(source[index + 6] ?? '');
+    if (exportBoundary) {
+      let cursor = index + 6;
+      while (cursor < source.length) {
+        if (source.startsWith('from', cursor) && !isIdentifierChar(source[cursor + 4] ?? '')) {
+          cursor = skipWhitespace(source, cursor + 4);
+          const parsed = parseStringLiteral(source, cursor);
+          if (parsed) {
+            specifiers.add(parsed.value);
+            cursor = parsed.end;
+          }
+          break;
+        }
+        if (source[cursor] === '\n' || source[cursor] === ';') {
+          break;
+        }
+        cursor += 1;
+      }
+      index = Math.max(cursor, index + 6);
+      continue;
+    }
+
+    const requireBoundary =
+      source.startsWith('require', index) &&
+      !isIdentifierChar(source[index - 1] ?? '') &&
+      !isIdentifierChar(source[index + 7] ?? '');
+    if (requireBoundary) {
+      let cursor = skipWhitespace(source, index + 7);
+      if (source[cursor] === '(') {
+        cursor = skipWhitespace(source, cursor + 1);
+        const parsed = parseStringLiteral(source, cursor);
+        if (parsed) {
+          specifiers.add(parsed.value);
+          cursor = parsed.end;
+        }
+      }
+      index = Math.max(cursor, index + 7);
+      continue;
+    }
+
+    index += 1;
   }
 
   return specifiers;
