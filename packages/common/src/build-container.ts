@@ -15,6 +15,7 @@ import {
   CompositeSourceReader,
   SevenZipArchiver,
   ClaudeCodeMemoryReader,
+  FsOperationJournal,
   type WikiConfig,
 } from '@ivkond-llm-wiki/infra';
 import {
@@ -66,6 +67,7 @@ export function buildContainer(config: WikiConfig): AppServices {
   const stateStore = new YamlStateStore(fileStore);
   const sourceReader = new CompositeSourceReader(new FsSourceReader(), new HttpSourceReader());
   const archiver = new SevenZipArchiver();
+  const operationJournal = new FsOperationJournal(wikiRoot);
 
   const llmProvider = createOpenAI({
     apiKey: config.llm.api_key ?? undefined,
@@ -135,7 +137,7 @@ export function buildContainer(config: WikiConfig): AppServices {
     agentConfigs: {},
   });
 
-  return Object.freeze({ remember, recall, query, ingest, status, lint, import_ });
+  return Object.freeze({ remember, recall, query, ingest, status, lint, import_, operationJournal });
 }
 
 function expandHome(p: string): string {
