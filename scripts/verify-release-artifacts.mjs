@@ -395,7 +395,7 @@ function extractRuntimeImportSpecifiers(source) {
             cursor += 4;
             continue;
           }
-          if (source[cursor] === '\n' || source[cursor] === ';') {
+          if (source[cursor] === ';') {
             break;
           }
           cursor += 1;
@@ -423,7 +423,7 @@ function extractRuntimeImportSpecifiers(source) {
           cursor += 4;
           continue;
         }
-        if (source[cursor] === '\n' || source[cursor] === ';') {
+        if (source[cursor] === ';') {
           break;
         }
         cursor += 1;
