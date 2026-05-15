@@ -41,6 +41,32 @@ async function writeJson(filePath, value) {
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+function runtimeValidationInput(source, dependencies = {}) {
+  return {
+    packageName: '@ivkond-llm-wiki/cli',
+    packedManifest: {
+      name: '@ivkond-llm-wiki/cli',
+      dependencies,
+    },
+    jsFiles: {
+      'package/dist/index.js': source,
+    },
+  };
+}
+
+function expectUndeclaredRuntimeImport(source, dependencies) {
+  assert.throws(
+    () => validateUndeclaredRuntimeImports(runtimeValidationInput(source, dependencies)),
+    /undeclared runtime imports/,
+  );
+}
+
+function expectNoUndeclaredRuntimeImport(source, dependencies) {
+  assert.doesNotThrow(() =>
+    validateUndeclaredRuntimeImports(runtimeValidationInput(source, dependencies)),
+  );
+}
+
 test('test_validateReleaseManifestNames_whenManifestNameDoesNotMatch_throws', () => {
   const manifests = new Map([
     ['mcp-server', { name: '@ivkond-llm-wiki/server' }],
@@ -154,209 +180,45 @@ test('test_validatePackedContract_whenBinTargetMissing_throws', () => {
 });
 
 test('test_validateUndeclaredRuntimeImports_whenImportNotInManifestDependencies_throws', () => {
-  const packedManifest = {
-    name: '@ivkond-llm-wiki/cli',
-    dependencies: {
-      commander: '^12.1.0',
-    },
-  };
-
-  const jsFiles = {
-    'package/dist/index.js': "import kleur from 'kleur';\nimport { readFile } from 'node:fs/promises';",
-  };
-
-  assert.throws(
-    () =>
-      validateUndeclaredRuntimeImports({
-        packageName: packedManifest.name,
-        packedManifest,
-        jsFiles,
-      }),
-    /undeclared runtime imports/,
-  );
+  expectUndeclaredRuntimeImport("import kleur from 'kleur';\nimport { readFile } from 'node:fs/promises';", {
+    commander: '^12.1.0',
+  });
 });
 
 test('test_validateUndeclaredRuntimeImports_whenSideEffectImportIsUndeclared_throws', () => {
-  const packedManifest = {
-    name: '@ivkond-llm-wiki/cli',
-    dependencies: {},
-  };
-
-  const jsFiles = {
-    'package/dist/index.js': "import 'left-pad';\n",
-  };
-
-  assert.throws(
-    () =>
-      validateUndeclaredRuntimeImports({
-        packageName: packedManifest.name,
-        packedManifest,
-        jsFiles,
-      }),
-    /undeclared runtime imports/,
-  );
+  expectUndeclaredRuntimeImport("import 'left-pad';\n");
 });
 
 test('test_validateUndeclaredRuntimeImports_whenCompactImportSyntaxIsUndeclared_throws', () => {
-  const packedManifest = {
-    name: '@ivkond-llm-wiki/cli',
-    dependencies: {},
-  };
-
-  const jsFiles = {
-    'package/dist/index.js': 'import{foo}from"left-pad";\n',
-  };
-
-  assert.throws(
-    () =>
-      validateUndeclaredRuntimeImports({
-        packageName: packedManifest.name,
-        packedManifest,
-        jsFiles,
-      }),
-    /undeclared runtime imports/,
-  );
+  expectUndeclaredRuntimeImport('import{foo}from"left-pad";\n');
 });
 
 test('test_validateUndeclaredRuntimeImports_whenFromUsedAsImportBinding_detectsRealFromSpecifier', () => {
-  const packedManifest = {
-    name: '@ivkond-llm-wiki/cli',
-    dependencies: {},
-  };
-
-  const jsFiles = {
-    'package/dist/index.js': 'import { from as f } from "left-pad";\n',
-  };
-
-  assert.throws(
-    () =>
-      validateUndeclaredRuntimeImports({
-        packageName: packedManifest.name,
-        packedManifest,
-        jsFiles,
-      }),
-    /undeclared runtime imports/,
-  );
+  expectUndeclaredRuntimeImport('import { from as f } from "left-pad";\n');
 });
 
 test('test_validateUndeclaredRuntimeImports_whenFromUsedAsExportBinding_detectsRealFromSpecifier', () => {
-  const packedManifest = {
-    name: '@ivkond-llm-wiki/cli',
-    dependencies: {},
-  };
-
-  const jsFiles = {
-    'package/dist/index.js': 'export { from as f } from "left-pad";\n',
-  };
-
-  assert.throws(
-    () =>
-      validateUndeclaredRuntimeImports({
-        packageName: packedManifest.name,
-        packedManifest,
-        jsFiles,
-      }),
-    /undeclared runtime imports/,
-  );
+  expectUndeclaredRuntimeImport('export { from as f } from "left-pad";\n');
 });
 
 test('test_validateUndeclaredRuntimeImports_whenMultilineImportFromIsUndeclared_throws', () => {
-  const packedManifest = {
-    name: '@ivkond-llm-wiki/cli',
-    dependencies: {},
-  };
-
-  const jsFiles = {
-    'package/dist/index.js': 'import {\n  foo,\n  bar,\n} from "left-pad";\n',
-  };
-
-  assert.throws(
-    () =>
-      validateUndeclaredRuntimeImports({
-        packageName: packedManifest.name,
-        packedManifest,
-        jsFiles,
-      }),
-    /undeclared runtime imports/,
-  );
+  expectUndeclaredRuntimeImport('import {\n  foo,\n  bar,\n} from "left-pad";\n');
 });
 
 test('test_validateUndeclaredRuntimeImports_whenMultilineExportFromIsUndeclared_throws', () => {
-  const packedManifest = {
-    name: '@ivkond-llm-wiki/cli',
-    dependencies: {},
-  };
-
-  const jsFiles = {
-    'package/dist/index.js': 'export {\n  foo,\n  bar,\n} from "left-pad";\n',
-  };
-
-  assert.throws(
-    () =>
-      validateUndeclaredRuntimeImports({
-        packageName: packedManifest.name,
-        packedManifest,
-        jsFiles,
-      }),
-    /undeclared runtime imports/,
-  );
+  expectUndeclaredRuntimeImport('export {\n  foo,\n  bar,\n} from "left-pad";\n');
 });
 
 test('test_validateUndeclaredRuntimeImports_whenImportWordsAppearInString_doesNotThrow', () => {
-  const packedManifest = {
-    name: '@ivkond-llm-wiki/cli',
-    dependencies: {},
-  };
-
-  const jsFiles = {
-    'package/dist/index.js': "const msg = \"import 'left-pad' from docs\";\n",
-  };
-
-  assert.doesNotThrow(() =>
-    validateUndeclaredRuntimeImports({
-      packageName: packedManifest.name,
-      packedManifest,
-      jsFiles,
-    }),
-  );
+  expectNoUndeclaredRuntimeImport("const msg = \"import 'left-pad' from docs\";\n");
 });
 
 test('test_validateUndeclaredRuntimeImports_whenRequireAppearsInString_doesNotThrow', () => {
-  const packedManifest = {
-    name: '@ivkond-llm-wiki/cli',
-    dependencies: {},
-  };
-
-  const jsFiles = {
-    'package/dist/index.js': 'const s = "require(\'left-pad\')";\n',
-  };
-
-  assert.doesNotThrow(() =>
-    validateUndeclaredRuntimeImports({
-      packageName: packedManifest.name,
-      packedManifest,
-      jsFiles,
-    }),
-  );
+  expectNoUndeclaredRuntimeImport('const s = "require(\'left-pad\')";\n');
 });
 
 test('test_validateUndeclaredRuntimeImports_whenDynamicImportAppearsInString_doesNotThrow', () => {
-  const packedManifest = {
-    name: '@ivkond-llm-wiki/cli',
-    dependencies: {},
-  };
-
-  const jsFiles = {
-    'package/dist/index.js': 'const s = "import(\'left-pad\')";\n',
-  };
-
-  assert.doesNotThrow(() =>
-    validateUndeclaredRuntimeImports({
-      packageName: packedManifest.name,
-      packedManifest,
-      jsFiles,
-    }),
-  );
+  expectNoUndeclaredRuntimeImport('const s = "import(\'left-pad\')";\n');
 });
 
 test('test_loadReleaseManifests_whenReleasePackageDirectoryMissing_throws', async () => {
