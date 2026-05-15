@@ -55,6 +55,35 @@ class FakeLlm implements ILlmClient {
   }
 }
 
+interface TestProposal {
+  target: string;
+  title: string;
+  content: string;
+  confidence: number;
+  promotion_reason: string;
+  sources: Array<string | number>;
+  replacement_marker: string;
+}
+
+const PRACTICE_DOC =
+  '---\ntitle: x\n---\n\n## pattern-a\nDetail.\n';
+const PRACTICE_DOC_ALT_MARKER =
+  '---\ntitle: x\n---\n\n## different-marker\nDetail.\n';
+const WIKI_SENSITIVE_DOC = '## pattern-a\nSensitive content.\n';
+
+function baseProposal(overrides: Partial<TestProposal> = {}): TestProposal {
+  return {
+    target: 'wiki/patterns/pattern-a.md',
+    title: 'Pattern A',
+    content: 'Useful shared pattern.',
+    confidence: 0.95,
+    promotion_reason: 'Reusable.',
+    sources: ['projects/x/practices.md'],
+    replacement_marker: 'pattern-a',
+    ...overrides,
+  };
+}
+
 describe('PromotePhase', () => {
   let fileStore: FakeFileStore;
   let llm: FakeLlm;
@@ -63,6 +92,18 @@ describe('PromotePhase', () => {
     fileStore = new FakeFileStore();
     llm = new FakeLlm();
   });
+
+  function seedPractice(path = 'projects/x/practices.md', content = PRACTICE_DOC): void {
+    fileStore.files[path] = content;
+  }
+
+  function seedSensitiveWiki(path = 'wiki/important-page.md'): void {
+    fileStore.files[path] = WIKI_SENSITIVE_DOC;
+  }
+
+  function setSingleProposal(overrides: Partial<TestProposal> = {}): void {
+    llm.response = { promoted: [baseProposal(overrides)] };
+  }
 
   it('returns zero when no project practices files exist', async () => {
     const phase = new PromotePhase(fileStore, llm);
@@ -108,42 +149,29 @@ describe('PromotePhase', () => {
 
   it('rejects promotion target outside wiki/patterns/', async () => {
     fileStore.files['projects/x/practices.md'] = '---\ntitle: x\n---\n\n## a\nb\n';
-    llm.response = {
-      promoted: [
-        {
-          target: 'wiki/tools/x.md',
-          title: 'x',
-          content: 'y',
-          confidence: 0.95,
-          promotion_reason: 'Reusable pattern.',
-          sources: ['projects/x/practices.md'],
-          replacement_marker: 'a',
-        },
-      ],
-    };
+    setSingleProposal({
+      target: 'wiki/tools/x.md',
+      title: 'x',
+      content: 'y',
+      promotion_reason: 'Reusable pattern.',
+      replacement_marker: 'a',
+    });
     const phase = new PromotePhase(fileStore, llm);
     await expect(phase.run()).rejects.toThrow(/wiki\/patterns/);
   });
 
   it('ignores LLM-proposed sources outside the practice files allowlist', async () => {
-    fileStore.files['projects/x/practices.md'] = '---\ntitle: x\n---\n\n## pattern-a\nDetail.\n';
+    seedPractice();
     // The marker deliberately matches a heading in this file so the
     // test proves the allowlist blocks the rewrite, not just marker mismatch.
-    fileStore.files['wiki/important-page.md'] = '## pattern-a\nSensitive content.\n';
-
-    llm.response = {
-      promoted: [
-        {
-          target: 'wiki/patterns/safe.md',
-          title: 'Safe pattern',
-          content: 'Extracted pattern.',
-          confidence: 0.95,
-          promotion_reason: 'Can be reused in multiple codebases.',
-          sources: ['projects/x/practices.md', 'wiki/important-page.md'],
-          replacement_marker: 'pattern-a',
-        },
-      ],
-    };
+    seedSensitiveWiki();
+    setSingleProposal({
+      target: 'wiki/patterns/safe.md',
+      title: 'Safe pattern',
+      content: 'Extracted pattern.',
+      promotion_reason: 'Can be reused in multiple codebases.',
+      sources: ['projects/x/practices.md', 'wiki/important-page.md'],
+    });
 
     const phase = new PromotePhase(fileStore, llm);
     const result = await phase.run();
@@ -161,20 +189,11 @@ describe('PromotePhase', () => {
   });
 
   it('routes below-threshold proposals to review instead of auto-promoting', async () => {
-    fileStore.files['projects/x/practices.md'] = '---\ntitle: x\n---\n\n## pattern-a\nDetail.\n';
-    llm.response = {
-      promoted: [
-        {
-          target: 'wiki/patterns/pattern-a.md',
-          title: 'Pattern A',
-          content: 'Useful shared pattern.',
-          confidence: 0.6,
-          promotion_reason: 'Potentially reusable.',
-          sources: ['projects/x/practices.md'],
-          replacement_marker: 'pattern-a',
-        },
-      ],
-    };
+    seedPractice();
+    setSingleProposal({
+      confidence: 0.6,
+      promotion_reason: 'Potentially reusable.',
+    });
 
     const phase = new PromotePhase(fileStore, llm, { autoPromoteConfidenceThreshold: 0.8 });
     const result = await phase.run();
@@ -186,20 +205,8 @@ describe('PromotePhase', () => {
   });
 
   it('skips proposal safely when replacement marker does not match source', async () => {
-    fileStore.files['projects/x/practices.md'] = '---\ntitle: x\n---\n\n## different-marker\nDetail.\n';
-    llm.response = {
-      promoted: [
-        {
-          target: 'wiki/patterns/pattern-a.md',
-          title: 'Pattern A',
-          content: 'Useful shared pattern.',
-          confidence: 0.95,
-          promotion_reason: 'Clearly reusable.',
-          sources: ['projects/x/practices.md'],
-          replacement_marker: 'pattern-a',
-        },
-      ],
-    };
+    seedPractice('projects/x/practices.md', PRACTICE_DOC_ALT_MARKER);
+    setSingleProposal({ promotion_reason: 'Clearly reusable.' });
 
     const phase = new PromotePhase(fileStore, llm);
     const result = await phase.run();
@@ -213,20 +220,8 @@ describe('PromotePhase', () => {
   });
 
   it('routes single-source proposals without rationale to review', async () => {
-    fileStore.files['projects/x/practices.md'] = '---\ntitle: x\n---\n\n## pattern-a\nDetail.\n';
-    llm.response = {
-      promoted: [
-        {
-          target: 'wiki/patterns/pattern-a.md',
-          title: 'Pattern A',
-          content: 'Useful shared pattern.',
-          confidence: 0.95,
-          promotion_reason: '   ',
-          sources: ['projects/x/practices.md'],
-          replacement_marker: 'pattern-a',
-        },
-      ],
-    };
+    seedPractice();
+    setSingleProposal({ promotion_reason: '   ' });
 
     const phase = new PromotePhase(fileStore, llm);
     const result = await phase.run();
@@ -240,21 +235,12 @@ describe('PromotePhase', () => {
   });
 
   it('routes one allowed + one disallowed source with blank rationale to review', async () => {
-    fileStore.files['projects/x/practices.md'] = '---\ntitle: x\n---\n\n## pattern-a\nDetail.\n';
-    fileStore.files['wiki/important-page.md'] = '## pattern-a\nSensitive content.\n';
-    llm.response = {
-      promoted: [
-        {
-          target: 'wiki/patterns/pattern-a.md',
-          title: 'Pattern A',
-          content: 'Useful shared pattern.',
-          confidence: 0.95,
-          promotion_reason: ' ',
-          sources: ['projects/x/practices.md', 'wiki/important-page.md'],
-          replacement_marker: 'pattern-a',
-        },
-      ],
-    };
+    seedPractice();
+    seedSensitiveWiki();
+    setSingleProposal({
+      promotion_reason: ' ',
+      sources: ['projects/x/practices.md', 'wiki/important-page.md'],
+    });
 
     const phase = new PromotePhase(fileStore, llm);
     const result = await phase.run();
@@ -269,21 +255,9 @@ describe('PromotePhase', () => {
   });
 
   it('does not write promoted page when all sources are outside allowlist', async () => {
-    fileStore.files['projects/x/practices.md'] = '---\ntitle: x\n---\n\n## pattern-a\nDetail.\n';
-    fileStore.files['wiki/important-page.md'] = '## pattern-a\nSensitive content.\n';
-    llm.response = {
-      promoted: [
-        {
-          target: 'wiki/patterns/pattern-a.md',
-          title: 'Pattern A',
-          content: 'Useful shared pattern.',
-          confidence: 0.95,
-          promotion_reason: 'Reusable.',
-          sources: ['wiki/important-page.md'],
-          replacement_marker: 'pattern-a',
-        },
-      ],
-    };
+    seedPractice();
+    seedSensitiveWiki();
+    setSingleProposal({ sources: ['wiki/important-page.md'] });
 
     const phase = new PromotePhase(fileStore, llm);
     const result = await phase.run();
@@ -297,40 +271,19 @@ describe('PromotePhase', () => {
   });
 
   it('rejects non-string sources entries in model response', async () => {
-    fileStore.files['projects/x/practices.md'] = '---\ntitle: x\n---\n\n## pattern-a\nDetail.\n';
-    llm.response = {
-      promoted: [
-        {
-          target: 'wiki/patterns/pattern-a.md',
-          title: 'Pattern A',
-          content: 'Useful shared pattern.',
-          confidence: 0.95,
-          promotion_reason: 'Reusable.',
-          sources: ['projects/x/practices.md', 123],
-          replacement_marker: 'pattern-a',
-        },
-      ],
-    };
+    seedPractice();
+    setSingleProposal({ sources: ['projects/x/practices.md', 123] });
 
     const phase = new PromotePhase(fileStore, llm);
     await expect(phase.run()).rejects.toThrow(/malformed promote entry/);
   });
 
   it('routes duplicate single-source evidence without rationale to review', async () => {
-    fileStore.files['projects/x/practices.md'] = '---\ntitle: x\n---\n\n## pattern-a\nDetail.\n';
-    llm.response = {
-      promoted: [
-        {
-          target: 'wiki/patterns/pattern-a.md',
-          title: 'Pattern A',
-          content: 'Useful shared pattern.',
-          confidence: 0.95,
-          promotion_reason: ' ',
-          sources: ['projects/x/practices.md', 'projects/x/practices.md'],
-          replacement_marker: 'pattern-a',
-        },
-      ],
-    };
+    seedPractice();
+    setSingleProposal({
+      promotion_reason: ' ',
+      sources: ['projects/x/practices.md', 'projects/x/practices.md'],
+    });
 
     const phase = new PromotePhase(fileStore, llm);
     const result = await phase.run();
