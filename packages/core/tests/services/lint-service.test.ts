@@ -25,6 +25,7 @@ import type {
 import type { SearchResult } from '../../src/domain/search-result.js';
 import type { VerbatimEntry } from '../../src/domain/verbatim-entry.js';
 import type { WikiPageData } from '../../src/domain/wiki-page.js';
+import { emptyIndexSnapshot } from './test-helpers.js';
 
 class FakeFileStore implements IFileStore {
   constructor(public readonly root: string) {}
@@ -73,20 +74,8 @@ class FakeSearchEngine implements ISearchEngine {
     for (const p of paths) result[p] = null;
     return result;
   }
-  async inspectIndex(): Promise<{
-    health: 'ok' | 'stale' | 'missing';
-    bm25Paths: string[];
-    vectorPaths: string[];
-    indexedAt: Record<string, string>;
-    metadataCorrupted: boolean;
-  }> {
-    return {
-      health: 'ok',
-      bm25Paths: [],
-      vectorPaths: [],
-      indexedAt: {},
-      metadataCorrupted: false,
-    };
+  async inspectIndex() {
+    return emptyIndexSnapshot('ok');
   }
 }
 

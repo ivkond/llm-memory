@@ -27,6 +27,7 @@ import type {
 } from '../../src/ports/index.js';
 import type { SearchResult } from '../../src/domain/search-result.js';
 import type { WikiPageData } from '../../src/domain/wiki-page.js';
+import { emptyIndexSnapshot } from './test-helpers.js';
 
 // ---------------------------------------------------------------------------
 // Lightweight in-memory fakes so IngestService tests can assert orchestration
@@ -101,20 +102,8 @@ class FakeSearchEngine implements ISearchEngine {
     for (const p of paths) result[p] = null;
     return result;
   }
-  async inspectIndex(): Promise<{
-    health: 'ok' | 'stale' | 'missing';
-    bm25Paths: string[];
-    vectorPaths: string[];
-    indexedAt: Record<string, string>;
-    metadataCorrupted: boolean;
-  }> {
-    return {
-      health: 'ok',
-      bm25Paths: [],
-      vectorPaths: [],
-      indexedAt: {},
-      metadataCorrupted: false,
-    };
+  async inspectIndex() {
+    return emptyIndexSnapshot('ok');
   }
 }
 
