@@ -108,4 +108,25 @@ describe('buildContainer', () => {
     );
     expect(keys).toHaveLength(8);
   });
+
+  it('test_buildContainer_importService_registersAntigravityWithWorkspaceRuleDefaults', () => {
+    const config = makeTestConfig(tempDir);
+    const services = buildContainer(config);
+    const importService = services.import_ as unknown as {
+      deps: {
+        readers: Map<string, { agent: string }>;
+        agentConfigs: Record<string, { enabled: boolean; paths: string[] }>;
+      };
+    };
+
+    expect(importService.deps.readers.has('claude-code')).toBe(true);
+    expect(importService.deps.readers.has('antigravity')).toBe(true);
+    expect(importService.deps.agentConfigs.antigravity).toEqual({
+      enabled: true,
+      paths: [
+        path.join(tempDir, '.agents', 'rules', '**', '*.md').replaceAll('\\', '/'),
+        path.join(tempDir, '.agent', 'rules', '**', '*.md').replaceAll('\\', '/'),
+      ],
+    });
+  });
 });

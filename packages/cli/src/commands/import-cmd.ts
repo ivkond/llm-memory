@@ -3,13 +3,14 @@
  *
  * Imports from:
  * - Claude Code memory (claude-code)
+ * - Antigravity workspace rules (antigravity)
  */
 import { Command } from 'commander';
 import path from 'node:path';
 import { ConfigLoader } from '@ivkond-llm-wiki/infra';
 import { buildContainer } from '@ivkond-llm-wiki/common';
 
-const SUPPORTED_AGENTS = ['claude-code'];
+const SUPPORTED_AGENTS = ['claude-code', 'antigravity'];
 
 async function findWikiRoot(): Promise<string | null> {
   const candidates = [process.cwd(), path.join(process.env.HOME ?? '', '.llm-wiki')];
@@ -29,7 +30,11 @@ async function findWikiRoot(): Promise<string | null> {
 export const importCommand = new Command()
   .name('import')
   .description('Import from external sources')
-  .option('-a, --agent <agent>', 'Agent to import from (claude-code, all)', 'claude-code')
+  .option(
+    '-a, --agent <agent>',
+    'Agent to import from (claude-code, antigravity, all)',
+    'claude-code',
+  )
   .option('-v, --verbose', 'Verbose output', false)
   .option('-w, --wiki <path>', 'Wiki directory path')
   .action(async (options: { agent?: string; verbose?: boolean; wiki?: string }) => {

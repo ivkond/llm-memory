@@ -281,6 +281,7 @@ describe('CLI command coverage', () => {
     tap.restore();
 
     expect(tap.stderr.join('\n')).toContain('Unknown agent');
+    expect(tap.stderr.join('\n')).toContain('antigravity');
   });
 
   it('import: runs service and reports totals', async () => {
@@ -313,6 +314,57 @@ describe('CLI command coverage', () => {
     expect(buildContainer.mock.calls[0]?.[0].wiki.path).toBe(wikiPath);
     expect(buildContainer.mock.calls[0]?.[0].llm.model).toBe('local-model');
     expect(tap.stdout.join('\n')).toContain('Total: 2 imported, 1 skipped');
+  });
+
+  it('import: accepts --agent antigravity', async () => {
+    const wikiPath = await mkdtemp(path.join(tmpdir(), 'cli-import-ag-wiki-'));
+    await writeWikiConfig(wikiPath);
+    const importAll = vi.fn().mockResolvedValue({
+      agents: [{ agent: 'antigravity', imported: 1, skipped: 0, discovered: 1, error: null }],
+    });
+    const buildContainer = vi.fn(() => ({ import_: { importAll } }));
+
+    vi.doMock('@ivkond-llm-wiki/common', () => ({
+      buildContainer,
+    }));
+
+    const tap = tapConsole();
+    const restoreExit = mockExit();
+
+    await runCommand('../src/commands/import-cmd.ts', 'importCommand', [
+      '--wiki',
+      wikiPath,
+      '--agent',
+      'antigravity',
+    ]);
+
+    restoreExit();
+    tap.restore();
+
+    expect(importAll).toHaveBeenCalledWith({ agents: ['antigravity'] });
+    expect(tap.stdout.join('\n')).toContain('antigravity');
+  });
+
+  it('import: keeps --agent all delegation unfiltered', async () => {
+    const wikiPath = await mkdtemp(path.join(tmpdir(), 'cli-import-all-wiki-'));
+    await writeWikiConfig(wikiPath);
+    const importAll = vi.fn().mockResolvedValue({ agents: [] });
+    const buildContainer = vi.fn(() => ({ import_: { importAll } }));
+
+    vi.doMock('@ivkond-llm-wiki/common', () => ({
+      buildContainer,
+    }));
+
+    const restoreExit = mockExit();
+    await runCommand('../src/commands/import-cmd.ts', 'importCommand', [
+      '--wiki',
+      wikiPath,
+      '--agent',
+      'all',
+    ]);
+    restoreExit();
+
+    expect(importAll).toHaveBeenCalledWith({ agents: undefined });
   });
 
   it('search: emits json output with parsed limit', async () => {

@@ -15,6 +15,7 @@ import {
   CompositeSourceReader,
   SevenZipArchiver,
   ClaudeCodeMemoryReader,
+  AntigravityMemoryReader,
   FsOperationJournal,
   type WikiConfig,
 } from '@ivkond-llm-wiki/infra';
@@ -30,6 +31,7 @@ import {
   ConsolidatePhase,
   PromotePhase,
   HealthPhase,
+  type IAgentMemoryReader,
   type IFileStore,
 } from '@ivkond-llm-wiki/core';
 import type { AppServices } from './app-services.js';
@@ -131,10 +133,25 @@ export function buildContainer(config: WikiConfig): AppServices {
     },
   });
   const import_ = new ImportService({
-    readers: new Map([['claude-code', new ClaudeCodeMemoryReader()]]),
+    readers: new Map<string, IAgentMemoryReader>([
+      ['claude-code', new ClaudeCodeMemoryReader()],
+      ['antigravity', new AntigravityMemoryReader()],
+    ]),
     verbatimStore,
     stateStore,
-    agentConfigs: {},
+    agentConfigs: {
+      'claude-code': {
+        enabled: true,
+        paths: [path.join(wikiRoot, '.claude', 'projects', '*', 'memory', '*.md').replaceAll('\\', '/')],
+      },
+      antigravity: {
+        enabled: true,
+        paths: [
+          path.join(wikiRoot, '.agents', 'rules', '**', '*.md').replaceAll('\\', '/'),
+          path.join(wikiRoot, '.agent', 'rules', '**', '*.md').replaceAll('\\', '/'),
+        ],
+      },
+    },
   });
 
   return Object.freeze({ remember, recall, query, ingest, status, lint, import_, operationJournal });
