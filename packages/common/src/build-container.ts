@@ -15,6 +15,7 @@ import {
   CompositeSourceReader,
   SevenZipArchiver,
   ClaudeCodeMemoryReader,
+  AntigravityMemoryReader,
   FsOperationJournal,
   type WikiConfig,
 } from '@ivkond-llm-wiki/infra';
@@ -31,6 +32,7 @@ import {
   PromotePhase,
   HealthPhase,
   type IFileStore,
+  type IAgentMemoryReader,
 } from '@ivkond-llm-wiki/core';
 import type { AppServices } from './app-services.js';
 
@@ -68,6 +70,7 @@ export function buildContainer(config: WikiConfig): AppServices {
   const sourceReader = new CompositeSourceReader(new FsSourceReader(), new HttpSourceReader());
   const archiver = new SevenZipArchiver();
   const operationJournal = new FsOperationJournal(wikiRoot);
+  const workspaceRoot = process.cwd();
 
   const llmProvider = createOpenAI({
     apiKey: config.llm.api_key ?? undefined,
@@ -131,10 +134,25 @@ export function buildContainer(config: WikiConfig): AppServices {
     },
   });
   const import_ = new ImportService({
-    readers: new Map([['claude-code', new ClaudeCodeMemoryReader()]]),
+    readers: new Map<string, IAgentMemoryReader>([
+      ['claude-code', new ClaudeCodeMemoryReader()],
+      ['antigravity', new AntigravityMemoryReader()],
+    ]),
     verbatimStore,
     stateStore,
-    agentConfigs: {},
+    agentConfigs: {
+      'claude-code': {
+        enabled: true,
+        paths: [path.join(homedir(), '.claude', 'projects', '*', 'memory', '*.md').replaceAll('\\', '/')],
+      },
+      antigravity: {
+        enabled: true,
+        paths: [
+          path.join(workspaceRoot, '.agents', 'rules', '**', '*.md').replaceAll('\\', '/'),
+          path.join(workspaceRoot, '.agent', 'rules', '**', '*.md').replaceAll('\\', '/'),
+        ],
+      },
+    },
   });
 
   return Object.freeze({ remember, recall, query, ingest, status, lint, import_, operationJournal });

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import type { AgentConfig } from '@ivkond-llm-wiki/core';
 import {
   RememberService,
   RecallService,
@@ -107,5 +108,22 @@ describe('buildContainer', () => {
         .sort((a, b) => a.localeCompare(b)),
     );
     expect(keys).toHaveLength(8);
+  });
+
+  it('test_buildContainer_importService_registersAntigravityWithScopedDefaults', () => {
+    const config = makeTestConfig(tempDir);
+    const services = buildContainer(config);
+    const importService = services.import_ as unknown as {
+      deps: {
+        agentConfigs: Record<string, AgentConfig>;
+      };
+    };
+
+    const configs = importService.deps.agentConfigs;
+    expect(configs.antigravity?.enabled).toBe(true);
+    expect(configs.antigravity?.paths).toEqual([
+      path.join(process.cwd(), '.agents', 'rules', '**', '*.md').replaceAll('\\', '/'),
+      path.join(process.cwd(), '.agent', 'rules', '**', '*.md').replaceAll('\\', '/'),
+    ]);
   });
 });
