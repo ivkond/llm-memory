@@ -25,81 +25,66 @@ describe('IndexConsistencyReport', () => {
     expect(report.findings).toEqual([]);
   });
 
-  it('maps missing index finding to inconsistent status', () => {
-    const report = IndexConsistencyReport.fromFindings([
-      finding({
+  it.each([
+    {
+      name: 'missing index',
+      data: finding({
         type: IndexConsistencyFindingType.MissingIndex,
         severity: IndexConsistencySeverity.Error,
         component: IndexConsistencyComponent.Bm25,
       }),
-    ]);
-    expect(report.status).toBe(IndexConsistencyStatus.Inconsistent);
-  });
-
-  it('maps stale file finding to inconsistent status', () => {
-    const report = IndexConsistencyReport.fromFindings([
-      finding({
+    },
+    {
+      name: 'stale file',
+      data: finding({
         type: IndexConsistencyFindingType.StaleFile,
         severity: IndexConsistencySeverity.Warning,
         component: IndexConsistencyComponent.TrackedFiles,
         path: 'notes/a.md',
       }),
-    ]);
-    expect(report.status).toBe(IndexConsistencyStatus.Inconsistent);
-  });
-
-  it('maps unindexed tracked file finding to inconsistent status', () => {
-    const report = IndexConsistencyReport.fromFindings([
-      finding({
+    },
+    {
+      name: 'unindexed tracked file',
+      data: finding({
         type: IndexConsistencyFindingType.UnindexedTrackedFile,
         severity: IndexConsistencySeverity.Warning,
         component: IndexConsistencyComponent.TrackedFiles,
       }),
-    ]);
-    expect(report.status).toBe(IndexConsistencyStatus.Inconsistent);
-  });
-
-  it('maps orphan bm25 entry finding to inconsistent status', () => {
-    const report = IndexConsistencyReport.fromFindings([
-      finding({
+    },
+    {
+      name: 'orphan bm25 entry',
+      data: finding({
         type: IndexConsistencyFindingType.OrphanBm25Entry,
         severity: IndexConsistencySeverity.Warning,
         component: IndexConsistencyComponent.Bm25,
       }),
-    ]);
-    expect(report.status).toBe(IndexConsistencyStatus.Inconsistent);
-  });
-
-  it('maps missing vector entry finding to inconsistent status', () => {
-    const report = IndexConsistencyReport.fromFindings([
-      finding({
+    },
+    {
+      name: 'missing vector entry',
+      data: finding({
         type: IndexConsistencyFindingType.MissingVectorEntry,
         severity: IndexConsistencySeverity.Warning,
         component: IndexConsistencyComponent.Vector,
       }),
-    ]);
-    expect(report.status).toBe(IndexConsistencyStatus.Inconsistent);
-  });
-
-  it('maps corrupt index metadata finding to inconsistent status', () => {
-    const report = IndexConsistencyReport.fromFindings([
-      finding({
+    },
+    {
+      name: 'corrupt index metadata',
+      data: finding({
         type: IndexConsistencyFindingType.CorruptIndexMetadata,
         severity: IndexConsistencySeverity.Error,
         component: IndexConsistencyComponent.Metadata,
       }),
-    ]);
-    expect(report.status).toBe(IndexConsistencyStatus.Inconsistent);
-  });
-
-  it('maps untracked markdown finding to inconsistent status', () => {
-    const report = IndexConsistencyReport.fromFindings([
-      finding({
+    },
+    {
+      name: 'untracked markdown',
+      data: finding({
         type: IndexConsistencyFindingType.UntrackedMarkdown,
         severity: IndexConsistencySeverity.Warning,
         component: IndexConsistencyComponent.TrackedFiles,
       }),
-    ]);
+    },
+  ])('maps $name finding to inconsistent status', ({ data }) => {
+    const report = IndexConsistencyReport.fromFindings([data]);
     expect(report.status).toBe(IndexConsistencyStatus.Inconsistent);
   });
 

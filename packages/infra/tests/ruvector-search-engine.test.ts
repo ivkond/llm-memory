@@ -62,6 +62,43 @@ describe('RuVectorSearchEngine', () => {
     await rm(dir, { recursive: true, force: true });
   });
 
+  async function seedAlphaDoc(docPath = 'wiki/a.md'): Promise<void> {
+    await engine.index({
+      path: docPath,
+      title: 'A',
+      content: 'alpha',
+      updated: '2026-04-09',
+    });
+  }
+
+  async function readBm25Meta(): Promise<{
+    version: 1;
+    index: unknown;
+    lastIndexedAt: Record<string, string>;
+    bm25Paths: string[];
+    vectorPaths: string[];
+  }> {
+    const bm25File = path.join(dbPath, 'bm25.json');
+    return JSON.parse(await readFile(bm25File, 'utf-8')) as {
+      version: 1;
+      index: unknown;
+      lastIndexedAt: Record<string, string>;
+      bm25Paths: string[];
+      vectorPaths: string[];
+    };
+  }
+
+  async function writeBm25Meta(meta: {
+    version: 1;
+    index: unknown;
+    lastIndexedAt: Record<string, string>;
+    bm25Paths: string[];
+    vectorPaths: string[];
+  }): Promise<void> {
+    const bm25File = path.join(dbPath, 'bm25.json');
+    await writeFile(bm25File, JSON.stringify(meta), 'utf-8');
+  }
+
   it('test_index_then_search_findsDocument', async () => {
     await engine.index({
       path: 'wiki/patterns/testing.md',
@@ -366,23 +403,10 @@ describe('RuVectorSearchEngine', () => {
   });
 
   it('test_inspectIndex_reportsBm25PathEvenWhenIndexedAtMissing', async () => {
-    await engine.index({
-      path: 'wiki/a.md',
-      title: 'A',
-      content: 'alpha',
-      updated: '2026-04-09',
-    });
-
-    const bm25File = path.join(dbPath, 'bm25.json');
-    const parsed = JSON.parse(await readFile(bm25File, 'utf-8')) as {
-      version: 1;
-      index: unknown;
-      lastIndexedAt: Record<string, string>;
-      bm25Paths: string[];
-      vectorPaths: string[];
-    };
+    await seedAlphaDoc();
+    const parsed = await readBm25Meta();
     delete parsed.lastIndexedAt['wiki/a.md'];
-    await writeFile(bm25File, JSON.stringify(parsed), 'utf-8');
+    await writeBm25Meta(parsed);
 
     const reopened = new RuVectorSearchEngine(dbPath, embeddings);
     const snapshot = await reopened.inspectIndex();
@@ -391,12 +415,7 @@ describe('RuVectorSearchEngine', () => {
   });
 
   it('test_inspectIndex_reportsMissingVectorForKnownBm25Path', async () => {
-    await engine.index({
-      path: 'wiki/a.md',
-      title: 'A',
-      content: 'alpha',
-      updated: '2026-04-09',
-    });
+    await seedAlphaDoc();
 
     const vectorDb = new (RuVectorDb as unknown as new (opts: {
       dimensions: number;
@@ -414,23 +433,10 @@ describe('RuVectorSearchEngine', () => {
   });
 
   it('test_inspectIndex_distinguishesIndexedAtOnlyPath', async () => {
-    await engine.index({
-      path: 'wiki/a.md',
-      title: 'A',
-      content: 'alpha',
-      updated: '2026-04-09',
-    });
-
-    const bm25File = path.join(dbPath, 'bm25.json');
-    const parsed = JSON.parse(await readFile(bm25File, 'utf-8')) as {
-      version: 1;
-      index: unknown;
-      lastIndexedAt: Record<string, string>;
-      bm25Paths: string[];
-      vectorPaths: string[];
-    };
+    await seedAlphaDoc();
+    const parsed = await readBm25Meta();
     parsed.lastIndexedAt['wiki/indexed-only.md'] = '2026-04-10T00:00:00.000Z';
-    await writeFile(bm25File, JSON.stringify(parsed), 'utf-8');
+    await writeBm25Meta(parsed);
 
     const reopened = new RuVectorSearchEngine(dbPath, embeddings);
     const snapshot = await reopened.inspectIndex();
@@ -439,12 +445,7 @@ describe('RuVectorSearchEngine', () => {
   });
 
   it('test_inspectIndex_flagsCorruptMetadataFile', async () => {
-    await engine.index({
-      path: 'wiki/a.md',
-      title: 'A',
-      content: 'alpha',
-      updated: '2026-04-09',
-    });
+    await seedAlphaDoc();
 
     const bm25File = path.join(dbPath, 'bm25.json');
     await writeFile(bm25File, '{"version":1,', 'utf-8');
@@ -464,18 +465,11 @@ describe('RuVectorSearchEngine', () => {
       updated: '2026-04-09',
     });
 
-    const bm25File = path.join(dbPath, 'bm25.json');
-    const parsed = JSON.parse(await readFile(bm25File, 'utf-8')) as {
-      version: 1;
-      index: unknown;
-      lastIndexedAt: Record<string, string>;
-      bm25Paths: string[];
-      vectorPaths: string[];
-    };
+    const parsed = await readBm25Meta();
     delete parsed.lastIndexedAt['wiki/legacy.md'];
     parsed.bm25Paths = [];
     parsed.vectorPaths = ['wiki/legacy.md'];
-    await writeFile(bm25File, JSON.stringify(parsed), 'utf-8');
+    await writeBm25Meta(parsed);
 
     const reopened = new RuVectorSearchEngine(dbPath, embeddings);
     await reopened.rebuild([
