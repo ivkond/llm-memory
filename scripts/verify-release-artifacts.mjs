@@ -14,19 +14,32 @@ import {
   getReleasePackagePath,
 } from './release-metadata.mjs';
 
-function runCommand(command, args, options = {}) {
-  let result = spawnSync(command, args, {
+const ALLOWED_COMMANDS = new Set(['pnpm', 'corepack', 'tar']);
+
+function assertSafeCommand(command, args) {
+  if (!ALLOWED_COMMANDS.has(command)) {
+    throw new Error(`Unsupported command: ${command}`);
+  }
+  if (!Array.isArray(args) || args.some((arg) => typeof arg !== 'string')) {
+    throw new Error(`Invalid command arguments for ${command}`);
+  }
+}
+
+function executeCommand(command, args, options) {
+  return spawnSync(command, args, {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     ...options,
   });
+}
+
+function runCommand(command, args, options = {}) {
+  assertSafeCommand(command, args);
+
+  let result = executeCommand(command, args, options);
 
   if (result.error && result.error.code === 'ENOENT' && command === 'pnpm') {
-    result = spawnSync('corepack', ['pnpm', ...args], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      ...options,
-    });
+    result = executeCommand('corepack', ['pnpm', ...args], options);
   }
 
   if (result.status !== 0) {
@@ -325,6 +338,27 @@ function extractRuntimeImportSpecifiers(source) {
   const specifiers = new Set();
   let index = 0;
 
+  const collectFromClauseSpecifier = (startIndex) => {
+    let cursor = startIndex;
+    while (cursor < source.length) {
+      if (isKeywordAt(source, cursor, 'from')) {
+        const fromTargetCursor = skipWhitespace(source, cursor + 4);
+        const parsed = parseStringLiteral(source, fromTargetCursor);
+        if (parsed) {
+          specifiers.add(parsed.value);
+          return parsed.end;
+        }
+        cursor += 4;
+        continue;
+      }
+      if (source[cursor] === ';') {
+        return cursor;
+      }
+      cursor += 1;
+    }
+    return cursor;
+  };
+
   while (index < source.length) {
     const char = source[index];
     const next = source[index + 1];
@@ -383,23 +417,7 @@ function extractRuntimeImportSpecifiers(source) {
           cursor = parsed.end;
         }
       } else {
-        while (cursor < source.length) {
-          if (isKeywordAt(source, cursor, 'from')) {
-            const fromTargetCursor = skipWhitespace(source, cursor + 4);
-            const parsed = parseStringLiteral(source, fromTargetCursor);
-            if (parsed) {
-              specifiers.add(parsed.value);
-              cursor = parsed.end;
-              break;
-            }
-            cursor += 4;
-            continue;
-          }
-          if (source[cursor] === ';') {
-            break;
-          }
-          cursor += 1;
-        }
+        cursor = collectFromClauseSpecifier(cursor);
       }
       index = Math.max(cursor, index + 6);
       continue;
@@ -410,24 +428,7 @@ function extractRuntimeImportSpecifiers(source) {
       !isIdentifierChar(source[index - 1] ?? '') &&
       !isIdentifierChar(source[index + 6] ?? '');
     if (exportBoundary) {
-      let cursor = index + 6;
-      while (cursor < source.length) {
-        if (isKeywordAt(source, cursor, 'from')) {
-          const fromTargetCursor = skipWhitespace(source, cursor + 4);
-          const parsed = parseStringLiteral(source, fromTargetCursor);
-          if (parsed) {
-            specifiers.add(parsed.value);
-            cursor = parsed.end;
-            break;
-          }
-          cursor += 4;
-          continue;
-        }
-        if (source[cursor] === ';') {
-          break;
-        }
-        cursor += 1;
-      }
+      const cursor = collectFromClauseSpecifier(index + 6);
       index = Math.max(cursor, index + 6);
       continue;
     }
