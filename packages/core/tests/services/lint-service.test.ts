@@ -387,6 +387,46 @@ describe('LintService', () => {
     expect(archiver.calls[0].path).toBe('/main/.archive/2026-04-claude-code.7z');
   });
 
+  it('ignores archival entries with invalid agent or year-month tokens', async () => {
+    const phase: LintPhase<'consolidate'> = {
+      name: 'consolidate',
+      async run() {
+        return {
+          consolidatedCount: 3,
+          touchedPaths: ['wiki/x.md'],
+          archivedEntries: [
+            { sourcePath: '/main/log/claude-code/raw/2026-04-09-sessA-uuid1.md' },
+            { sourcePath: '/main/log/../raw/2026-04-09-sessB-uuid2.md' },
+            { sourcePath: '/main/log/claude-code/raw/not-a-date-sessC-uuid3.md' },
+          ],
+        };
+      },
+    };
+    const service = new LintService({
+      mainRepoRoot: '/main',
+      mainFileStore: mainFs,
+      mainVerbatimStore: vs,
+      versionControl: vc,
+      searchEngine,
+      fileStoreFactory: fsFactory,
+      verbatimStoreFactory: () => vs,
+      stateStore: state,
+      archiver,
+      makeConsolidatePhase: () => phase,
+      makePromotePhase: () => stubPromote(),
+      makeHealthPhase: () => stubHealth(),
+      now: () => new Date('2026-04-10T12:00:00Z'),
+    });
+
+    await service.lint({});
+
+    expect(archiver.calls).toHaveLength(1);
+    expect(archiver.calls[0].path).toBe('/main/.archive/2026-04-claude-code.7z');
+    expect(archiver.calls[0].entries).toEqual([
+      { sourcePath: '/main/log/claude-code/raw/2026-04-09-sessA-uuid1.md' },
+    ]);
+  });
+
   it('writes review queue records and reports low-signal + review counts', async () => {
     const wtFs = new FakeFileStore('/tmp/wt/lint-1');
     fsFactory = () => wtFs;

@@ -66,6 +66,8 @@ export interface LintServiceDeps {
 }
 
 const ALL_PHASES: LintPhaseName[] = ['consolidate', 'promote', 'health'];
+const ARCHIVE_AGENT_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
+const YEAR_MONTH_RE = /^\d{4}-\d{2}$/;
 
 export class LintService {
   private readonly now: () => Date;
@@ -259,7 +261,8 @@ export class LintService {
       const filename = segments[logIdx + 3] ?? '';
       if (raw !== 'raw') continue;
       const yearMonth = filename.slice(0, 7);
-      const archivePath = `${this.deps.mainRepoRoot}/.archive/${yearMonth}-${agent}.7z`;
+      if (!ARCHIVE_AGENT_RE.test(agent) || !YEAR_MONTH_RE.test(yearMonth)) continue;
+      const archivePath = path.join(this.deps.mainRepoRoot, '.archive', `${yearMonth}-${agent}.7z`);
       const bucket = groups.get(archivePath) ?? [];
       bucket.push(entry);
       groups.set(archivePath, bucket);
