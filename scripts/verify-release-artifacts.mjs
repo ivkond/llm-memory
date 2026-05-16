@@ -635,6 +635,14 @@ export function validateBuildPreconditions(packageDir, packagePath, sourceManife
   }
 }
 
+function getRequiredManifest(manifests, packageDir) {
+  const manifest = manifests.get(packageDir);
+  if (!manifest) {
+    throw new Error(`Missing manifest for release package: ${packageDir}`);
+  }
+  return manifest;
+}
+
 function readPackedManifest(archivePath) {
   return JSON.parse(runCommand('tar', ['-xOf', archivePath, 'package/package.json']));
 }
@@ -675,7 +683,7 @@ async function verifyReleaseArtifacts(rootDir) {
   try {
     for (const packageDir of RELEASE_PACKAGES) {
       const packagePath = getReleasePackagePath(rootDir, packageDir);
-      const sourceManifest = manifests.get(packageDir);
+      const sourceManifest = getRequiredManifest(manifests, packageDir);
       validateBuildPreconditions(packageDir, packagePath, sourceManifest);
       const output = runCommand(
         'pnpm',
