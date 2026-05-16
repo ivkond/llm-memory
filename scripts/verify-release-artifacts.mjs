@@ -306,6 +306,22 @@ function skipWhitespace(source, index) {
   return cursor;
 }
 
+function skipLineComment(source, index) {
+  let cursor = index + 2;
+  while (cursor < source.length && source[cursor] !== '\n') {
+    cursor += 1;
+  }
+  return cursor;
+}
+
+function skipBlockComment(source, index) {
+  let cursor = index + 2;
+  while (cursor < source.length && !(source[cursor] === '*' && source[cursor + 1] === '/')) {
+    cursor += 1;
+  }
+  return cursor < source.length ? cursor + 2 : cursor;
+}
+
 function parseStringLiteral(source, index) {
   const quote = source[index];
   if (quote !== '\'' && quote !== '"') {
@@ -430,49 +446,81 @@ function skipTemplateLiteral(source, index, specifiers) {
   return source.length;
 }
 
+function collectFromClauseSpecifier(source, startIndex, specifiers) {
+  let cursor = startIndex;
+  while (cursor < source.length) {
+    if (isKeywordAt(source, cursor, 'from')) {
+      const fromTargetCursor = skipWhitespace(source, cursor + 4);
+      const parsed = parseStringLiteral(source, fromTargetCursor);
+      if (parsed) {
+        specifiers.add(parsed.value);
+        return parsed.end;
+      }
+      cursor += 4;
+      continue;
+    }
+    if (source[cursor] === ';') {
+      return cursor;
+    }
+    cursor += 1;
+  }
+  return cursor;
+}
+
+function collectImportSpecifier(source, index, specifiers) {
+  let cursor = skipWhitespace(source, index + 6);
+  if (source[cursor] === '(') {
+    cursor = skipWhitespace(source, cursor + 1);
+    const parsed = parseStringLiteral(source, cursor);
+    if (parsed) {
+      specifiers.add(parsed.value);
+      cursor = parsed.end;
+    }
+  } else if (source[cursor] === '\'' || source[cursor] === '"') {
+    const parsed = parseStringLiteral(source, cursor);
+    if (parsed) {
+      specifiers.add(parsed.value);
+      cursor = parsed.end;
+    }
+  } else {
+    cursor = collectFromClauseSpecifier(source, cursor, specifiers);
+  }
+  return Math.max(cursor, index + 6);
+}
+
+function collectExportSpecifier(source, index, specifiers) {
+  const cursor = collectFromClauseSpecifier(source, index + 6, specifiers);
+  return Math.max(cursor, index + 6);
+}
+
+function collectRequireSpecifier(source, index, specifiers) {
+  let cursor = skipWhitespace(source, index + 7);
+  if (source[cursor] === '(') {
+    cursor = skipWhitespace(source, cursor + 1);
+    const parsed = parseStringLiteral(source, cursor);
+    if (parsed) {
+      specifiers.add(parsed.value);
+      cursor = parsed.end;
+    }
+  }
+  return Math.max(cursor, index + 7);
+}
+
 function extractRuntimeImportSpecifiers(source) {
   const specifiers = new Set();
   let index = 0;
-
-  const collectFromClauseSpecifier = (startIndex) => {
-    let cursor = startIndex;
-    while (cursor < source.length) {
-      if (isKeywordAt(source, cursor, 'from')) {
-        const fromTargetCursor = skipWhitespace(source, cursor + 4);
-        const parsed = parseStringLiteral(source, fromTargetCursor);
-        if (parsed) {
-          specifiers.add(parsed.value);
-          return parsed.end;
-        }
-        cursor += 4;
-        continue;
-      }
-      if (source[cursor] === ';') {
-        return cursor;
-      }
-      cursor += 1;
-    }
-    return cursor;
-  };
 
   while (index < source.length) {
     const char = source[index];
     const next = source[index + 1];
 
     if (char === '/' && next === '/') {
-      index += 2;
-      while (index < source.length && source[index] !== '\n') {
-        index += 1;
-      }
+      index = skipLineComment(source, index);
       continue;
     }
 
     if (char === '/' && next === '*') {
-      index += 2;
-      while (index < source.length && !(source[index] === '*' && source[index + 1] === '/')) {
-        index += 1;
-      }
-      index += index < source.length ? 2 : 0;
+      index = skipBlockComment(source, index);
       continue;
     }
 
@@ -492,24 +540,7 @@ function extractRuntimeImportSpecifiers(source) {
       !isIdentifierChar(source[index - 1] ?? '') &&
       !isIdentifierChar(source[index + 6] ?? '');
     if (importBoundary) {
-      let cursor = skipWhitespace(source, index + 6);
-      if (source[cursor] === '(') {
-        cursor = skipWhitespace(source, cursor + 1);
-        const parsed = parseStringLiteral(source, cursor);
-        if (parsed) {
-          specifiers.add(parsed.value);
-          cursor = parsed.end;
-        }
-      } else if (source[cursor] === '\'' || source[cursor] === '"') {
-        const parsed = parseStringLiteral(source, cursor);
-        if (parsed) {
-          specifiers.add(parsed.value);
-          cursor = parsed.end;
-        }
-      } else {
-        cursor = collectFromClauseSpecifier(cursor);
-      }
-      index = Math.max(cursor, index + 6);
+      index = collectImportSpecifier(source, index, specifiers);
       continue;
     }
 
@@ -518,8 +549,7 @@ function extractRuntimeImportSpecifiers(source) {
       !isIdentifierChar(source[index - 1] ?? '') &&
       !isIdentifierChar(source[index + 6] ?? '');
     if (exportBoundary) {
-      const cursor = collectFromClauseSpecifier(index + 6);
-      index = Math.max(cursor, index + 6);
+      index = collectExportSpecifier(source, index, specifiers);
       continue;
     }
 
@@ -528,16 +558,7 @@ function extractRuntimeImportSpecifiers(source) {
       !isIdentifierChar(source[index - 1] ?? '') &&
       !isIdentifierChar(source[index + 7] ?? '');
     if (requireBoundary) {
-      let cursor = skipWhitespace(source, index + 7);
-      if (source[cursor] === '(') {
-        cursor = skipWhitespace(source, cursor + 1);
-        const parsed = parseStringLiteral(source, cursor);
-        if (parsed) {
-          specifiers.add(parsed.value);
-          cursor = parsed.end;
-        }
-      }
-      index = Math.max(cursor, index + 7);
+      index = collectRequireSpecifier(source, index, specifiers);
       continue;
     }
 
