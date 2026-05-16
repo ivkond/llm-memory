@@ -39,8 +39,7 @@ export class KiroMemoryReader implements IAgentMemoryReader {
         continue;
       }
 
-      const content = raw.trim();
-      if (!content) continue;
+      if (!raw.trim()) continue;
 
       const basename = path.basename(file, '.md');
       if (!IDENTIFIER_SAFE.test(basename)) continue;
@@ -51,7 +50,7 @@ export class KiroMemoryReader implements IAgentMemoryReader {
             agent: this.agent,
             sourcePath: file,
             sessionId: basename,
-            content,
+            content: raw,
             mtime: info.mtime.toISOString(),
           }),
         );

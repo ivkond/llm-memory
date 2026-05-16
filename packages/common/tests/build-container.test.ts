@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { tmpdir, homedir } from 'node:os';
 import path from 'node:path';
 import {
   RememberService,
@@ -111,5 +111,23 @@ describe('buildContainer', () => {
         .sort((a, b) => a.localeCompare(b)),
     );
     expect(keys).toHaveLength(8);
+  });
+
+  it('test_buildContainer_rebasesRelativeImportPaths_underWikiRoot', () => {
+    const config = makeTestConfig(tempDir);
+
+    const services = buildContainer(config);
+    const importService = services.import_ as unknown as {
+      deps: {
+        agentConfigs: Record<string, { enabled: boolean; paths: string[] }>;
+      };
+    };
+
+    expect(importService.deps.agentConfigs.kiro.paths).toEqual([
+      path.join(tempDir, '.kiro/steering/**/*.md'),
+    ]);
+    expect(importService.deps.agentConfigs['claude-code'].paths).toEqual([
+      path.join(homedir(), '.claude/projects/*/memory/*.md'),
+    ]);
   });
 });

@@ -133,17 +133,17 @@ export function buildContainer(config: WikiConfig): AppServices {
     },
   });
   const readers: Map<string, IAgentMemoryReader> = new Map<string, IAgentMemoryReader>([
-      ['claude-code', new ClaudeCodeMemoryReader()],
-      ['kiro', new KiroMemoryReader()],
-    ]);
+    ['claude-code', new ClaudeCodeMemoryReader()],
+    ['kiro', new KiroMemoryReader()],
+  ]);
 
   const import_ = new ImportService({
     readers,
     verbatimStore,
     stateStore,
     agentConfigs: {
-      'claude-code': config.imports['claude-code'],
-      kiro: config.imports.kiro,
+      'claude-code': resolveAgentConfigPaths(config.imports['claude-code'], wikiRoot),
+      kiro: resolveAgentConfigPaths(config.imports.kiro, wikiRoot),
     },
   });
 
@@ -152,4 +152,18 @@ export function buildContainer(config: WikiConfig): AppServices {
 
 function expandHome(p: string): string {
   return p.startsWith('~') ? path.join(homedir(), p.slice(1)) : p;
+}
+
+function resolveAgentConfigPaths(
+  cfg: { enabled: boolean; paths: string[] },
+  wikiRoot: string,
+): { enabled: boolean; paths: string[] } {
+  return {
+    enabled: cfg.enabled,
+    paths: cfg.paths.map((p) => {
+      const expanded = expandHome(p);
+      if (path.isAbsolute(expanded)) return expanded;
+      return path.join(wikiRoot, expanded);
+    }),
+  };
 }

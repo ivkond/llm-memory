@@ -110,6 +110,6 @@ See [local note](./other.md).
     });
 
     expect(items).toHaveLength(1);
-    expect(items[0].content).toBe(raw.trim());
+    expect(items[0].content).toBe(raw);
   });
 });
