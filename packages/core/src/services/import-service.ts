@@ -128,7 +128,7 @@ export class ImportService {
       createdAt,
       idGenerator: () => this.idGen(item),
       source: {
-        type: 'import',
+        type: item.sourceType,
         uri: item.sourceUri,
         digest:
           item.sourceDigest ??

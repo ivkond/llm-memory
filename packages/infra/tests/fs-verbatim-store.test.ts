@@ -132,7 +132,7 @@ describe('FsVerbatimStore.readEntry', () => {
         sessionId: 'sess1',
         idGenerator: () => 'uuid4',
         source: {
-          type: 'import',
+          type: 'claude-code-memory',
           uri: '/abs/source/memory.md',
           digest: 'abc12345',
           mtime: '2026-04-09T10:20:30.000Z',
@@ -146,7 +146,7 @@ describe('FsVerbatimStore.readEntry', () => {
 
       const roundtrip = await store.readEntry(entry.filePath);
       expect(roundtrip).not.toBeNull();
-      expect(roundtrip!.source.type).toBe('import');
+      expect(roundtrip!.source.type).toBe('claude-code-memory');
       expect(roundtrip!.source.uri).toBe('/abs/source/memory.md');
       expect(roundtrip!.source.digest).toBe('abc12345');
       expect(roundtrip!.source.mtime).toBe('2026-04-09T10:20:30.000Z');
