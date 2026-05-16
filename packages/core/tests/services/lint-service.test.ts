@@ -530,6 +530,44 @@ describe('LintService', () => {
     expect(queuedFiles[0].includes('..')).toBe(false);
   });
 
+  it('rejects unsupported review queue roots', async () => {
+    const phase: LintPhase<'consolidate'> = {
+      name: 'consolidate',
+      async run() {
+        return {
+          consolidatedCount: 1,
+          touchedPaths: [],
+          reviewRecords: [
+            {
+              sourcePath: 'log/claude-code/raw/2026-04-09-a.md',
+              reason: 'Needs human check',
+              confidence: 0.61,
+              kind: 'review',
+            },
+          ],
+        };
+      },
+    };
+    const service = new LintService({
+      mainRepoRoot: '/main',
+      mainFileStore: mainFs,
+      mainVerbatimStore: vs,
+      versionControl: vc,
+      searchEngine,
+      fileStoreFactory: fsFactory,
+      verbatimStoreFactory: () => vs,
+      stateStore: state,
+      archiver,
+      makeConsolidatePhase: () => phase,
+      makePromotePhase: () => stubPromote(),
+      makeHealthPhase: () => stubHealth(),
+      reviewQueueDir: '../review/consolidation',
+      now: () => new Date('2026-04-10T12:00:00Z'),
+    });
+
+    await expect(service.lint({})).rejects.toThrow(/unsupported review queue root/i);
+  });
+
   it('reindexes wiki + projects pages touched by lint, skipping log wildcard', async () => {
     mainFs.pages['wiki/tools/postgresql.md'] = {
       frontmatter: {

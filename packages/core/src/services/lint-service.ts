@@ -68,6 +68,7 @@ export interface LintServiceDeps {
 const ALL_PHASES: LintPhaseName[] = ['consolidate', 'promote', 'health'];
 const ARCHIVE_AGENT_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 const YEAR_MONTH_RE = /^\d{4}-\d{2}$/;
+const ALLOWED_REVIEW_ROOTS = new Set(['review/consolidation', '.local/review/consolidation']);
 
 export class LintService {
   private readonly now: () => Date;
@@ -221,7 +222,9 @@ export class LintService {
   ): Promise<string[]> {
     const records = consolidateResult?.reviewRecords;
     if (!records || records.length === 0) return [];
-    const reviewRoot = this.deps.reviewQueueDir ?? '.local/review/consolidation';
+    const reviewRoot = this.normalizedReviewRoot(
+      this.deps.reviewQueueDir ?? '.local/review/consolidation',
+    );
     const trackedInGit = !reviewRoot.startsWith('.local/');
     const destinationStore = trackedInGit ? wtFileStore : this.deps.mainFileStore;
     const stamp = this.now().toISOString();
@@ -261,7 +264,7 @@ export class LintService {
       const filename = segments[logIdx + 3] ?? '';
       if (raw !== 'raw') continue;
       const yearMonth = filename.slice(0, 7);
-      if (!ARCHIVE_AGENT_RE.test(agent) || !YEAR_MONTH_RE.test(yearMonth)) continue;
+      if (!ARCHIVE_AGENT_RE.test(agent) || !this.validYearMonth(yearMonth)) continue;
       const archivePath = path.join(this.deps.mainRepoRoot, '.archive', `${yearMonth}-${agent}.7z`);
       const bucket = groups.get(archivePath) ?? [];
       bucket.push(entry);
@@ -298,6 +301,23 @@ export class LintService {
       throw new Error(`invalid review queue path: ${normalPath}`);
     }
     return normalPath;
+  }
+
+  private normalizedReviewRoot(value: string): string {
+    const normalized = path.posix
+      .normalize(value.split(path.sep).join('/'))
+      .replace(/^\/+/, '')
+      .replace(/\/+$/, '');
+    if (!ALLOWED_REVIEW_ROOTS.has(normalized)) {
+      throw new Error(`unsupported review queue root: ${normalized}`);
+    }
+    return normalized;
+  }
+
+  private validYearMonth(value: string): boolean {
+    if (!YEAR_MONTH_RE.test(value)) return false;
+    const month = Number(value.slice(5, 7));
+    return month >= 1 && month <= 12;
   }
 
   private safePathToken(value: string): string {
