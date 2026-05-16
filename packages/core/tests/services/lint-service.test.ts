@@ -203,6 +203,27 @@ describe('LintService', () => {
     fsFactory = (root: string) => new FakeFileStore(root);
   });
 
+  function makeService(
+    overrides: Partial<ConstructorParameters<typeof LintService>[0]> = {},
+  ): LintService {
+    return new LintService({
+      mainRepoRoot: '/main',
+      mainFileStore: mainFs,
+      mainVerbatimStore: vs,
+      versionControl: vc,
+      searchEngine,
+      fileStoreFactory: fsFactory,
+      verbatimStoreFactory: () => vs,
+      stateStore: state,
+      archiver,
+      makeConsolidatePhase: () => stubConsolidate(),
+      makePromotePhase: () => stubPromote(),
+      makeHealthPhase: () => stubHealth(),
+      now: () => new Date('2026-04-10T12:00:00Z'),
+      ...overrides,
+    });
+  }
+
   it('runs all phases, squashes, merges, stamps last_lint', async () => {
     const consolidatePaths = ['wiki/tools/postgresql.md'];
     const service = new LintService({
@@ -364,20 +385,8 @@ describe('LintService', () => {
         };
       },
     };
-    const service = new LintService({
-      mainRepoRoot: '/main',
-      mainFileStore: mainFs,
-      mainVerbatimStore: vs,
-      versionControl: vc,
-      searchEngine,
-      fileStoreFactory: fsFactory,
-      verbatimStoreFactory: () => vs,
-      stateStore: state,
-      archiver,
+    const service = makeService({
       makeConsolidatePhase: () => phase,
-      makePromotePhase: () => stubPromote(),
-      makeHealthPhase: () => stubHealth(),
-      now: () => new Date('2026-04-10T12:00:00Z'),
     });
 
     await service.lint({});
@@ -402,20 +411,8 @@ describe('LintService', () => {
         };
       },
     };
-    const service = new LintService({
-      mainRepoRoot: '/main',
-      mainFileStore: mainFs,
-      mainVerbatimStore: vs,
-      versionControl: vc,
-      searchEngine,
-      fileStoreFactory: fsFactory,
-      verbatimStoreFactory: () => vs,
-      stateStore: state,
-      archiver,
+    const service = makeService({
       makeConsolidatePhase: () => phase,
-      makePromotePhase: () => stubPromote(),
-      makeHealthPhase: () => stubHealth(),
-      now: () => new Date('2026-04-10T12:00:00Z'),
     });
 
     await service.lint({});
@@ -456,21 +453,9 @@ describe('LintService', () => {
         };
       },
     };
-    const service = new LintService({
-      mainRepoRoot: '/main',
-      mainFileStore: mainFs,
-      mainVerbatimStore: vs,
-      versionControl: vc,
-      searchEngine,
-      fileStoreFactory: fsFactory,
-      verbatimStoreFactory: () => vs,
-      stateStore: state,
-      archiver,
+    const service = makeService({
       makeConsolidatePhase: () => phase,
-      makePromotePhase: () => stubPromote(),
-      makeHealthPhase: () => stubHealth(),
       reviewQueueDir: 'review/consolidation',
-      now: () => new Date('2026-04-10T12:00:00Z'),
     });
 
     const report = await service.lint({});
@@ -505,21 +490,9 @@ describe('LintService', () => {
         };
       },
     };
-    const service = new LintService({
-      mainRepoRoot: '/main',
-      mainFileStore: mainFs,
-      mainVerbatimStore: vs,
-      versionControl: vc,
-      searchEngine,
-      fileStoreFactory: fsFactory,
-      verbatimStoreFactory: () => vs,
-      stateStore: state,
-      archiver,
+    const service = makeService({
       makeConsolidatePhase: () => phase,
-      makePromotePhase: () => stubPromote(),
-      makeHealthPhase: () => stubHealth(),
       reviewQueueDir: 'review/consolidation',
-      now: () => new Date('2026-04-10T12:00:00Z'),
     });
 
     await service.lint({});
@@ -550,21 +523,9 @@ describe('LintService', () => {
         };
       },
     };
-    const service = new LintService({
-      mainRepoRoot: '/main',
-      mainFileStore: mainFs,
-      mainVerbatimStore: vs,
-      versionControl: vc,
-      searchEngine,
-      fileStoreFactory: fsFactory,
-      verbatimStoreFactory: () => vs,
-      stateStore: state,
-      archiver,
+    const service = makeService({
       makeConsolidatePhase: () => phase,
-      makePromotePhase: () => stubPromote(),
-      makeHealthPhase: () => stubHealth(),
       reviewQueueDir: '../review/consolidation',
-      now: () => new Date('2026-04-10T12:00:00Z'),
     });
 
     await expect(service.lint({})).rejects.toThrow(/unsupported review queue root/i);
