@@ -8,30 +8,13 @@
  * Content is processed into wiki pages via worktree.
  */
 import { Command } from 'commander';
-import path from 'node:path';
 import { ConfigLoader } from '@ivkond-llm-wiki/infra';
 import { buildContainer } from '@ivkond-llm-wiki/common';
-
-async function findWikiRoot(): Promise<string | null> {
-  // Check common locations
-  const candidates = [process.cwd(), path.join(process.env.HOME ?? '', '.llm-wiki')];
-  for (const candidate of candidates) {
-    try {
-      const configPath = path.join(candidate, '.config', 'settings.shared.yaml');
-      const { access } = await import('node:fs/promises');
-      await access(configPath);
-      return candidate;
-    } catch {
-      // Config not found here, continue
-    }
-  }
-  return null;
-}
+import { findWikiRoot, printIdempotencyReplay, toOptionalCliString } from './wiki-context.js';
 
 function getWikiPathArg(args: string[], options: Record<string, unknown>): string | null {
-  if (options.wiki) {
-    return String(options.wiki);
-  }
+  const wiki = toOptionalCliString(options.wiki);
+  if (wiki) return wiki;
   const envPath = process.env.LLM_WIKI_PATH;
   if (envPath) return envPath;
   return null;
@@ -101,9 +84,7 @@ export const ingestCommand = new Command()
           }
         }
         console.log(`\nCommit: ${result.commit_sha.slice(0, 7)}`);
-        if (result.idempotency_replayed && options.idempotencyKey) {
-          console.log(`Replayed idempotent result for key ${options.idempotencyKey}`);
-        }
+        printIdempotencyReplay(result.idempotency_replayed, options.idempotencyKey);
 
         if (verbose) {
           console.log(`Completed in ${elapsed}ms`);

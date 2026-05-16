@@ -7,26 +7,11 @@
  * - health: Check for orphaned pages, stale content, broken links
  */
 import { Command } from 'commander';
-import path from 'node:path';
 import { ConfigLoader } from '@ivkond-llm-wiki/infra';
 import { buildContainer } from '@ivkond-llm-wiki/common';
+import { findWikiRoot, printIdempotencyReplay } from './wiki-context.js';
 
 type LintPhaseName = 'consolidate' | 'promote' | 'health';
-
-async function findWikiRoot(): Promise<string | null> {
-  const candidates = [process.cwd(), path.join(process.env.HOME ?? '', '.llm-wiki')];
-  for (const candidate of candidates) {
-    try {
-      const configPath = path.join(candidate, '.config', 'settings.shared.yaml');
-      const { access } = await import('node:fs/promises');
-      await access(configPath);
-      return candidate;
-    } catch {
-      // Config not found here, continue
-    }
-  }
-  return null;
-}
 
 const VALID_PHASES: LintPhaseName[] = ['consolidate', 'promote', 'health'];
 
@@ -104,9 +89,7 @@ export const lintCommand = new Command()
       if (report.commitSha) {
         console.log(`\nCommit: ${report.commitSha.slice(0, 7)}`);
       }
-      if (report.idempotencyReplayed && options.idempotencyKey) {
-        console.log(`Replayed idempotent result for key ${options.idempotencyKey}`);
-      }
+      printIdempotencyReplay(report.idempotencyReplayed, options.idempotencyKey);
 
       if (verbose) {
         console.log(`Completed in ${elapsed}ms`);

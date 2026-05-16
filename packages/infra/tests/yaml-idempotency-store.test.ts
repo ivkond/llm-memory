@@ -16,9 +16,15 @@ describe('YamlIdempotencyStore', () => {
     await rm(dir, { recursive: true, force: true });
   });
 
+  function createStorePair() {
+    return [
+      new YamlIdempotencyStore(new FsFileStore(dir), dir),
+      new YamlIdempotencyStore(new FsFileStore(dir), dir),
+    ] as const;
+  }
+
   it('allows only one concurrent acquire across independent store instances', async () => {
-    const storeA = new YamlIdempotencyStore(new FsFileStore(dir), dir);
-    const storeB = new YamlIdempotencyStore(new FsFileStore(dir), dir);
+    const [storeA, storeB] = createStorePair();
 
     const [a, b] = await Promise.all([
       storeA.acquire('lint', 'same-key', 'fp-1'),
@@ -30,8 +36,7 @@ describe('YamlIdempotencyStore', () => {
   });
 
   it('returns conflict for same key with different fingerprint', async () => {
-    const storeA = new YamlIdempotencyStore(new FsFileStore(dir), dir);
-    const storeB = new YamlIdempotencyStore(new FsFileStore(dir), dir);
+    const [storeA, storeB] = createStorePair();
 
     const first = await storeA.acquire('ingest', 'k', 'fp-a');
     expect(first.kind).toBe('acquired');
