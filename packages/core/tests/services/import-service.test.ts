@@ -42,6 +42,12 @@ class FakeVerbatimStore implements IVerbatimStore {
   async countUnconsolidated(): Promise<number> {
     return 0;
   }
+  async listByProcessingStatus(): Promise<FileInfo[]> {
+    return [];
+  }
+  async countByProcessingStatus(): Promise<number> {
+    return 0;
+  }
   async listAgents(): Promise<string[]> {
     return [];
   }
@@ -51,6 +57,7 @@ class FakeVerbatimStore implements IVerbatimStore {
   async markConsolidated(): Promise<void> {
     // ImportService never consolidates — stub to satisfy the port.
   }
+  async markProcessingStatus(): Promise<void> {}
 }
 
 class FakeStateStore implements IStateStore {

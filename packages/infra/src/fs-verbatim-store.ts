@@ -1,6 +1,7 @@
 import matter from 'gray-matter';
-import { VerbatimEntry } from '@ivkond-llm-wiki/core';
+import { parseProcessingStatus, VerbatimEntry } from '@ivkond-llm-wiki/core';
 import type { IVerbatimStore, IFileStore, FileInfo } from '@ivkond-llm-wiki/core';
+import type { ProcessingStatus } from '@ivkond-llm-wiki/core';
 
 export class FsVerbatimStore implements IVerbatimStore {
   constructor(private readonly fileStore: IFileStore) {}
@@ -15,7 +16,8 @@ export class FsVerbatimStore implements IVerbatimStore {
       model: cleanObject(data.model),
       operation_id: data.operation_id,
       processing: cleanObject(data.processing),
-      consolidated: data.consolidated,
+      processing_status: data.processingStatus,
+      consolidated: data.processingStatus === 'consolidated',
       created: data.processing?.created_at ?? data.created,
     };
     const fm = Object.fromEntries(Object.entries(rawFm).filter(([, v]) => v !== undefined));
@@ -27,28 +29,46 @@ export class FsVerbatimStore implements IVerbatimStore {
   }
 
   async listUnconsolidated(agent: string): Promise<FileInfo[]> {
-    const dir = `log/${agent}/raw`;
-    const files = await this.fileStore.listFiles(dir);
-    const unconsolidated: FileInfo[] = [];
-
-    for (const file of files) {
-      const content = await this.fileStore.readFile(file.path);
-      if (content) {
-        const { data } = matter(content);
-        if (data.consolidated === false) {
-          unconsolidated.push(file);
-        }
-      }
-    }
-
-    return unconsolidated;
+    return this.listByProcessingStatus(agent, ['new', 'seen', 'requires_review', 'failed']);
   }
 
   async countUnconsolidated(): Promise<number> {
+    return this.countByProcessingStatus(['new', 'seen', 'requires_review', 'failed']);
+  }
+
+  async listByProcessingStatus(agent: string, statuses: ProcessingStatus[]): Promise<FileInfo[]> {
+    const statusSet = new Set(statuses);
+    const dir = `log/${agent}/raw`;
+    const files = await this.fileStore.listFiles(dir);
+    const filtered: FileInfo[] = [];
+
+    for (const file of files) {
+      const content = await this.fileStore.readFile(file.path);
+      if (!content) continue;
+      const { data } = matter(content);
+      const status = VerbatimEntry.fromParsedFrontmatterStatus({
+        processingStatus: data.processing_status,
+        consolidated: data.consolidated,
+      });
+      if (statusSet.has(status)) filtered.push(file);
+    }
+
+    return filtered;
+  }
+
+  async countByProcessingStatus(statuses?: ProcessingStatus[]): Promise<number> {
+    const effective = statuses ?? [
+      'new',
+      'seen',
+      'consolidated',
+      'ignored_low_signal',
+      'requires_review',
+      'failed',
+    ];
     const agents = await this.listAgents();
     let count = 0;
     for (const agent of agents) {
-      const entries = await this.listUnconsolidated(agent);
+      const entries = await this.listByProcessingStatus(agent, effective);
       count += entries.length;
     }
     return count;
@@ -71,6 +91,10 @@ export class FsVerbatimStore implements IVerbatimStore {
     if (raw === null) return null;
     const parsed = matter(raw);
     const filename = filePath.split('/').pop() ?? filePath;
+    const processingStatus = VerbatimEntry.fromParsedFrontmatterStatus({
+      processingStatus: parsed.data.processing_status,
+      consolidated: parsed.data.consolidated,
+    });
     return VerbatimEntry.fromParsedData(filename, {
       session: String(parsed.data.session ?? ''),
       agent: String(parsed.data.agent ?? ''),
@@ -129,27 +153,51 @@ export class FsVerbatimStore implements IVerbatimStore {
                 : undefined,
             }
           : undefined,
-      consolidated: parsed.data.consolidated === true,
+      processingStatus,
+      consolidated: processingStatus === 'consolidated',
       created: normalizeTimestamp(parsed.data.created) ?? '',
       content: parsed.content,
     });
   }
 
   async markConsolidated(filePath: string): Promise<void> {
+    await this.markProcessingStatus(filePath, 'consolidated');
+  }
+
+  async markProcessingStatus(
+    filePath: string,
+    status: ProcessingStatus,
+    reason?: string,
+  ): Promise<void> {
+    parseProcessingStatus(status);
     const raw = await this.fileStore.readFile(filePath);
     if (raw === null) {
       throw new Error(`Cannot mark consolidated — file not found: ${filePath}`);
     }
     const parsed = matter(raw);
-    if (parsed.data.consolidated === true) return;
+    const currentStatus = VerbatimEntry.fromParsedFrontmatterStatus({
+      processingStatus: parsed.data.processing_status,
+      consolidated: parsed.data.consolidated,
+    });
+    if (currentStatus === status) return;
+
     const processing =
       parsed.data.processing && typeof parsed.data.processing === 'object'
         ? { ...(parsed.data.processing as Record<string, unknown>) }
         : {};
-    if (!processing.consolidated_at) {
-      processing.consolidated_at = new Date().toISOString();
+    processing.updated_at = new Date().toISOString();
+    if (status === 'consolidated' && !processing.consolidated_at) {
+      processing.consolidated_at = processing.updated_at;
     }
-    const nextFm = { ...parsed.data, consolidated: true, processing };
+
+    const nextFm = {
+      ...parsed.data,
+      processing_status: status,
+      consolidated: status === 'consolidated',
+      processing,
+      ...(reason ? { processing_status_reason: reason } : {}),
+    };
+
     const rewritten = matter.stringify(parsed.content, nextFm);
     await this.fileStore.writeFile(filePath, rewritten);
   }

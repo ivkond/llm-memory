@@ -59,6 +59,17 @@ class FakeVerbatimStore implements IVerbatimStore {
   async countUnconsolidated(): Promise<number> {
     return [...this.entries.values()].filter((e) => !e.consolidated).length;
   }
+  async listByProcessingStatus(agent: string, statuses: Array<VerbatimEntry['processingStatus']>): Promise<FileInfo[]> {
+    const set = new Set(statuses);
+    return [...this.entries.values()]
+      .filter((e) => e.agent === agent && set.has(e.processingStatus))
+      .map((e) => ({ path: e.filePath, updated: e.created }));
+  }
+  async countByProcessingStatus(statuses?: Array<VerbatimEntry['processingStatus']>): Promise<number> {
+    if (!statuses) return this.entries.size;
+    const set = new Set(statuses);
+    return [...this.entries.values()].filter((e) => set.has(e.processingStatus)).length;
+  }
   async listAgents(): Promise<string[]> {
     const set = new Set<string>();
     for (const e of this.entries.values()) set.add(e.agent);
@@ -79,6 +90,27 @@ class FakeVerbatimStore implements IVerbatimStore {
         project: e.project,
         tags: e.tags,
         consolidated: true,
+        created: e.created,
+        content: e.content,
+      }),
+    );
+  }
+  async markProcessingStatus(p: string, status: VerbatimEntry['processingStatus']): Promise<void> {
+    if (status === 'consolidated') {
+      await this.markConsolidated(p);
+      return;
+    }
+    const e = this.entries.get(p);
+    if (!e) throw new Error('not found');
+    this.entries.set(
+      p,
+      VerbatimEntry.fromParsedData(p.split('/').pop()!, {
+        session: e.sessionId,
+        agent: e.agent,
+        project: e.project,
+        tags: e.tags,
+        processingStatus: status,
+        consolidated: status === 'consolidated',
         created: e.created,
         content: e.content,
       }),

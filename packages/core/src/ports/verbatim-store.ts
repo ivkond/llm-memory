@@ -1,4 +1,4 @@
-import type { VerbatimEntry } from '../domain/verbatim-entry.js';
+import type { ProcessingStatus, VerbatimEntry } from '../domain/verbatim-entry.js';
 import type { FileInfo } from './file-store.js';
 
 export interface IVerbatimStore {
@@ -10,6 +10,12 @@ export interface IVerbatimStore {
 
   /** Count unconsolidated entries across all agents. */
   countUnconsolidated(): Promise<number>;
+
+  /** Find entries by processing status for a given agent. */
+  listByProcessingStatus(agent: string, statuses: ProcessingStatus[]): Promise<FileInfo[]>;
+
+  /** Count entries across all agents by status (all statuses when omitted). */
+  countByProcessingStatus(statuses?: ProcessingStatus[]): Promise<number>;
 
   /**
    * List agent identifiers that currently have at least one verbatim entry
@@ -27,4 +33,7 @@ export interface IVerbatimStore {
    * not exist.
    */
   markConsolidated(filePath: string): Promise<void>;
+
+  /** Set processing status for an entry and preserve optional migration fields. */
+  markProcessingStatus(filePath: string, status: ProcessingStatus, reason?: string): Promise<void>;
 }

@@ -33,6 +33,8 @@ describe('FsVerbatimStore', () => {
     expect(content).not.toBeNull();
     expect(content).toContain('test fact');
     expect(content).toContain('session: abc');
+    expect(content).toContain('processing_status: new');
+    expect(content).toContain('consolidated: false');
   });
 
   it('test_listUnconsolidated_findsOnlyFalse', async () => {
@@ -48,6 +50,13 @@ describe('FsVerbatimStore', () => {
     const entries = await verbatimStore.listUnconsolidated('claude-code');
     expect(entries).toHaveLength(1);
     expect(entries[0].path).toContain('1111');
+  });
+
+  it('listUnconsolidated_treatsLegacyMissingAsNew', async () => {
+    await fileStore.writeFile('log/claude-code/raw/2026-04-09-abc-3333.md', '---\n---\nfact3');
+    const entries = await verbatimStore.listUnconsolidated('claude-code');
+    expect(entries).toHaveLength(1);
+    expect(entries[0].path).toContain('3333');
   });
 
   it('test_countUnconsolidated_countsAcrossAgents', async () => {
@@ -82,6 +91,32 @@ describe('FsVerbatimStore', () => {
     const agents = await verbatimStore.listAgents();
     expect(agents).toEqual([]);
   });
+
+  it('listByProcessingStatus_and_countByProcessingStatus_work', async () => {
+    await fileStore.writeFile(
+      'log/claude-code/raw/2026-04-09-a-1111.md',
+      '---\nprocessing_status: seen\n---\nfact',
+    );
+    await fileStore.writeFile(
+      'log/claude-code/raw/2026-04-09-a-2222.md',
+      '---\nprocessing_status: requires_review\n---\nfact',
+    );
+    await fileStore.writeFile(
+      'log/claude-code/raw/2026-04-09-a-3333.md',
+      '---\nprocessing_status: consolidated\n---\nfact',
+    );
+
+    const pending = await verbatimStore.listByProcessingStatus('claude-code', [
+      'new',
+      'seen',
+      'requires_review',
+      'failed',
+    ]);
+    expect(pending).toHaveLength(2);
+
+    const count = await verbatimStore.countByProcessingStatus(['requires_review']);
+    expect(count).toBe(1);
+  });
 });
 
 describe('FsVerbatimStore.readEntry', () => {
@@ -113,6 +148,7 @@ describe('FsVerbatimStore.readEntry', () => {
       expect(roundtrip!.agent).toBe('claude-code');
       expect(roundtrip!.sessionId).toBe('sess1');
       expect(roundtrip!.project).toBe('cli-relay');
+      expect(roundtrip!.processingStatus).toBe('new');
       expect(roundtrip!.consolidated).toBe(false);
       expect(roundtrip!.entryId).toBe('uuid1');
       expect(roundtrip!.source.type).toBe('manual');
@@ -168,6 +204,7 @@ describe('FsVerbatimStore.markConsolidated', () => {
       await store.writeEntry(entry);
       await store.markConsolidated(entry.filePath);
       const reloaded = await store.readEntry(entry.filePath);
+      expect(reloaded!.processingStatus).toBe('consolidated');
       expect(reloaded!.consolidated).toBe(true);
       expect(reloaded!.processing.consolidated_at).toBeTruthy();
       const unconsolidated = await store.listUnconsolidated('claude-code');
@@ -202,6 +239,28 @@ describe('FsVerbatimStore.markConsolidated', () => {
       await expect(
         store.markConsolidated('log/claude-code/raw/does-not-exist.md'),
       ).rejects.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('markProcessingStatus_writes_reason_and_derived_consolidated', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'vs-mark-'));
+    try {
+      const fileStore = new FsFileStore(root);
+      const store = new FsVerbatimStore(fileStore);
+      const entry = VerbatimEntry.create({
+        content: 'x',
+        agent: 'claude-code',
+        sessionId: 's',
+        idGenerator: () => 'uuid4',
+      });
+      await store.writeEntry(entry);
+      await store.markProcessingStatus(entry.filePath, 'requires_review', 'low confidence');
+      const raw = await fileStore.readFile(entry.filePath);
+      expect(raw).toContain('processing_status: requires_review');
+      expect(raw).toContain('processing_status_reason: low confidence');
+      expect(raw).toContain('consolidated: false');
     } finally {
       await rm(root, { recursive: true, force: true });
     }

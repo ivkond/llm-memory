@@ -53,6 +53,15 @@ export class InvalidIdentifierError extends WikiError {
   }
 }
 
+export class InvalidProcessingStatusError extends WikiError {
+  constructor(public readonly value: string) {
+    super(
+      'INVALID_PROCESSING_STATUS',
+      `Invalid processing status: ${JSON.stringify(value)}`,
+    );
+  }
+}
+
 export class InvalidPatternError extends WikiError {
   constructor(
     public readonly pattern: string,
