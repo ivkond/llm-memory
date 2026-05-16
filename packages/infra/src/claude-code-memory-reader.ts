@@ -50,10 +50,15 @@ export class ClaudeCodeMemoryReader implements IAgentMemoryReader {
       if (!content) continue;
 
       try {
+        const sourceDigest = ClaudeCodeMemoryReader.stableHash(`${file}|${raw}`);
         items.push(
           AgentMemoryItem.create({
             agent: this.agent,
             sourcePath: file,
+            sourceType: 'claude-code-memory',
+            sourceUri: file,
+            sourceDigest,
+            sourceMtime: mtimeIso,
             sessionId,
             project,
             content,
@@ -82,5 +87,13 @@ export class ClaudeCodeMemoryReader implements IAgentMemoryReader {
       return data.project;
     }
     return undefined;
+  }
+
+  private static stableHash(input: string): string {
+    let hash = 0;
+    for (const cp of input) {
+      hash = Math.trunc((hash << 5) - hash + (cp.codePointAt(0) ?? 0));
+    }
+    return (hash >>> 0).toString(16).padStart(8, '0');
   }
 }

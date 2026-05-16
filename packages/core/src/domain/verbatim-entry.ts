@@ -24,6 +24,7 @@ export interface VerbatimSourceMetadata {
   type: string;
   uri?: string;
   digest?: string;
+  mtime?: string;
 }
 
 export interface VerbatimModelMetadata {

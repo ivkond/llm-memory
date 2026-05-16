@@ -129,8 +129,11 @@ export class ImportService {
       idGenerator: () => this.idGen(item),
       source: {
         type: 'import',
-        uri: item.sourcePath,
-        digest: ImportService.stableHash(`${item.sourcePath}|${item.mtime}|${item.content}`),
+        uri: item.sourceUri,
+        digest:
+          item.sourceDigest ??
+          ImportService.stableHash(`${item.sourcePath}|${item.mtime}|${item.content}`),
+        mtime: item.sourceMtime,
       },
       processing: {
         imported_at: this.now().toISOString(),

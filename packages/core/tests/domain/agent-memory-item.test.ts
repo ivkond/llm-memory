@@ -16,6 +16,9 @@ describe('AgentMemoryItem', () => {
     expect(item.project).toBe('cli-relay');
     expect(item.content).toBe('fact a\nfact b');
     expect(item.mtime).toBe('2026-04-09T14:00:00Z');
+    expect(item.sourceType).toBe('claude-code');
+    expect(item.sourceUri).toBe('/home/me/.claude/projects/abc/memory/2026-04-09.md');
+    expect(item.sourceMtime).toBe('2026-04-09T14:00:00Z');
   });
 
   it('normalises sessionId to the same regex as VerbatimEntry identifiers', () => {

@@ -122,6 +122,41 @@ describe('FsVerbatimStore.readEntry', () => {
     }
   });
 
+  it('round-trips import metadata frontmatter fields', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'vs-read-'));
+    try {
+      const store = new FsVerbatimStore(new FsFileStore(root));
+      const entry = VerbatimEntry.create({
+        content: 'imported fact',
+        agent: 'claude-code',
+        sessionId: 'sess1',
+        idGenerator: () => 'uuid4',
+        source: {
+          type: 'import',
+          uri: '/abs/source/memory.md',
+          digest: 'abc12345',
+          mtime: '2026-04-09T10:20:30.000Z',
+        },
+        processing: {
+          imported_at: '2026-04-10T10:20:30.000Z',
+          updated_at: '2026-04-11T10:20:30.000Z',
+        },
+      });
+      await store.writeEntry(entry);
+
+      const roundtrip = await store.readEntry(entry.filePath);
+      expect(roundtrip).not.toBeNull();
+      expect(roundtrip!.source.type).toBe('import');
+      expect(roundtrip!.source.uri).toBe('/abs/source/memory.md');
+      expect(roundtrip!.source.digest).toBe('abc12345');
+      expect(roundtrip!.source.mtime).toBe('2026-04-09T10:20:30.000Z');
+      expect(roundtrip!.processing.imported_at).toBe('2026-04-10T10:20:30.000Z');
+      expect(roundtrip!.processing.updated_at).toBe('2026-04-11T10:20:30.000Z');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('synthesizes metadata for legacy records without entry_id and processing', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'vs-read-'));
     try {

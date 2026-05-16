@@ -121,6 +121,9 @@ describe('ImportService', () => {
     expect(result.agents).toHaveLength(2);
     expect(verbatim.written).toHaveLength(2);
     expect(verbatim.written[0].source.type).toBe('import');
+    expect(verbatim.written[0].source.uri).toBe('/a/mem.md');
+    expect(verbatim.written[0].source.mtime).toBe('2026-04-09T10:00:00Z');
+    expect(verbatim.written[0].source.digest).toBeTruthy();
     expect(verbatim.written[0].processing.imported_at).toBe('2026-04-10T12:00:00.000Z');
     const agents = result.agents.map((a) => a.agent).sort();
     expect(agents).toEqual(['claude-code', 'cursor']);

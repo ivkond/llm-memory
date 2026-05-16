@@ -48,6 +48,10 @@ describe('ClaudeCodeMemoryReader', () => {
     expect(items[0].project).toBe('cli-relay');
     expect(items[0].content).toContain('PGX rule');
     expect(items[0].mtime).toBe('2026-04-09T10:00:00.000Z');
+    expect(items[0].sourceType).toBe('claude-code-memory');
+    expect(items[0].sourceUri).toMatch(/session-001\.md$/);
+    expect(items[0].sourceMtime).toBe('2026-04-09T10:00:00.000Z');
+    expect(items[0].sourceDigest).toMatch(/^[a-f0-9]{8}$/);
   });
 
   it('filters out files older than `since`', async () => {
@@ -95,5 +99,22 @@ describe('ClaudeCodeMemoryReader', () => {
       since: null,
     });
     expect(items).toEqual([]);
+  });
+
+  it('produces deterministic source digest for unchanged file content', async () => {
+    await writeMem(
+      'cli-relay-abc',
+      'session-001.md',
+      '---\nsession: sess001\nproject: cli-relay\n---\n\nPGX rule\n',
+      new Date('2026-04-09T10:00:00Z'),
+    );
+    const reader = new ClaudeCodeMemoryReader();
+    const pattern = path.join(root, 'projects', '*', 'memory', '*.md').replaceAll('\\', '/');
+    const first = await reader.discover({ paths: [pattern], since: null });
+    const second = await reader.discover({ paths: [pattern], since: null });
+
+    expect(first).toHaveLength(1);
+    expect(second).toHaveLength(1);
+    expect(first[0].sourceDigest).toBe(second[0].sourceDigest);
   });
 });
