@@ -5,21 +5,18 @@
  * - Claude Code memory (claude-code)
  */
 import { Command } from 'commander';
-import { ConfigLoader } from '@ivkond-llm-wiki/infra';
-import { buildContainer } from '@ivkond-llm-wiki/common';
-import { findWikiRoot, printIdempotencyReplay } from './wiki-context.js';
+import {
+  exitWithError,
+  loadServicesForWiki,
+  printIdempotencyReplay,
+  resolveWikiPath,
+} from './wiki-context.js';
 
 const SUPPORTED_AGENTS = ['claude-code'];
 
 function printUnknownAgentError(agent: string): never {
   console.error('\x1b[31m%s\x1b[0m', `Error: Unknown agent "${agent}"`);
   console.error(`Supported agents: ${SUPPORTED_AGENTS.join(', ')}, all`);
-  process.exit(1);
-}
-
-function printNoWikiError(): never {
-  console.error('\x1b[31m%s\x1b[0m', 'Error: No wiki found');
-  console.error('Run "llm-wiki init" first, or use --wiki to specify the path');
   process.exit(1);
 }
 
@@ -74,20 +71,13 @@ export const importCommand = new Command()
     }
 
     // Find wiki directory
-    const wikiPath = options.wiki ?? (await findWikiRoot());
-
-    if (!wikiPath) {
-      printNoWikiError();
-    }
+    const wikiPath = await resolveWikiPath(options.wiki);
 
     if (verbose) console.log(`Wiki path: ${wikiPath}`);
     if (verbose) console.log(`Agent: ${agent}`);
 
     try {
-      // Load config and build services
-      const configLoader = new ConfigLoader(wikiPath);
-      const config = await configLoader.load();
-      const services = buildContainer(config);
+      const services = await loadServicesForWiki(wikiPath);
 
       console.log(`Importing from: ${agent}`);
 
@@ -116,11 +106,6 @@ export const importCommand = new Command()
         console.log(`Completed in ${elapsed}ms`);
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`\x1b[31m%s\x1b[0m`, `Error: ${message}`);
-      if (verbose) {
-        console.error(error);
-      }
-      process.exit(1);
+      exitWithError(error, verbose);
     }
   });

@@ -8,23 +8,21 @@
  * Content is processed into wiki pages via worktree.
  */
 import { Command } from 'commander';
-import { ConfigLoader } from '@ivkond-llm-wiki/infra';
 import type { AppServices } from '@ivkond-llm-wiki/common';
-import { buildContainer } from '@ivkond-llm-wiki/common';
-import { findWikiRoot, printIdempotencyReplay, toOptionalCliString } from './wiki-context.js';
+import {
+  exitWithError,
+  loadServicesForWiki,
+  printIdempotencyReplay,
+  resolveWikiPath,
+  toOptionalCliString,
+} from './wiki-context.js';
 
-function getWikiPathArg(args: string[], options: Record<string, unknown>): string | null {
+function getWikiPathArg(options: Record<string, unknown>): string | null {
   const wiki = toOptionalCliString(options.wiki);
   if (wiki) return wiki;
   const envPath = process.env.LLM_WIKI_PATH;
   if (envPath) return envPath;
   return null;
-}
-
-function printNoWikiError(): never {
-  console.error('\x1b[31m%s\x1b[0m', 'Error: No wiki found');
-  console.error('Run "llm-wiki init" first, or use --wiki to specify the path');
-  process.exit(1);
 }
 
 function logIngestedPages(kind: 'created' | 'updated', paths: string[]): void {
@@ -73,20 +71,14 @@ export const ingestCommand = new Command()
       const dryRun = options.dryRun ?? false;
 
       // Find wiki directory
-      const wikiArg = getWikiPathArg([], options);
-      const wikiPath = wikiArg ?? (await findWikiRoot());
-
-      if (!wikiPath) {
-        printNoWikiError();
-      }
+      const wikiArg = getWikiPathArg(options);
+      const wikiPath = await resolveWikiPath(wikiArg ?? undefined);
 
       if (verbose) console.log(`Wiki path: ${wikiPath}`);
       if (verbose) console.log(`Source: ${source}`);
 
       try {
-        const configLoader = new ConfigLoader(wikiPath);
-        const config = await configLoader.load();
-        const services = buildContainer(config);
+        const services = await loadServicesForWiki(wikiPath);
 
         if (dryRun) {
           console.log('[DRY RUN] Would ingest from:', source);
@@ -95,12 +87,7 @@ export const ingestCommand = new Command()
         }
         await runIngest(services, source, options.idempotencyKey, verbose);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.error(`\x1b[31m%s\x1b[0m`, `Error: ${message}`);
-        if (verbose) {
-          console.error(error);
-        }
-        process.exit(1);
+        exitWithError(error, verbose);
       }
     },
   );

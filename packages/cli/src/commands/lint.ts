@@ -7,9 +7,12 @@
  * - health: Check for orphaned pages, stale content, broken links
  */
 import { Command } from 'commander';
-import { ConfigLoader } from '@ivkond-llm-wiki/infra';
-import { buildContainer } from '@ivkond-llm-wiki/common';
-import { findWikiRoot, printIdempotencyReplay } from './wiki-context.js';
+import {
+  exitWithError,
+  loadServicesForWiki,
+  printIdempotencyReplay,
+  resolveWikiPath,
+} from './wiki-context.js';
 
 type LintPhaseName = 'consolidate' | 'promote' | 'health';
 
@@ -33,12 +36,6 @@ function parsePhases(phasesInput: string): LintPhaseName[] {
 function printNoValidPhasesError(): never {
   console.error('\x1b[31m%s\x1b[0m', 'Error: No valid phases specified');
   console.error('Valid phases:', VALID_PHASES.join(', '));
-  process.exit(1);
-}
-
-function printNoWikiError(): never {
-  console.error('\x1b[31m%s\x1b[0m', 'Error: No wiki found');
-  console.error('Run "llm-wiki init" first, or use --wiki to specify the path');
   process.exit(1);
 }
 
@@ -88,20 +85,13 @@ export const lintCommand = new Command()
     }
 
     // Find wiki directory
-    const wikiPath = options.wiki ?? (await findWikiRoot());
-
-    if (!wikiPath) {
-      printNoWikiError();
-    }
+    const wikiPath = await resolveWikiPath(options.wiki);
 
     if (verbose) console.log(`Wiki path: ${wikiPath}`);
     if (verbose) console.log(`Phases: ${phases.join(', ')}`);
 
     try {
-      // Load config and build services
-      const configLoader = new ConfigLoader(wikiPath);
-      const config = await configLoader.load();
-      const services = buildContainer(config);
+      const services = await loadServicesForWiki(wikiPath);
 
       console.log(`Running lint phases: ${phases.join(', ')}`);
 
@@ -116,11 +106,6 @@ export const lintCommand = new Command()
         process.exit(1);
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`\x1b[31m%s\x1b[0m`, `Error: ${message}`);
-      if (verbose) {
-        console.error(error);
-      }
-      process.exit(1);
+      exitWithError(error, verbose);
     }
   });
