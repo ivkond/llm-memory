@@ -32,6 +32,7 @@ import {
   PromotePhase,
   HealthPhase,
   type IFileStore,
+  type IAgentMemoryReader,
 } from '@ivkond-llm-wiki/core';
 import type { AppServices } from './app-services.js';
 
@@ -131,11 +132,12 @@ export function buildContainer(config: WikiConfig): AppServices {
       return { name: 'health', run: () => phase.run() };
     },
   });
+  const importReaders = new Map<string, IAgentMemoryReader>([
+    ['claude-code', new ClaudeCodeMemoryReader()],
+    ['amp', new AmpMemoryReader()],
+  ]);
   const import_ = new ImportService({
-    readers: new Map([
-      ['claude-code', new ClaudeCodeMemoryReader()],
-      ['amp', new AmpMemoryReader()],
-    ]),
+    readers: importReaders,
     verbatimStore,
     stateStore,
     agentConfigs: config.import_sources,

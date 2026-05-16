@@ -86,4 +86,20 @@ describe('AmpMemoryReader', () => {
     });
     expect(items).toEqual([]);
   });
+
+  it('returns empty for missing configured files', async () => {
+    const reader = new AmpMemoryReader();
+    const missing = path.join(root, 'missing', 'AGENTS.md');
+    const items = await reader.discover({ paths: [missing], since: null });
+    expect(items).toEqual([]);
+  });
+
+  it('rejects glob paths and does not scan directories', async () => {
+    await writeDoc('nested/a/AGENTS.md', 'A\n');
+    await writeDoc('nested/b/AGENTS.md', 'B\n');
+    const reader = new AmpMemoryReader();
+    const globPath = path.join(root, 'nested', '**', 'AGENTS.md').replaceAll('\\', '/');
+    const items = await reader.discover({ paths: [globPath], since: null });
+    expect(items).toEqual([]);
+  });
 });
