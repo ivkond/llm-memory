@@ -197,7 +197,7 @@ By default, the server listens on `127.0.0.1:7849`. You can change this in confi
 | `llm-wiki ingest <file-or-url>` | Convert a file or URL into structured wiki pages. |
 | `llm-wiki search <query>` | Search the wiki and optionally generate an answer. |
 | `llm-wiki lint` | Consolidate raw memories, promote shared patterns, and run health checks. |
-| `llm-wiki import --agent claude-code` | Import supported external agent memory sources. |
+| `llm-wiki import --agent claude-code` | Import supported external agent memory sources (`claude-code`, `kiro`, or `all`). |
 | `llm-wiki skill install <name>` | Install packaged agent skills into `.agent_context/skills`. |
 
 Useful global options:
@@ -253,6 +253,22 @@ export LLM_WIKI_LLM_API_KEY="your-key"
 export LLM_WIKI_EMBEDDING_API_KEY="your-key"
 llm-wiki status
 ```
+
+Import defaults (editable in `.config/settings.shared.yaml`):
+
+```yaml
+imports:
+  claude-code:
+    enabled: true
+    paths:
+      - ~/.claude/projects/*/memory/*.md
+  kiro:
+    enabled: true
+    paths:
+      - .kiro/steering/**/*.md
+```
+
+`kiro` imports are read-only verbatim markdown ingestion for steering documents. They are intentionally noisy and instruction-oriented; review imported entries before consolidation and avoid treating them as confirmed facts.
 
 ## Data ownership and privacy
 

@@ -45,6 +45,7 @@ describe('ConfigLoader', () => {
 
     expect(config.sanitization.enabled).toBe(true);
     expect(config.sanitization.mode).toBe('redact');
+    expect(config.imports.kiro.paths).toEqual(['.kiro/steering/**/*.md']);
   });
 
   it('test_load_envOverridesLocal', async () => {
@@ -136,5 +137,28 @@ describe('ConfigLoader', () => {
     const loader = new ConfigLoader(tempDir);
 
     await expect(loader.load()).rejects.toThrow(/1-65535/);
+  });
+
+  it('test_load_kiroImportPaths_canBeConfigured', async () => {
+    const store = new FsFileStore(tempDir);
+    await store.writeFile(
+      '.local/settings.local.yaml',
+      `imports:
+  kiro:
+    enabled: true
+    paths:
+      - /tmp/a/.kiro/steering/**/*.md
+      - /tmp/b/steering/*.md
+`,
+    );
+
+    const loader = new ConfigLoader(tempDir);
+    const config = await loader.load();
+
+    expect(config.imports.kiro.enabled).toBe(true);
+    expect(config.imports.kiro.paths).toEqual([
+      '/tmp/a/.kiro/steering/**/*.md',
+      '/tmp/b/steering/*.md',
+    ]);
   });
 });

@@ -147,6 +147,16 @@ sanitization:
 mcp:
   host: 127.0.0.1
   port: 7849
+
+imports:
+  claude-code:
+    enabled: true
+    paths:
+      - ~/.claude/projects/*/memory/*.md
+  kiro:
+    enabled: true
+    paths:
+      - .kiro/steering/**/*.md
 `;
 
       await fileStore.writeFile('.config/settings.shared.yaml', configContent);

@@ -281,6 +281,7 @@ describe('CLI command coverage', () => {
     tap.restore();
 
     expect(tap.stderr.join('\n')).toContain('Unknown agent');
+    expect(tap.stderr.join('\n')).toContain('claude-code, kiro, all');
   });
 
   it('import: runs service and reports totals', async () => {
@@ -313,6 +314,67 @@ describe('CLI command coverage', () => {
     expect(buildContainer.mock.calls[0]?.[0].wiki.path).toBe(wikiPath);
     expect(buildContainer.mock.calls[0]?.[0].llm.model).toBe('local-model');
     expect(tap.stdout.join('\n')).toContain('Total: 2 imported, 1 skipped');
+  });
+
+  it('import: supports kiro as explicit agent', async () => {
+    const wikiPath = await mkdtemp(path.join(tmpdir(), 'cli-import-kiro-'));
+    await writeWikiConfig(wikiPath);
+    const importAll = vi.fn().mockResolvedValue({
+      agents: [{ agent: 'kiro', imported: 1, skipped: 0, discovered: 1, error: null }],
+    });
+    const buildContainer = vi.fn(() => ({ import_: { importAll } }));
+
+    vi.doMock('@ivkond-llm-wiki/common', () => ({
+      buildContainer,
+    }));
+
+    const tap = tapConsole();
+    const restoreExit = mockExit();
+
+    await runCommand('../src/commands/import-cmd.ts', 'importCommand', [
+      '--wiki',
+      wikiPath,
+      '--agent',
+      'kiro',
+    ]);
+
+    restoreExit();
+    tap.restore();
+
+    expect(importAll).toHaveBeenCalledWith({ agents: ['kiro'] });
+    expect(tap.stdout.join('\n')).toContain('Total: 1 imported, 0 skipped');
+  });
+
+  it('import: supports --agent all', async () => {
+    const wikiPath = await mkdtemp(path.join(tmpdir(), 'cli-import-all-'));
+    await writeWikiConfig(wikiPath);
+    const importAll = vi.fn().mockResolvedValue({
+      agents: [
+        { agent: 'claude-code', imported: 1, skipped: 0, discovered: 1, error: null },
+        { agent: 'kiro', imported: 0, skipped: 1, discovered: 1, error: null },
+      ],
+    });
+    const buildContainer = vi.fn(() => ({ import_: { importAll } }));
+
+    vi.doMock('@ivkond-llm-wiki/common', () => ({
+      buildContainer,
+    }));
+
+    const tap = tapConsole();
+    const restoreExit = mockExit();
+
+    await runCommand('../src/commands/import-cmd.ts', 'importCommand', [
+      '--wiki',
+      wikiPath,
+      '--agent',
+      'all',
+    ]);
+
+    restoreExit();
+    tap.restore();
+
+    expect(importAll).toHaveBeenCalledWith({ agents: undefined });
+    expect(tap.stdout.join('\n')).toContain('Total: 1 imported, 1 skipped');
   });
 
   it('search: emits json output with parsed limit', async () => {

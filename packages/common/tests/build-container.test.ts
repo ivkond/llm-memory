@@ -30,6 +30,10 @@ function makeTestConfig(tmpDir: string): WikiConfig {
     consolidation: { batch_threshold: 10, archive_after_days: 30, archive_retention_months: 6 },
     sanitization: { enabled: false, mode: 'redact', custom_patterns: [], allowlist: [] },
     mcp: { host: '127.0.0.1', port: 7849 },
+    imports: {
+      'claude-code': { enabled: true, paths: ['~/.claude/projects/*/memory/*.md'] },
+      kiro: { enabled: true, paths: ['.kiro/steering/**/*.md'] },
+    },
   };
 }
 
