@@ -485,7 +485,7 @@ describe('LintService', () => {
     ]);
   });
 
-  it('sanitizes review queue filenames built from model-provided source paths', async () => {
+  it('does not include model-provided source path fragments in review queue filenames', async () => {
     const wtFs = new FakeFileStore('/tmp/wt/lint-1');
     fsFactory = () => wtFs;
     const phase: LintPhase<'consolidate'> = {
@@ -526,7 +526,9 @@ describe('LintService', () => {
 
     const queuedFiles = Object.keys(wtFs.files).filter((p) => p.startsWith('review/consolidation/'));
     expect(queuedFiles).toHaveLength(1);
-    expect(queuedFiles[0]).toContain('passwd.md');
+    expect(queuedFiles[0]).toMatch(
+      /^review\/consolidation\/2026-04-10T12-00-00-000Z-review-001\.md$/,
+    );
     expect(queuedFiles[0].includes('..')).toBe(false);
   });
 

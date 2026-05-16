@@ -233,7 +233,7 @@ export class LintService {
     for (let i = 0; i < records.length; i += 1) {
       const record = records[i];
       const suffix = String(i + 1).padStart(3, '0');
-      const filePath = this.buildReviewQueuePath(reviewRoot, stampFile, record.kind, suffix, record);
+      const filePath = this.buildReviewQueuePath(reviewRoot, stampFile, record.kind, suffix);
       const body = [
         '---',
         `source_path: ${this.yamlString(record.sourcePath)}`,
@@ -291,10 +291,8 @@ export class LintService {
     stampFile: string,
     kind: 'review' | 'low_signal',
     suffix: string,
-    record: ReviewRecord,
   ): string {
-    const leaf = this.safePathToken(path.basename(record.sourcePath, '.md'));
-    const filename = `${stampFile}-${kind}-${suffix}-${leaf}.md`;
+    const filename = `${stampFile}-${kind}-${suffix}.md`;
     const normalRoot = path.posix.normalize(reviewRoot.split(path.sep).join('/')).replace(/\/+$/, '');
     const normalPath = path.posix.normalize(`${normalRoot}/${filename}`);
     if (normalPath === normalRoot || !normalPath.startsWith(`${normalRoot}/`)) {
@@ -320,8 +318,4 @@ export class LintService {
     return month >= 1 && month <= 12;
   }
 
-  private safePathToken(value: string): string {
-    const safe = value.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
-    return safe.length > 0 ? safe : 'entry';
-  }
 }
