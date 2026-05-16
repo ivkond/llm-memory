@@ -28,11 +28,13 @@ describe('YamlIdempotencyStore', () => {
     return Promise.all([storeA.acquire(operation, key, fingerprint), storeB.acquire(operation, key, fingerprint)]);
   }
 
+  function expectKinds(actual: string[], expected: string[]) {
+    expect(new Set(actual)).toEqual(new Set(expected));
+  }
+
   it('allows only one concurrent acquire across independent store instances', async () => {
     const [a, b] = await acquirePair('lint', 'same-key', 'fp-1');
-
-    const kinds = [a.kind, b.kind].sort();
-    expect(kinds).toEqual(['acquired', 'in_progress']);
+    expectKinds([a.kind, b.kind], ['acquired', 'in_progress']);
   });
 
   it('returns conflict for same key with different fingerprint', async () => {

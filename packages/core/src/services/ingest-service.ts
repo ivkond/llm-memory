@@ -41,6 +41,8 @@ interface ExtractedPage {
   content: string;
 }
 
+type SourcePayload = { uri: string; content: string; estimatedTokens: number };
+
 const INGEST_SYSTEM_PROMPT =
   'You are a wiki editor. Extract high-signal reference pages from the given source. ' +
   'Respond with a JSON array of objects: [{ "path": "wiki/...", "title": "...", "content": "..." }]. ' +
@@ -98,73 +100,113 @@ export class IngestService {
   }
 
   private async executeIngestOperation(req: IngestRequest): Promise<IngestResponse> {
-    // -- Pre-worktree checks --------------------------------------------------
-    const source = await this.sourceReader.read(req.source); // may throw SourceNotFoundError / SourceParseError
+    const source = await this.readAndValidateSource(req.source);
+    const worktree = await this.versionControl.createWorktree('ingest');
+    const worktreeStore = this.fileStoreFactory(worktree.path);
+    const extractedPages = await this.extractPagesWithCleanup(worktree.path, source, req.hint);
+    const { pagesCreated, pagesUpdated } = await this.classifyPages(extractedPages);
+    const touchedPaths = await this.writePagesWithCleanup(
+      worktree.path,
+      worktreeStore,
+      extractedPages,
+      source.uri,
+    );
+    const commitSha = await this.commitAndMergeWithCleanup(worktree.path, touchedPaths, source.uri);
+    await this.reindexTouchedPaths(touchedPaths);
+    await this.safeRemoveWorktree(worktree.path);
+    await this.stateStore.update({ last_ingest: new Date().toISOString() });
+
+    return {
+      pages_created: pagesCreated,
+      pages_updated: pagesUpdated,
+      commit_sha: commitSha,
+    };
+  }
+
+  private async readAndValidateSource(sourceRef: string): Promise<SourcePayload> {
+    const source = await this.sourceReader.read(sourceRef);
     if (source.estimatedTokens > MAX_SOURCE_TOKENS) {
       throw new SourceParseError(
         source.uri,
         `source is ${source.estimatedTokens} tokens, exceeds limit of ${MAX_SOURCE_TOKENS}`,
       );
     }
+    return source;
+  }
 
-    // -- Worktree-scoped ingest ----------------------------------------------
-    const worktree = await this.versionControl.createWorktree('ingest');
-    const worktreeStore = this.fileStoreFactory(worktree.path);
-
-    let extractedPages: ExtractedPage[];
+  private async extractPagesWithCleanup(
+    worktreePath: string,
+    source: SourcePayload,
+    hint?: string,
+  ): Promise<ExtractedPage[]> {
     try {
-      extractedPages = await this.extractPages(source, req.hint);
+      return await this.extractPages(source, hint);
     } catch (err) {
       // LLM or extraction failure: discard the worktree, DO NOT touch state.
-      await this.safeRemoveWorktree(worktree.path, true);
+      await this.safeRemoveWorktree(worktreePath, true);
       if (err instanceof WikiError) throw err;
       const message = err instanceof Error ? err.message : String(err);
       throw new LlmUnavailableError(message);
     }
+  }
 
-    // Classify each extracted page as create-or-update so the response
-    // distinguishes them (pages_created vs pages_updated).
+  private async classifyPages(
+    extractedPages: ExtractedPage[],
+  ): Promise<{ pagesCreated: string[]; pagesUpdated: string[] }> {
     const pagesCreated: string[] = [];
     const pagesUpdated: string[] = [];
     for (const page of extractedPages) {
       const existed = await this.mainFileStore.exists(page.path);
       (existed ? pagesUpdated : pagesCreated).push(page.path);
     }
+    return { pagesCreated, pagesUpdated };
+  }
 
-    // -- Write pages to the worktree ----------------------------------------
+  private async writePagesWithCleanup(
+    worktreePath: string,
+    worktreeStore: IFileStore,
+    extractedPages: ExtractedPage[],
+    sourceUri: string,
+  ): Promise<string[]> {
     const touchedPaths: string[] = [];
     try {
       for (const page of extractedPages) {
-        const body = this.renderPageBody(page, source.uri);
+        const body = this.renderPageBody(page, sourceUri);
         await worktreeStore.writeFile(page.path, body);
         touchedPaths.push(page.path);
       }
     } catch (err) {
-      await this.safeRemoveWorktree(worktree.path, true);
+      await this.safeRemoveWorktree(worktreePath, true);
       throw err;
     }
+    return touchedPaths;
+  }
 
-    // -- Commit / squash / merge --------------------------------------------
-    let commitSha: string;
+  private async commitAndMergeWithCleanup(
+    worktreePath: string,
+    touchedPaths: string[],
+    sourceUri: string,
+  ): Promise<string> {
     try {
       await this.versionControl.commitInWorktree(
-        worktree.path,
+        worktreePath,
         touchedPaths,
-        `:memo: [ingest] ${source.uri}`,
+        `:memo: [ingest] ${sourceUri}`,
       );
-      await this.versionControl.squashWorktree(worktree.path, `:memo: [ingest] ${source.uri}`);
-      commitSha = await this.versionControl.mergeWorktree(worktree.path);
+      await this.versionControl.squashWorktree(worktreePath, `:memo: [ingest] ${sourceUri}`);
+      return await this.versionControl.mergeWorktree(worktreePath);
     } catch (err) {
       if (err instanceof GitConflictError) {
         // Preserve the worktree for manual recovery; state is unchanged.
         throw err;
       }
       // Any other error: discard the worktree.
-      await this.safeRemoveWorktree(worktree.path, true);
+      await this.safeRemoveWorktree(worktreePath, true);
       throw err;
     }
+  }
 
-    // -- Post-merge reindex + state stamp + worktree cleanup ----------------
+  private async reindexTouchedPaths(touchedPaths: string[]): Promise<void> {
     for (const path of touchedPaths) {
       const data = await this.mainFileStore.readWikiPage(path);
       if (!data) continue;
@@ -175,15 +217,6 @@ export class IngestService {
         updated: data.frontmatter.updated,
       });
     }
-
-    await this.safeRemoveWorktree(worktree.path);
-    await this.stateStore.update({ last_ingest: new Date().toISOString() });
-
-    return {
-      pages_created: pagesCreated,
-      pages_updated: pagesUpdated,
-      commit_sha: commitSha,
-    };
   }
 
   /**
