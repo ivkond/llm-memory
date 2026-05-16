@@ -445,6 +445,51 @@ describe('LintService', () => {
     ]);
   });
 
+  it('sanitizes review queue filenames built from model-provided source paths', async () => {
+    const wtFs = new FakeFileStore('/tmp/wt/lint-1');
+    fsFactory = () => wtFs;
+    const phase: LintPhase<'consolidate'> = {
+      name: 'consolidate',
+      async run() {
+        return {
+          consolidatedCount: 1,
+          touchedPaths: [],
+          reviewRecords: [
+            {
+              sourcePath: '../../../etc/passwd',
+              reason: 'suspicious input',
+              confidence: 0.44,
+              kind: 'review',
+            },
+          ],
+        };
+      },
+    };
+    const service = new LintService({
+      mainRepoRoot: '/main',
+      mainFileStore: mainFs,
+      mainVerbatimStore: vs,
+      versionControl: vc,
+      searchEngine,
+      fileStoreFactory: fsFactory,
+      verbatimStoreFactory: () => vs,
+      stateStore: state,
+      archiver,
+      makeConsolidatePhase: () => phase,
+      makePromotePhase: () => stubPromote(),
+      makeHealthPhase: () => stubHealth(),
+      reviewQueueDir: 'review/consolidation',
+      now: () => new Date('2026-04-10T12:00:00Z'),
+    });
+
+    await service.lint({});
+
+    const queuedFiles = Object.keys(wtFs.files).filter((p) => p.startsWith('review/consolidation/'));
+    expect(queuedFiles).toHaveLength(1);
+    expect(queuedFiles[0]).toContain('passwd.md');
+    expect(queuedFiles[0].includes('..')).toBe(false);
+  });
+
   it('reindexes wiki + projects pages touched by lint, skipping log wildcard', async () => {
     mainFs.pages['wiki/tools/postgresql.md'] = {
       frontmatter: {

@@ -228,8 +228,7 @@ export class LintService {
     for (let i = 0; i < records.length; i += 1) {
       const record = records[i];
       const suffix = String(i + 1).padStart(3, '0');
-      const leaf = path.basename(record.sourcePath, '.md');
-      const filePath = `${reviewRoot}/${stampFile}-${record.kind}-${suffix}-${leaf}.md`;
+      const filePath = this.buildReviewQueuePath(reviewRoot, stampFile, record.kind, suffix, record);
       const body = [
         '---',
         `source_path: ${this.yamlString(record.sourcePath)}`,
@@ -279,5 +278,27 @@ export class LintService {
   private yamlString(value: string): string {
     if (/^[A-Za-z0-9][A-Za-z0-9 \-_./:]*$/.test(value)) return value;
     return JSON.stringify(value);
+  }
+
+  private buildReviewQueuePath(
+    reviewRoot: string,
+    stampFile: string,
+    kind: 'review' | 'low_signal',
+    suffix: string,
+    record: ReviewRecord,
+  ): string {
+    const leaf = this.safePathToken(path.basename(record.sourcePath, '.md'));
+    const filename = `${stampFile}-${kind}-${suffix}-${leaf}.md`;
+    const normalRoot = path.posix.normalize(reviewRoot.split(path.sep).join('/')).replace(/\/+$/, '');
+    const normalPath = path.posix.normalize(`${normalRoot}/${filename}`);
+    if (normalPath === normalRoot || !normalPath.startsWith(`${normalRoot}/`)) {
+      throw new Error(`invalid review queue path: ${normalPath}`);
+    }
+    return normalPath;
+  }
+
+  private safePathToken(value: string): string {
+    const safe = value.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+    return safe.length > 0 ? safe : 'entry';
   }
 }
