@@ -148,6 +148,22 @@ Or edit:
 llm-wiki status
 ```
 
+Import sources are configured in `.config/settings.shared.yaml`:
+
+```yaml
+import_sources:
+  claude-code:
+    enabled: true
+    paths:
+      - /abs/path/to/projects/*/memory/*.md
+  amp:
+    enabled: true
+    paths:
+      - /abs/path/to/AGENTS.md
+      - /abs/path/to/AGENT.md
+      - /abs/path/to/CLAUDE.md
+```
+
 On a new wiki you should see zero pages and an index status such as `missing` until content is ingested.
 
 ### 6. Add knowledge
@@ -198,6 +214,7 @@ By default, the server listens on `127.0.0.1:7849`. You can change this in confi
 | `llm-wiki search <query>` | Search the wiki and optionally generate an answer. |
 | `llm-wiki lint` | Consolidate raw memories, promote shared patterns, and run health checks. |
 | `llm-wiki import --agent claude-code` | Import supported external agent memory sources. |
+| `llm-wiki import --agent amp` | Import Amp guidance docs from explicit local file paths. |
 | `llm-wiki skill install <name>` | Install packaged agent skills into `.agent_context/skills`. |
 
 Useful global options:
@@ -253,6 +270,18 @@ export LLM_WIKI_LLM_API_KEY="your-key"
 export LLM_WIKI_EMBEDDING_API_KEY="your-key"
 llm-wiki status
 ```
+
+### Amp guidance import safety
+
+Amp imports are intentionally narrow:
+
+- local filesystem files only;
+- explicit configured paths only (no default system-path scanning);
+- accepted filenames are `AGENTS.md`, `AGENT.md`, and `CLAUDE.md`;
+- no hosted thread URLs or remote sources.
+
+Imported guidance is stored verbatim under `log/amp/raw/`.
+Treat these files as instruction/context artifacts that can include stale or noisy guidance; review and consolidate before relying on them as durable memory.
 
 ## Data ownership and privacy
 

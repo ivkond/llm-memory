@@ -20,6 +20,7 @@ export interface WikiConfig {
     allowlist: string[];
   };
   mcp: { host: string; port: number };
+  import_sources: Record<string, { enabled: boolean; paths: string[] }>;
 }
 
 const DEFAULTS: WikiConfig = {
@@ -31,6 +32,10 @@ const DEFAULTS: WikiConfig = {
   consolidation: { batch_threshold: 10, archive_after_days: 30, archive_retention_months: 6 },
   sanitization: { enabled: true, mode: 'redact', custom_patterns: [], allowlist: [] },
   mcp: { host: '127.0.0.1', port: 7849 },
+  import_sources: {
+    'claude-code': { enabled: false, paths: [] },
+    amp: { enabled: false, paths: [] },
+  },
 };
 
 interface EnvEntry {

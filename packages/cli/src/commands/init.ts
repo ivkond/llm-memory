@@ -147,6 +147,14 @@ sanitization:
 mcp:
   host: 127.0.0.1
   port: 7849
+
+import_sources:
+  claude-code:
+    enabled: false
+    paths: []
+  amp:
+    enabled: false
+    paths: []
 `;
 
       await fileStore.writeFile('.config/settings.shared.yaml', configContent);

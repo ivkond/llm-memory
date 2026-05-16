@@ -315,6 +315,44 @@ describe('CLI command coverage', () => {
     expect(tap.stdout.join('\n')).toContain('Total: 2 imported, 1 skipped');
   });
 
+  it('import: supports amp agent and forwards it to importAll', async () => {
+    const wikiPath = await mkdtemp(path.join(tmpdir(), 'cli-import-amp-wiki-'));
+    await writeWikiConfig(wikiPath);
+    const importAll = vi.fn().mockResolvedValue({
+      agents: [{ agent: 'amp', imported: 1, skipped: 0, discovered: 1, error: null }],
+    });
+    const buildContainer = vi.fn(() => ({ import_: { importAll } }));
+    vi.doMock('@ivkond-llm-wiki/common', () => ({ buildContainer }));
+
+    const tap = tapConsole();
+    const restoreExit = mockExit();
+    await runCommand('../src/commands/import-cmd.ts', 'importCommand', ['--wiki', wikiPath, '--agent', 'amp']);
+    restoreExit();
+    tap.restore();
+
+    expect(importAll).toHaveBeenCalledWith({ agents: ['amp'] });
+    expect(tap.stdout.join('\n')).toContain('Total: 1 imported, 0 skipped');
+  });
+
+  it('import: supports --agent all', async () => {
+    const wikiPath = await mkdtemp(path.join(tmpdir(), 'cli-import-all-wiki-'));
+    await writeWikiConfig(wikiPath);
+    const importAll = vi.fn().mockResolvedValue({
+      agents: [
+        { agent: 'claude-code', imported: 0, skipped: 0, discovered: 0, error: null },
+        { agent: 'amp', imported: 0, skipped: 0, discovered: 0, error: null },
+      ],
+    });
+    const buildContainer = vi.fn(() => ({ import_: { importAll } }));
+    vi.doMock('@ivkond-llm-wiki/common', () => ({ buildContainer }));
+
+    const restoreExit = mockExit();
+    await runCommand('../src/commands/import-cmd.ts', 'importCommand', ['--wiki', wikiPath, '--agent', 'all']);
+    restoreExit();
+
+    expect(importAll).toHaveBeenCalledWith({ agents: undefined });
+  });
+
   it('search: emits json output with parsed limit', async () => {
     const wikiPath = await mkdtemp(path.join(tmpdir(), 'cli-search-wiki-'));
     await writeWikiConfig(wikiPath);

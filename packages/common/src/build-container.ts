@@ -15,6 +15,7 @@ import {
   CompositeSourceReader,
   SevenZipArchiver,
   ClaudeCodeMemoryReader,
+  AmpMemoryReader,
   FsOperationJournal,
   type WikiConfig,
 } from '@ivkond-llm-wiki/infra';
@@ -131,10 +132,13 @@ export function buildContainer(config: WikiConfig): AppServices {
     },
   });
   const import_ = new ImportService({
-    readers: new Map([['claude-code', new ClaudeCodeMemoryReader()]]),
+    readers: new Map([
+      ['claude-code', new ClaudeCodeMemoryReader()],
+      ['amp', new AmpMemoryReader()],
+    ]),
     verbatimStore,
     stateStore,
-    agentConfigs: {},
+    agentConfigs: config.import_sources,
   });
 
   return Object.freeze({ remember, recall, query, ingest, status, lint, import_, operationJournal });

@@ -45,6 +45,8 @@ describe('ConfigLoader', () => {
 
     expect(config.sanitization.enabled).toBe(true);
     expect(config.sanitization.mode).toBe('redact');
+    expect(config.import_sources['claude-code']).toEqual({ enabled: false, paths: [] });
+    expect(config.import_sources.amp).toEqual({ enabled: false, paths: [] });
   });
 
   it('test_load_envOverridesLocal', async () => {
