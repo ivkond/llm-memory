@@ -15,6 +15,57 @@ type LintPhaseName = 'consolidate' | 'promote' | 'health';
 
 const VALID_PHASES: LintPhaseName[] = ['consolidate', 'promote', 'health'];
 
+type LintSummaryReport = {
+  consolidated: number;
+  promoted: number;
+  issues: readonly { type: string; page: string; description: string }[];
+  commitSha?: string | null;
+  idempotencyReplayed?: boolean;
+};
+
+function parsePhases(phasesInput: string): LintPhaseName[] {
+  return phasesInput
+    .split(',')
+    .map((phase) => phase.trim() as LintPhaseName)
+    .filter((phase) => VALID_PHASES.includes(phase));
+}
+
+function printNoValidPhasesError(): never {
+  console.error('\x1b[31m%s\x1b[0m', 'Error: No valid phases specified');
+  console.error('Valid phases:', VALID_PHASES.join(', '));
+  process.exit(1);
+}
+
+function printNoWikiError(): never {
+  console.error('\x1b[31m%s\x1b[0m', 'Error: No wiki found');
+  console.error('Run "llm-wiki init" first, or use --wiki to specify the path');
+  process.exit(1);
+}
+
+function printLintSummary(
+  phases: LintPhaseName[],
+  report: LintSummaryReport,
+  idempotencyKey: string | undefined,
+  verbose: boolean,
+  elapsedMs: number,
+): void {
+  console.log('\n\x1b[32m%s\x1b[0m', '✓ Lint complete');
+
+  if (report.consolidated > 0) console.log(`  Consolidated: ${report.consolidated} entries`);
+  if (report.promoted > 0) console.log(`  Promoted: ${report.promoted} pages`);
+  if (report.issues.length > 0) {
+    console.log(`\n\x1b[33m%s\x1b[0m`, `⚠ Found ${report.issues.length} issue(s):`);
+    for (const issue of report.issues.slice(0, 10)) {
+      console.log(`  - [${issue.type}] ${issue.page}: ${issue.description}`);
+    }
+    if (report.issues.length > 10) console.log(`  ... and ${report.issues.length - 10} more`);
+  }
+
+  if (report.commitSha) console.log(`\nCommit: ${report.commitSha.slice(0, 7)}`);
+  printIdempotencyReplay(report.idempotencyReplayed, idempotencyKey);
+  if (verbose) console.log(`Completed in ${elapsedMs}ms`);
+}
+
 export const lintCommand = new Command()
   .name('lint')
   .description('Run lint operations')
@@ -30,25 +81,17 @@ export const lintCommand = new Command()
     const phasesInput = options.phases ?? 'consolidate,promote,health';
     const verbose = options.verbose ?? false;
 
-    // Parse phases
-    const phases = phasesInput
-      .split(',')
-      .map((p) => p.trim() as LintPhaseName)
-      .filter((p) => VALID_PHASES.includes(p));
+    const phases = parsePhases(phasesInput);
 
     if (phases.length === 0) {
-      console.error('\x1b[31m%s\x1b[0m', 'Error: No valid phases specified');
-      console.error('Valid phases:', VALID_PHASES.join(', '));
-      process.exit(1);
+      printNoValidPhasesError();
     }
 
     // Find wiki directory
     const wikiPath = options.wiki ?? (await findWikiRoot());
 
     if (!wikiPath) {
-      console.error('\x1b[31m%s\x1b[0m', 'Error: No wiki found');
-      console.error('Run "llm-wiki init" first, or use --wiki to specify the path');
-      process.exit(1);
+      printNoWikiError();
     }
 
     if (verbose) console.log(`Wiki path: ${wikiPath}`);
@@ -66,34 +109,7 @@ export const lintCommand = new Command()
       const report = await services.lint.lint({ phases, idempotencyKey: options.idempotencyKey });
 
       const elapsed = Date.now() - startTime;
-
-      // Display results
-      console.log('\n\x1b[32m%s\x1b[0m', '✓ Lint complete');
-
-      if (report.consolidated > 0) {
-        console.log(`  Consolidated: ${report.consolidated} entries`);
-      }
-      if (report.promoted > 0) {
-        console.log(`  Promoted: ${report.promoted} pages`);
-      }
-      if (report.issues.length > 0) {
-        console.log(`\n\x1b[33m%s\x1b[0m`, `⚠ Found ${report.issues.length} issue(s):`);
-        for (const issue of report.issues.slice(0, 10)) {
-          console.log(`  - [${issue.type}] ${issue.page}: ${issue.description}`);
-        }
-        if (report.issues.length > 10) {
-          console.log(`  ... and ${report.issues.length - 10} more`);
-        }
-      }
-
-      if (report.commitSha) {
-        console.log(`\nCommit: ${report.commitSha.slice(0, 7)}`);
-      }
-      printIdempotencyReplay(report.idempotencyReplayed, options.idempotencyKey);
-
-      if (verbose) {
-        console.log(`Completed in ${elapsed}ms`);
-      }
+      printLintSummary(phases, report, options.idempotencyKey, verbose, elapsed);
 
       // Exit with error if there are issues
       if (report.issues.length > 0) {

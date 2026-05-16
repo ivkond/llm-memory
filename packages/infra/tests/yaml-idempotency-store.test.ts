@@ -23,13 +23,13 @@ describe('YamlIdempotencyStore', () => {
     ] as const;
   }
 
-  it('allows only one concurrent acquire across independent store instances', async () => {
+  async function acquirePair(operation: 'lint' | 'ingest', key: string, fingerprint: string) {
     const [storeA, storeB] = createStorePair();
+    return Promise.all([storeA.acquire(operation, key, fingerprint), storeB.acquire(operation, key, fingerprint)]);
+  }
 
-    const [a, b] = await Promise.all([
-      storeA.acquire('lint', 'same-key', 'fp-1'),
-      storeB.acquire('lint', 'same-key', 'fp-1'),
-    ]);
+  it('allows only one concurrent acquire across independent store instances', async () => {
+    const [a, b] = await acquirePair('lint', 'same-key', 'fp-1');
 
     const kinds = [a.kind, b.kind].sort();
     expect(kinds).toEqual(['acquired', 'in_progress']);

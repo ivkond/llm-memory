@@ -92,15 +92,20 @@ export class IngestService {
       'ingest',
       req.idempotencyKey,
       { source: req.source, hint: req.hint ?? null, project: req.project ?? null },
-      async () => {
-        // -- Pre-worktree checks --------------------------------------------------
-        const source = await this.sourceReader.read(req.source); // may throw SourceNotFoundError / SourceParseError
-        if (source.estimatedTokens > MAX_SOURCE_TOKENS) {
-          throw new SourceParseError(
-            source.uri,
-            `source is ${source.estimatedTokens} tokens, exceeds limit of ${MAX_SOURCE_TOKENS}`,
-          );
-        }
+      async () => this.executeIngestOperation(req),
+    );
+    return replayed ? { ...result, idempotency_replayed: true } : result;
+  }
+
+  private async executeIngestOperation(req: IngestRequest): Promise<IngestResponse> {
+    // -- Pre-worktree checks --------------------------------------------------
+    const source = await this.sourceReader.read(req.source); // may throw SourceNotFoundError / SourceParseError
+    if (source.estimatedTokens > MAX_SOURCE_TOKENS) {
+      throw new SourceParseError(
+        source.uri,
+        `source is ${source.estimatedTokens} tokens, exceeds limit of ${MAX_SOURCE_TOKENS}`,
+      );
+    }
 
     // -- Worktree-scoped ingest ----------------------------------------------
     const worktree = await this.versionControl.createWorktree('ingest');
@@ -174,14 +179,11 @@ export class IngestService {
     await this.safeRemoveWorktree(worktree.path);
     await this.stateStore.update({ last_ingest: new Date().toISOString() });
 
-        return {
-          pages_created: pagesCreated,
-          pages_updated: pagesUpdated,
-          commit_sha: commitSha,
-        };
-      },
-    );
-    return replayed ? { ...result, idempotency_replayed: true } : result;
+    return {
+      pages_created: pagesCreated,
+      pages_updated: pagesUpdated,
+      commit_sha: commitSha,
+    };
   }
 
   /**

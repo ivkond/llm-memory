@@ -9,6 +9,7 @@
  */
 import { Command } from 'commander';
 import { ConfigLoader } from '@ivkond-llm-wiki/infra';
+import type { AppServices } from '@ivkond-llm-wiki/common';
 import { buildContainer } from '@ivkond-llm-wiki/common';
 import { findWikiRoot, printIdempotencyReplay, toOptionalCliString } from './wiki-context.js';
 
@@ -18,6 +19,41 @@ function getWikiPathArg(args: string[], options: Record<string, unknown>): strin
   const envPath = process.env.LLM_WIKI_PATH;
   if (envPath) return envPath;
   return null;
+}
+
+function printNoWikiError(): never {
+  console.error('\x1b[31m%s\x1b[0m', 'Error: No wiki found');
+  console.error('Run "llm-wiki init" first, or use --wiki to specify the path');
+  process.exit(1);
+}
+
+function logIngestedPages(kind: 'created' | 'updated', paths: string[]): void {
+  if (paths.length === 0) return;
+  const label = kind === 'created' ? '✓ Created' : '↑ Updated';
+  const color = kind === 'created' ? '\x1b[32m%s\x1b[0m' : '\x1b[33m%s\x1b[0m';
+  console.log(color, `${label} ${paths.length} page(s):`);
+  for (const filePath of paths) {
+    console.log(`  - ${filePath}`);
+  }
+}
+
+async function runIngest(
+  services: AppServices,
+  source: string,
+  idempotencyKey: string | undefined,
+  verbose: boolean,
+): Promise<void> {
+  console.log('Ingesting from:', source);
+  const startTime = Date.now();
+  const result = await services.ingest.ingest({ source, idempotencyKey });
+  const elapsed = Date.now() - startTime;
+
+  logIngestedPages('created', result.pages_created);
+  logIngestedPages('updated', result.pages_updated);
+
+  console.log(`\nCommit: ${result.commit_sha.slice(0, 7)}`);
+  printIdempotencyReplay(result.idempotency_replayed, idempotencyKey);
+  if (verbose) console.log(`Completed in ${elapsed}ms`);
 }
 
 export const ingestCommand = new Command()
@@ -41,16 +77,13 @@ export const ingestCommand = new Command()
       const wikiPath = wikiArg ?? (await findWikiRoot());
 
       if (!wikiPath) {
-        console.error('\x1b[31m%s\x1b[0m', 'Error: No wiki found');
-        console.error('Run "llm-wiki init" first, or use --wiki to specify the path');
-        process.exit(1);
+        printNoWikiError();
       }
 
       if (verbose) console.log(`Wiki path: ${wikiPath}`);
       if (verbose) console.log(`Source: ${source}`);
 
       try {
-        // Load config and build services
         const configLoader = new ConfigLoader(wikiPath);
         const config = await configLoader.load();
         const services = buildContainer(config);
@@ -60,35 +93,7 @@ export const ingestCommand = new Command()
           console.log('Skipping service call (dry-run mode)');
           return;
         }
-
-        console.log('Ingesting from:', source);
-
-        const startTime = Date.now();
-        const result = await services.ingest.ingest({
-          source,
-          idempotencyKey: options.idempotencyKey,
-        });
-
-        const elapsed = Date.now() - startTime;
-
-        if (result.pages_created.length > 0) {
-          console.log('\x1b[32m%s\x1b[0m', `✓ Created ${result.pages_created.length} page(s):`);
-          for (const p of result.pages_created) {
-            console.log(`  - ${p}`);
-          }
-        }
-        if (result.pages_updated.length > 0) {
-          console.log('\x1b[33m%s\x1b[0m', `↑ Updated ${result.pages_updated.length} page(s):`);
-          for (const p of result.pages_updated) {
-            console.log(`  - ${p}`);
-          }
-        }
-        console.log(`\nCommit: ${result.commit_sha.slice(0, 7)}`);
-        printIdempotencyReplay(result.idempotency_replayed, options.idempotencyKey);
-
-        if (verbose) {
-          console.log(`Completed in ${elapsed}ms`);
-        }
+        await runIngest(services, source, options.idempotencyKey, verbose);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.error(`\x1b[31m%s\x1b[0m`, `Error: ${message}`);

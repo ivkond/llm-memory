@@ -11,6 +11,52 @@ import { findWikiRoot, printIdempotencyReplay } from './wiki-context.js';
 
 const SUPPORTED_AGENTS = ['claude-code'];
 
+function printUnknownAgentError(agent: string): never {
+  console.error('\x1b[31m%s\x1b[0m', `Error: Unknown agent "${agent}"`);
+  console.error(`Supported agents: ${SUPPORTED_AGENTS.join(', ')}, all`);
+  process.exit(1);
+}
+
+function printNoWikiError(): never {
+  console.error('\x1b[31m%s\x1b[0m', 'Error: No wiki found');
+  console.error('Run "llm-wiki init" first, or use --wiki to specify the path');
+  process.exit(1);
+}
+
+type ImportAgentResult = {
+  agent: string;
+  imported: number;
+  skipped: number;
+  discovered: number;
+  error?: string;
+};
+
+function printImportAgentResult(agentResult: ImportAgentResult, verbose: boolean): {
+  imported: number;
+  skipped: number;
+} {
+  if (agentResult.error) {
+    console.log(`\n\x1b[31m%s\x1b[0m`, `✗ ${agentResult.agent}: ${agentResult.error}`);
+    return { imported: 0, skipped: 0 };
+  }
+  console.log(
+    `\n\x1b[32m%s\x1b[0m`,
+    `✓ ${agentResult.agent}: ${agentResult.imported} imported (${agentResult.skipped} skipped)`,
+  );
+  if (verbose && agentResult.discovered > 0) {
+    console.log(`  Discovered: ${agentResult.discovered}`);
+  }
+  return { imported: agentResult.imported, skipped: agentResult.skipped };
+}
+
+function printImportSummary(totalImported: number, totalSkipped: number): void {
+  if (totalImported === 0) {
+    console.log('\nNo entries to import');
+    return;
+  }
+  console.log(`\nTotal: ${totalImported} imported, ${totalSkipped} skipped`);
+}
+
 export const importCommand = new Command()
   .name('import')
   .description('Import from external sources')
@@ -24,18 +70,14 @@ export const importCommand = new Command()
 
     // Validate agent
     if (agent !== 'all' && !SUPPORTED_AGENTS.includes(agent)) {
-      console.error('\x1b[31m%s\x1b[0m', `Error: Unknown agent "${agent}"`);
-      console.error(`Supported agents: ${SUPPORTED_AGENTS.join(', ')}, all`);
-      process.exit(1);
+      printUnknownAgentError(agent);
     }
 
     // Find wiki directory
     const wikiPath = options.wiki ?? (await findWikiRoot());
 
     if (!wikiPath) {
-      console.error('\x1b[31m%s\x1b[0m', 'Error: No wiki found');
-      console.error('Run "llm-wiki init" first, or use --wiki to specify the path');
-      process.exit(1);
+      printNoWikiError();
     }
 
     if (verbose) console.log(`Wiki path: ${wikiPath}`);
@@ -63,27 +105,11 @@ export const importCommand = new Command()
       let totalSkipped = 0;
 
       for (const agentResult of result.agents) {
-        totalImported += agentResult.imported;
-        totalSkipped += agentResult.skipped;
-
-        if (agentResult.error) {
-          console.log(`\n\x1b[31m%s\x1b[0m`, `✗ ${agentResult.agent}: ${agentResult.error}`);
-        } else {
-          console.log(
-            `\n\x1b[32m%s\x1b[0m`,
-            `✓ ${agentResult.agent}: ${agentResult.imported} imported (${agentResult.skipped} skipped)`,
-          );
-          if (verbose && agentResult.discovered > 0) {
-            console.log(`  Discovered: ${agentResult.discovered}`);
-          }
-        }
+        const totals = printImportAgentResult(agentResult, verbose);
+        totalImported += totals.imported;
+        totalSkipped += totals.skipped;
       }
-
-      if (totalImported === 0) {
-        console.log('\nNo entries to import');
-      } else {
-        console.log(`\nTotal: ${totalImported} imported, ${totalSkipped} skipped`);
-      }
+      printImportSummary(totalImported, totalSkipped);
       printIdempotencyReplay(result.idempotency_replayed, options.idempotencyKey);
 
       if (verbose) {
