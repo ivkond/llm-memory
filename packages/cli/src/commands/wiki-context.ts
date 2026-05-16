@@ -60,3 +60,16 @@ export async function loadServicesForWiki(wikiPath: string): Promise<AppServices
   const config = await configLoader.load();
   return buildContainer(config);
 }
+
+export async function withWikiServices<T>(
+  wikiPath: string,
+  verbose: boolean,
+  action: (services: AppServices) => Promise<T>,
+): Promise<T> {
+  try {
+    const services = await loadServicesForWiki(wikiPath);
+    return await action(services);
+  } catch (error) {
+    exitWithError(error, verbose);
+  }
+}

@@ -6,10 +6,9 @@
  */
 import { Command } from 'commander';
 import {
-  exitWithError,
-  loadServicesForWiki,
   printIdempotencyReplay,
   resolveWikiPath,
+  withWikiServices,
 } from './wiki-context.js';
 
 const SUPPORTED_AGENTS = ['claude-code'];
@@ -76,9 +75,7 @@ export const importCommand = new Command()
     if (verbose) console.log(`Wiki path: ${wikiPath}`);
     if (verbose) console.log(`Agent: ${agent}`);
 
-    try {
-      const services = await loadServicesForWiki(wikiPath);
-
+    await withWikiServices(wikiPath, verbose, async (services) => {
       console.log(`Importing from: ${agent}`);
 
       const startTime = Date.now();
@@ -105,7 +102,5 @@ export const importCommand = new Command()
       if (verbose) {
         console.log(`Completed in ${elapsed}ms`);
       }
-    } catch (error) {
-      exitWithError(error, verbose);
-    }
+    });
   });

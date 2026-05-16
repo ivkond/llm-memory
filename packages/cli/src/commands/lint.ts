@@ -8,10 +8,9 @@
  */
 import { Command } from 'commander';
 import {
-  exitWithError,
-  loadServicesForWiki,
   printIdempotencyReplay,
   resolveWikiPath,
+  withWikiServices,
 } from './wiki-context.js';
 
 type LintPhaseName = 'consolidate' | 'promote' | 'health';
@@ -90,9 +89,7 @@ export const lintCommand = new Command()
     if (verbose) console.log(`Wiki path: ${wikiPath}`);
     if (verbose) console.log(`Phases: ${phases.join(', ')}`);
 
-    try {
-      const services = await loadServicesForWiki(wikiPath);
-
+    await withWikiServices(wikiPath, verbose, async (services) => {
       console.log(`Running lint phases: ${phases.join(', ')}`);
 
       const startTime = Date.now();
@@ -105,7 +102,5 @@ export const lintCommand = new Command()
       if (report.issues.length > 0) {
         process.exit(1);
       }
-    } catch (error) {
-      exitWithError(error, verbose);
-    }
+    });
   });

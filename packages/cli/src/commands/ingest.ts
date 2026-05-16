@@ -10,11 +10,10 @@
 import { Command } from 'commander';
 import type { AppServices } from '@ivkond-llm-wiki/common';
 import {
-  exitWithError,
-  loadServicesForWiki,
   printIdempotencyReplay,
   resolveWikiPath,
   toOptionalCliString,
+  withWikiServices,
 } from './wiki-context.js';
 
 function getWikiPathArg(options: Record<string, unknown>): string | null {
@@ -77,17 +76,13 @@ export const ingestCommand = new Command()
       if (verbose) console.log(`Wiki path: ${wikiPath}`);
       if (verbose) console.log(`Source: ${source}`);
 
-      try {
-        const services = await loadServicesForWiki(wikiPath);
-
+      await withWikiServices(wikiPath, verbose, async (services) => {
         if (dryRun) {
           console.log('[DRY RUN] Would ingest from:', source);
           console.log('Skipping service call (dry-run mode)');
           return;
         }
         await runIngest(services, source, options.idempotencyKey, verbose);
-      } catch (error) {
-        exitWithError(error, verbose);
-      }
+      });
     },
   );
