@@ -141,6 +141,9 @@ jobs:
             fi
           done
 
+      - name: Verify release artifacts
+        run: pnpm verify:release-artifacts
+
       - name: Build Docker image for validation
         run: docker build -f packages/mcp-server/Dockerfile -t llm-wiki-mcp:ci .
 

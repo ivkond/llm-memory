@@ -1,8 +1,9 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { RELEASE_PACKAGES } from './release-metadata.mjs';
 
-export const RELEASE_PACKAGES = ['core', 'infra', 'common', 'cli', 'mcp-server'];
+export { RELEASE_PACKAGES };
 
 const RELEASE_VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
 
