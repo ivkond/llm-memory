@@ -1,5 +1,6 @@
 import type { AppServices } from '@ivkond-llm-wiki/common';
 import { readCommonRememberParams } from './wiki-remember-params.js';
+import { isCoordinationError } from './write-coordination-error.js';
 
 /**
  * Handler for `wiki_remember_session` — wires to RememberService.
@@ -53,7 +54,12 @@ export function createWikiRememberSessionHandler(services: AppServices) {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const code = message.includes('summary') ? 'InvalidParams' : 'InternalError';
+      const code =
+        isCoordinationError(error)
+          ? 'WRITE_COORDINATION_FAILED'
+          : message.includes('summary')
+            ? 'InvalidParams'
+            : 'InternalError';
 
       return {
         content: [

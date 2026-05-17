@@ -1,4 +1,5 @@
 import type { AppServices } from '@ivkond-llm-wiki/common';
+import { isCoordinationError } from './write-coordination-error.js';
 
 type LintPhaseName = 'consolidate' | 'promote' | 'health';
 
@@ -85,7 +86,12 @@ export function createWikiLintHandler(services: AppServices) {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const code = message.includes('Invalid phase') ? 'InvalidParams' : 'InternalError';
+      const code =
+        isCoordinationError(error)
+          ? 'WRITE_COORDINATION_FAILED'
+          : message.includes('Invalid phase')
+            ? 'InvalidParams'
+            : 'InternalError';
 
       return {
         content: [

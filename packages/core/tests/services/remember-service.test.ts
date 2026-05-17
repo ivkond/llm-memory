@@ -3,6 +3,7 @@ import { RememberService } from '../../src/services/remember-service.js';
 import { SanitizationService } from '../../src/services/sanitization-service.js';
 import type { IFileStore } from '../../src/ports/file-store.js';
 import type { IVerbatimStore } from '../../src/ports/verbatim-store.js';
+import type { IWriteCoordinator } from '../../src/ports/write-coordinator.js';
 
 function createMocks() {
   const files = new Map<string, string>();
@@ -37,14 +38,18 @@ function createMocks() {
 describe('RememberService', () => {
   let fileStore: IFileStore;
   let verbatimStore: IVerbatimStore;
+  let writeCoordinator: IWriteCoordinator;
   let service: RememberService;
 
   beforeEach(() => {
     const mocks = createMocks();
     fileStore = mocks.fileStore;
     verbatimStore = mocks.verbatimStore;
+    writeCoordinator = {
+      runExclusive: vi.fn(async (_op, work) => work()),
+    };
     const sanitizer = new SanitizationService({ enabled: true, mode: 'redact' });
-    service = new RememberService(fileStore, verbatimStore, sanitizer);
+    service = new RememberService(fileStore, verbatimStore, sanitizer, writeCoordinator);
   });
 
   it('test_rememberFact_validContent_writesFile', async () => {

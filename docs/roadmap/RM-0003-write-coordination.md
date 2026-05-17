@@ -5,7 +5,7 @@
 - Area: reliability
 - Source roadmap item: `../ROADMAP.md`
 - Related ADRs:
-  - None
+  - `../adr/0023-filesystem-write-coordination.md`
 - Related items:
   - None
 

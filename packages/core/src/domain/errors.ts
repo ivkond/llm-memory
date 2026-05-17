@@ -150,3 +150,27 @@ export class ProjectScopeUnsupportedError extends WikiError {
     );
   }
 }
+
+export class WriteLockTimeoutError extends WikiError {
+  constructor(
+    public readonly operation: string,
+    public readonly timeoutMs: number,
+  ) {
+    super(
+      'WRITE_LOCK_TIMEOUT',
+      `Write coordination timed out after ${timeoutMs}ms while waiting for "${operation}"`,
+    );
+  }
+}
+
+export class WriteLockAcquisitionError extends WikiError {
+  constructor(
+    public readonly operation: string,
+    message: string,
+  ) {
+    super(
+      'WRITE_LOCK_ACQUISITION_FAILED',
+      `Failed to acquire write lock for "${operation}": ${message}`,
+    );
+  }
+}

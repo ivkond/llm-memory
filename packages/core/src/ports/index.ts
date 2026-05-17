@@ -11,3 +11,4 @@ export type { IStateStore } from './state-store.js';
 export type { IOperationJournal } from './operation-journal.js';
 export type { IArchiver, ArchiveEntry, ArchiveResult } from './archiver.js';
 export type { IAgentMemoryReader, AgentMemoryDiscoveryOptions } from './agent-memory-reader.js';
+export type { IWriteCoordinator, WriteOperation } from './write-coordinator.js';

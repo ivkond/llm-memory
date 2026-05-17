@@ -10,6 +10,7 @@ import { Command } from 'commander';
 import path from 'node:path';
 import { ConfigLoader } from '@ivkond-llm-wiki/infra';
 import { buildContainer } from '@ivkond-llm-wiki/common';
+import { coordinationOperation } from './write-coordination-error.js';
 
 type LintPhaseName = 'consolidate' | 'promote' | 'health';
 
@@ -113,7 +114,12 @@ export const lintCommand = new Command()
         process.exit(1);
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const lockOperation = coordinationOperation(error);
+      const message = lockOperation
+        ? `Another write is in progress (${lockOperation}). Retry after it completes.`
+        : error instanceof Error
+          ? error.message
+          : String(error);
       console.error(`\x1b[31m%s\x1b[0m`, `Error: ${message}`);
       if (verbose) {
         console.error(error);

@@ -1,5 +1,6 @@
 import type { AppServices } from '@ivkond-llm-wiki/common';
 import { readCommonRememberParams } from './wiki-remember-params.js';
+import { isCoordinationError } from './write-coordination-error.js';
 
 /**
  * Handler for `wiki_remember_fact` — wires to RememberService.
@@ -58,7 +59,12 @@ export function createWikiRememberFactHandler(services: AppServices) {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const code = message.includes('content') ? 'InvalidParams' : 'InternalError';
+      const code =
+        isCoordinationError(error)
+          ? 'WRITE_COORDINATION_FAILED'
+          : message.includes('content')
+            ? 'InvalidParams'
+            : 'InternalError';
 
       return {
         content: [

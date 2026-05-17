@@ -1,4 +1,5 @@
 import type { AppServices } from '@ivkond-llm-wiki/common';
+import { isCoordinationError } from './write-coordination-error.js';
 
 /**
  * Handler for `wiki_ingest` — wires to IngestService.
@@ -98,7 +99,7 @@ export function createWikiIngestHandler(services: AppServices) {
               text: JSON.stringify({
                 success: false,
                 error: `Ingest failed after ${attempt} attempt(s): ${message}`,
-                code: 'InternalError',
+                code: isCoordinationError(error) ? 'WRITE_COORDINATION_FAILED' : 'InternalError',
               }),
             },
           ],

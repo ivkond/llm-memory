@@ -11,6 +11,7 @@ import type {
   FileInfo,
 } from '../../src/ports/index.js';
 import type { VerbatimEntry } from '../../src/domain/verbatim-entry.js';
+import type { IWriteCoordinator } from '../../src/ports/write-coordinator.js';
 
 class FakeReader implements IAgentMemoryReader {
   public readonly agent: string;
@@ -73,6 +74,7 @@ describe('ImportService', () => {
   let readerA: FakeReader;
   let readerB: FakeReader;
   let configs: Record<string, { enabled: boolean; paths: string[] }>;
+  let writeCoordinator: IWriteCoordinator;
 
   beforeEach(() => {
     verbatim = new FakeVerbatimStore();
@@ -83,6 +85,7 @@ describe('ImportService', () => {
       'claude-code': { enabled: true, paths: ['~/.claude/projects'] },
       cursor: { enabled: true, paths: ['~/.cursor'] },
     };
+    writeCoordinator = { runExclusive: vi.fn(async (_op, work) => work()) };
   });
 
   it('writes VerbatimEntries from each enabled reader and stamps state', async () => {
@@ -113,6 +116,7 @@ describe('ImportService', () => {
       verbatimStore: verbatim,
       stateStore: state,
       agentConfigs: configs,
+      writeCoordinator,
       now: () => new Date('2026-04-10T12:00:00Z'),
     });
 
@@ -144,6 +148,7 @@ describe('ImportService', () => {
       verbatimStore: verbatim,
       stateStore: state,
       agentConfigs: configs,
+      writeCoordinator,
       now: () => new Date(),
     });
     await service.importAll({});
@@ -167,6 +172,7 @@ describe('ImportService', () => {
       verbatimStore: verbatim,
       stateStore: state,
       agentConfigs: configs,
+      writeCoordinator,
       now: () => new Date(),
     });
     await service.importAll({});
@@ -192,6 +198,7 @@ describe('ImportService', () => {
       verbatimStore: verbatim,
       stateStore: state,
       agentConfigs: configs,
+      writeCoordinator,
       now: () => new Date('2026-04-10T12:00:00Z'),
     });
 
@@ -224,6 +231,7 @@ describe('ImportService', () => {
       verbatimStore: verbatim,
       stateStore: state,
       agentConfigs: { 'claude-code': { enabled: true, paths: ['~/.claude'] } },
+      writeCoordinator,
       now: () => new Date('2026-04-10T12:00:00Z'),
     });
 
@@ -244,6 +252,7 @@ describe('ImportService', () => {
       verbatimStore: verbatim,
       stateStore: state,
       agentConfigs: { 'claude-code': { enabled: true, paths: [] } },
+      writeCoordinator,
       now: () => new Date(),
     });
     await expect(service.importAll({ agents: ['ghost'] })).rejects.toBeInstanceOf(

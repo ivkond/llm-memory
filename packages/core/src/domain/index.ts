@@ -51,4 +51,6 @@ export {
   ImportReaderNotRegisteredError,
   LintPhaseError,
   ProjectScopeUnsupportedError,
+  WriteLockTimeoutError,
+  WriteLockAcquisitionError,
 } from './errors.js';
