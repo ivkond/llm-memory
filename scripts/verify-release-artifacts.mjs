@@ -38,13 +38,14 @@ function runCommand(command, args, options = {}) {
 
   let result = executeCommand(command, args, options);
 
-  if (result.error && result.error.code === 'ENOENT' && command === 'pnpm') {
+  if (result.error?.code === 'ENOENT' && command === 'pnpm') {
     result = executeCommand('corepack', ['pnpm', ...args], options);
   }
 
   if (result.status !== 0) {
     const output = [result.stderr, result.stdout].filter(Boolean).join('\n').trim();
-    throw new Error(`Command failed: ${command} ${args.join(' ')}${output ? `\n${output}` : ''}`);
+    const messageSuffix = output ? `\n${output}` : '';
+    throw new Error(`Command failed: ${command} ${args.join(' ')}${messageSuffix}`);
   }
 
   return result.stdout.trim();
@@ -209,6 +210,13 @@ function ensureTargetInPack(packedFilesSet, targetPath, errorPrefix) {
 }
 
 export function validatePackedContract({ packageDir, sourceManifest, packedManifest, packedFiles }) {
+  validatePackedManifestMetadata(packageDir, sourceManifest, packedManifest);
+  const packedFilesSet = new Set(packedFiles);
+  validatePackedTargetPresence(packageDir, sourceManifest, packedFilesSet);
+  validateManifestFileEntries(packageDir, sourceManifest, packedFiles);
+}
+
+function validatePackedManifestMetadata(packageDir, sourceManifest, packedManifest) {
   if (sourceManifest.name !== packedManifest.name) {
     throw new Error(`Packed artifact name mismatch for ${packageDir}`);
   }
@@ -231,9 +239,9 @@ export function validatePackedContract({ packageDir, sourceManifest, packedManif
   if (JSON.stringify(sourceManifest.exports ?? null) !== JSON.stringify(packedManifest.exports ?? null)) {
     throw new Error(`Packed artifact exports mismatch for ${packageDir}`);
   }
+}
 
-  const packedFilesSet = new Set(packedFiles);
-
+function validatePackedTargetPresence(packageDir, sourceManifest, packedFilesSet) {
   if (typeof sourceManifest.main === 'string') {
     ensureTargetInPack(packedFilesSet, sourceManifest.main, `Packed artifact missing main target for ${packageDir}`);
   }
@@ -254,11 +262,7 @@ export function validatePackedContract({ packageDir, sourceManifest, packedManif
     }
   }
 
-  const declarationTargets = new Set();
-  if (typeof sourceManifest.types === 'string') {
-    declarationTargets.add(sourceManifest.types);
-  }
-  collectTypeTargets(sourceManifest.exports, declarationTargets);
+  const declarationTargets = collectDeclarationTargets(sourceManifest);
   for (const target of declarationTargets) {
     ensureTargetInPack(
       packedFilesSet,
@@ -266,7 +270,18 @@ export function validatePackedContract({ packageDir, sourceManifest, packedManif
       `Packed artifact missing declaration target for ${packageDir}`,
     );
   }
+}
 
+function collectDeclarationTargets(sourceManifest) {
+  const declarationTargets = new Set();
+  if (typeof sourceManifest.types === 'string') {
+    declarationTargets.add(sourceManifest.types);
+  }
+  collectTypeTargets(sourceManifest.exports, declarationTargets);
+  return declarationTargets;
+}
+
+function validateManifestFileEntries(packageDir, sourceManifest, packedFiles) {
   const manifestFiles = Array.isArray(sourceManifest.files) ? sourceManifest.files : [];
   for (const fileEntry of manifestFiles) {
     if (typeof fileEntry !== 'string' || fileEntry.includes('*')) {
@@ -362,30 +377,9 @@ function collectTemplateExpression(source, startIndex) {
   while (cursor < source.length) {
     const char = source[cursor];
     const next = source[cursor + 1];
-
-    if (char === '\'' || char === '"') {
-      const parsed = parseStringLiteral(source, cursor);
-      if (!parsed) {
-        break;
-      }
-      cursor = parsed.end;
-      continue;
-    }
-
-    if (char === '/' && next === '/') {
-      cursor += 2;
-      while (cursor < source.length && source[cursor] !== '\n') {
-        cursor += 1;
-      }
-      continue;
-    }
-
-    if (char === '/' && next === '*') {
-      cursor += 2;
-      while (cursor < source.length && !(source[cursor] === '*' && source[cursor + 1] === '/')) {
-        cursor += 1;
-      }
-      cursor += cursor < source.length ? 2 : 0;
+    const skipped = skipNonCodeInTemplateExpression(source, cursor, char, next);
+    if (skipped !== null) {
+      cursor = skipped;
       continue;
     }
 
@@ -412,6 +406,20 @@ function collectTemplateExpression(source, startIndex) {
     cursor += 1;
   }
 
+  return null;
+}
+
+function skipNonCodeInTemplateExpression(source, cursor, char, next) {
+  if (char === '\'' || char === '"') {
+    const parsed = parseStringLiteral(source, cursor);
+    return parsed ? parsed.end : source.length;
+  }
+  if (char === '/' && next === '/') {
+    return skipLineComment(source, cursor);
+  }
+  if (char === '/' && next === '*') {
+    return skipBlockComment(source, cursor);
+  }
   return null;
 }
 
@@ -513,52 +521,14 @@ function extractRuntimeImportSpecifiers(source) {
   while (index < source.length) {
     const char = source[index];
     const next = source[index + 1];
-
-    if (char === '/' && next === '/') {
-      index = skipLineComment(source, index);
+    const skipped = skipNonCodeSection(source, index, char, next, specifiers);
+    if (skipped !== null) {
+      index = skipped;
       continue;
     }
-
-    if (char === '/' && next === '*') {
-      index = skipBlockComment(source, index);
-      continue;
-    }
-
-    if (char === '`') {
-      index = skipTemplateLiteral(source, index, specifiers);
-      continue;
-    }
-
-    if (char === '\'' || char === '"') {
-      const parsed = parseStringLiteral(source, index);
-      index = parsed ? parsed.end : source.length;
-      continue;
-    }
-
-    const importBoundary =
-      source.startsWith('import', index) &&
-      !isIdentifierChar(source[index - 1] ?? '') &&
-      !isIdentifierChar(source[index + 6] ?? '');
-    if (importBoundary) {
-      index = collectImportSpecifier(source, index, specifiers);
-      continue;
-    }
-
-    const exportBoundary =
-      source.startsWith('export', index) &&
-      !isIdentifierChar(source[index - 1] ?? '') &&
-      !isIdentifierChar(source[index + 6] ?? '');
-    if (exportBoundary) {
-      index = collectExportSpecifier(source, index, specifiers);
-      continue;
-    }
-
-    const requireBoundary =
-      source.startsWith('require', index) &&
-      !isIdentifierChar(source[index - 1] ?? '') &&
-      !isIdentifierChar(source[index + 7] ?? '');
-    if (requireBoundary) {
-      index = collectRequireSpecifier(source, index, specifiers);
+    const collected = collectSpecifierAtBoundary(source, index, specifiers);
+    if (collected !== null) {
+      index = collected;
       continue;
     }
 
@@ -566,6 +536,36 @@ function extractRuntimeImportSpecifiers(source) {
   }
 
   return specifiers;
+}
+
+function skipNonCodeSection(source, index, char, next, specifiers) {
+  if (char === '/' && next === '/') {
+    return skipLineComment(source, index);
+  }
+  if (char === '/' && next === '*') {
+    return skipBlockComment(source, index);
+  }
+  if (char === '`') {
+    return skipTemplateLiteral(source, index, specifiers);
+  }
+  if (char === '\'' || char === '"') {
+    const parsed = parseStringLiteral(source, index);
+    return parsed ? parsed.end : source.length;
+  }
+  return null;
+}
+
+function collectSpecifierAtBoundary(source, index, specifiers) {
+  if (isKeywordAt(source, index, 'import')) {
+    return collectImportSpecifier(source, index, specifiers);
+  }
+  if (isKeywordAt(source, index, 'export')) {
+    return collectExportSpecifier(source, index, specifiers);
+  }
+  if (isKeywordAt(source, index, 'require')) {
+    return collectRequireSpecifier(source, index, specifiers);
+  }
+  return null;
 }
 
 export function validateUndeclaredRuntimeImports({ packageName, packedManifest, jsFiles }) {
@@ -602,8 +602,9 @@ export function validateUndeclaredRuntimeImports({ packageName, packedManifest, 
   }
 
   if (unresolved.size > 0) {
+    const unresolvedList = [...unresolved].sort((left, right) => left.localeCompare(right));
     throw new Error(
-      `Packed artifact has undeclared runtime imports for ${packageName}: ${[...unresolved].sort().join(', ')}`,
+      `Packed artifact has undeclared runtime imports for ${packageName}: ${unresolvedList.join(', ')}`,
     );
   }
 }
@@ -690,7 +691,8 @@ async function verifyReleaseArtifacts(rootDir) {
         ['--dir', packagePath, 'pack', '--pack-destination', tempPackDir],
         { cwd: rootDir },
       );
-      const archivePath = output.split(/\r?\n/).filter(Boolean).at(-1);
+      const outputLines = output.split(/\r?\n/).filter(Boolean);
+      const archivePath = outputLines.length > 0 ? outputLines[outputLines.length - 1] : '';
       if (!archivePath) {
         throw new Error(`pnpm pack did not return an archive path for ${packageDir}`);
       }
