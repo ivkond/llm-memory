@@ -40,6 +40,15 @@ interface ExtractedPage {
   title: string;
   content: string;
 }
+interface IngestSource {
+  uri: string;
+  content: string;
+  estimatedTokens: number;
+}
+interface ClassifiedPages {
+  pagesCreated: string[];
+  pagesUpdated: string[];
+}
 
 const INGEST_SYSTEM_PROMPT =
   'You are a wiki editor. Extract high-signal reference pages from the given source. ' +
@@ -84,77 +93,92 @@ export class IngestService {
   ) {}
 
   async ingest(req: IngestRequest): Promise<IngestResponse> {
-    return this.writeCoordinator.runExclusive({ name: 'ingest' }, async () => {
+    return this.writeCoordinator.runExclusive({ name: 'ingest' }, () => this.ingestExclusive(req));
+  }
+
+  private async ingestExclusive(req: IngestRequest): Promise<IngestResponse> {
     if (req.project) {
       throw new ProjectScopeUnsupportedError('ingest', req.project);
     }
-    // -- Pre-worktree checks --------------------------------------------------
-    const source = await this.sourceReader.read(req.source); // may throw SourceNotFoundError / SourceParseError
-    if (source.estimatedTokens > MAX_SOURCE_TOKENS) {
-      throw new SourceParseError(
-        source.uri,
-        `source is ${source.estimatedTokens} tokens, exceeds limit of ${MAX_SOURCE_TOKENS}`,
-      );
-    }
+    const source = await this.readAndValidateSource(req.source);
 
-    // -- Worktree-scoped ingest ----------------------------------------------
     const worktree = await this.versionControl.createWorktree('ingest');
     const worktreeStore = this.fileStoreFactory(worktree.path);
+    const extractedPages = await this.extractPagesOrCleanup(worktree.path, source, req.hint);
+    const classifiedPages = await this.classifyPages(extractedPages);
+    const touchedPaths = await this.writePagesOrCleanup(
+      worktree.path,
+      worktreeStore,
+      extractedPages,
+      source.uri,
+    );
+    const commitSha = await this.commitAndMergeOrCleanup(worktree.path, touchedPaths, source.uri);
+    await this.reindexTouchedPaths(touchedPaths);
+    await this.safeRemoveWorktree(worktree.path);
+    await this.stateStore.update({ last_ingest: new Date().toISOString() });
 
-    let extractedPages: ExtractedPage[];
-    try {
-      extractedPages = await this.extractPages(source, req.hint);
-    } catch (err) {
-      // LLM or extraction failure: discard the worktree, DO NOT touch state.
-      await this.safeRemoveWorktree(worktree.path, true);
-      if (err instanceof WikiError) throw err;
-      const message = err instanceof Error ? err.message : String(err);
-      throw new LlmUnavailableError(message);
-    }
+    return {
+      pages_created: classifiedPages.pagesCreated,
+      pages_updated: classifiedPages.pagesUpdated,
+      commit_sha: commitSha,
+    };
+  }
 
-    // Classify each extracted page as create-or-update so the response
-    // distinguishes them (pages_created vs pages_updated).
+  private async classifyPages(extractedPages: ExtractedPage[]): Promise<ClassifiedPages> {
     const pagesCreated: string[] = [];
     const pagesUpdated: string[] = [];
     for (const page of extractedPages) {
       const existed = await this.mainFileStore.exists(page.path);
       (existed ? pagesUpdated : pagesCreated).push(page.path);
     }
+    return { pagesCreated, pagesUpdated };
+  }
 
-    // -- Write pages to the worktree ----------------------------------------
+  private async writePagesOrCleanup(
+    worktreePath: string,
+    worktreeStore: IFileStore,
+    extractedPages: ExtractedPage[],
+    sourceUri: string,
+  ): Promise<string[]> {
     const touchedPaths: string[] = [];
     try {
       for (const page of extractedPages) {
-        const body = this.renderPageBody(page, source.uri);
+        const body = this.renderPageBody(page, sourceUri);
         await worktreeStore.writeFile(page.path, body);
         touchedPaths.push(page.path);
       }
     } catch (err) {
-      await this.safeRemoveWorktree(worktree.path, true);
+      await this.safeRemoveWorktree(worktreePath, true);
       throw err;
     }
+    return touchedPaths;
+  }
 
-    // -- Commit / squash / merge --------------------------------------------
+  private async commitAndMergeOrCleanup(
+    worktreePath: string,
+    touchedPaths: string[],
+    sourceUri: string,
+  ): Promise<string> {
     let commitSha: string;
     try {
       await this.versionControl.commitInWorktree(
-        worktree.path,
+        worktreePath,
         touchedPaths,
-        `:memo: [ingest] ${source.uri}`,
+        `:memo: [ingest] ${sourceUri}`,
       );
-      await this.versionControl.squashWorktree(worktree.path, `:memo: [ingest] ${source.uri}`);
-      commitSha = await this.versionControl.mergeWorktree(worktree.path);
+      await this.versionControl.squashWorktree(worktreePath, `:memo: [ingest] ${sourceUri}`);
+      commitSha = await this.versionControl.mergeWorktree(worktreePath);
     } catch (err) {
       if (err instanceof GitConflictError) {
-        // Preserve the worktree for manual recovery; state is unchanged.
         throw err;
       }
-      // Any other error: discard the worktree.
-      await this.safeRemoveWorktree(worktree.path, true);
+      await this.safeRemoveWorktree(worktreePath, true);
       throw err;
     }
+    return commitSha;
+  }
 
-    // -- Post-merge reindex + state stamp + worktree cleanup ----------------
+  private async reindexTouchedPaths(touchedPaths: string[]): Promise<void> {
     for (const path of touchedPaths) {
       const data = await this.mainFileStore.readWikiPage(path);
       if (!data) continue;
@@ -165,16 +189,32 @@ export class IngestService {
         updated: data.frontmatter.updated,
       });
     }
+  }
 
-    await this.safeRemoveWorktree(worktree.path);
-    await this.stateStore.update({ last_ingest: new Date().toISOString() });
+  private async readAndValidateSource(sourcePath: string): Promise<IngestSource> {
+    const source = await this.sourceReader.read(sourcePath);
+    if (source.estimatedTokens > MAX_SOURCE_TOKENS) {
+      throw new SourceParseError(
+        source.uri,
+        `source is ${source.estimatedTokens} tokens, exceeds limit of ${MAX_SOURCE_TOKENS}`,
+      );
+    }
+    return source;
+  }
 
-    return {
-      pages_created: pagesCreated,
-      pages_updated: pagesUpdated,
-      commit_sha: commitSha,
-    };
-    });
+  private async extractPagesOrCleanup(
+    worktreePath: string,
+    source: IngestSource,
+    hint?: string,
+  ): Promise<ExtractedPage[]> {
+    try {
+      return await this.extractPages(source, hint);
+    } catch (err) {
+      await this.safeRemoveWorktree(worktreePath, true);
+      if (err instanceof WikiError) throw err;
+      const message = err instanceof Error ? err.message : String(err);
+      throw new LlmUnavailableError(message);
+    }
   }
 
   /**

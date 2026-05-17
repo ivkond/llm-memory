@@ -1,5 +1,6 @@
 import type { AppServices } from '@ivkond-llm-wiki/common';
 import { readCommonRememberParams } from './wiki-remember-params.js';
+import { isCoordinationError } from './write-coordination-error.js';
 
 /**
  * Handler for `wiki_remember_fact` — wires to RememberService.
@@ -79,10 +80,4 @@ export function createWikiRememberFactHandler(services: AppServices) {
       };
     }
   };
-}
-
-function isCoordinationError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const code = (error as { code?: unknown }).code;
-  return code === 'WRITE_LOCK_TIMEOUT' || code === 'WRITE_LOCK_ACQUISITION_FAILED';
 }

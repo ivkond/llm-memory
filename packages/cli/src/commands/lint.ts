@@ -10,6 +10,7 @@ import { Command } from 'commander';
 import path from 'node:path';
 import { ConfigLoader } from '@ivkond-llm-wiki/infra';
 import { buildContainer } from '@ivkond-llm-wiki/common';
+import { coordinationOperation } from './write-coordination-error.js';
 
 type LintPhaseName = 'consolidate' | 'promote' | 'health';
 
@@ -126,16 +127,3 @@ export const lintCommand = new Command()
       process.exit(1);
     }
   });
-
-function coordinationOperation(error: unknown): string | null {
-  if (!error || typeof error !== 'object') return null;
-  const code = (error as { code?: unknown }).code;
-  const operation = (error as { operation?: unknown }).operation;
-  if (
-    (code === 'WRITE_LOCK_TIMEOUT' || code === 'WRITE_LOCK_ACQUISITION_FAILED') &&
-    typeof operation === 'string'
-  ) {
-    return operation;
-  }
-  return null;
-}

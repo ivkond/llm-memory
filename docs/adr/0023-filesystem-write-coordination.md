@@ -15,7 +15,7 @@ Use a local filesystem lock as the single write-coordination mechanism for a wik
 
 - Core defines an `IWriteCoordinator` port and mutating services run write critical sections through `runExclusive`.
 - Infra provides `FsWriteCoordinator` that acquires a lock directory at `.<wiki>/.llm-memory/write.lock` using atomic `mkdir`.
-- Lock acquisition uses bounded retries, timeout, and stale-lock recovery using lock mtime.
+- Lock acquisition uses bounded retries, timeout, and stale-lock recovery based on owner metadata heartbeat (with mtime only as fallback when metadata is unavailable).
 - Coordination failures are surfaced as typed domain errors for CLI and MCP handlers.
 
 ## Consequences
@@ -23,7 +23,7 @@ Use a local filesystem lock as the single write-coordination mechanism for a wik
 - Positive: serializes writes across processes without hosted infrastructure.
 - Positive: keeps product direction local-first, Git-backed, Markdown-based.
 - Negative: long-running write operations can delay other mutating operations.
-- Negative: stale-lock heuristics can unblock writes only after configured stale threshold.
+- Negative: stale-lock recovery can unblock writes only after configured stale threshold.
 
 ## Alternatives considered
 
